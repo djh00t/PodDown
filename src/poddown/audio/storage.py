@@ -110,6 +110,7 @@ class FilesystemRenderRecordStore:
 
     def save(self, outcome: RenderOutcome) -> None:
         """Store an outcome once or reject conflicting evidence for its key."""
+        self._validate_durable_outcome(outcome, outcome.candidate.idempotency_key)
         path = self._path_for(outcome.candidate.idempotency_key)
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(
@@ -149,6 +150,7 @@ class FilesystemRenderRecordStore:
         try:
             payload = json.loads(raw)
             outcome = self._deserialize(payload)
+            self._validate_durable_outcome(outcome, idempotency_key)
             self._artifacts.read(outcome.candidate.artifact)
             return outcome
         except (
@@ -159,6 +161,27 @@ class FilesystemRenderRecordStore:
             json.JSONDecodeError,
         ) as error:
             raise ArtifactIntegrityError("render record is malformed") from error
+
+    @staticmethod
+    def _validate_durable_outcome(outcome: RenderOutcome, lookup_key: str) -> None:
+        candidate = outcome.candidate
+        if candidate.idempotency_key != lookup_key:
+            raise ArtifactIntegrityError(
+                "render record candidate key does not match lookup key"
+            )
+        if outcome.replayed or outcome.cost_event is None:
+            raise ArtifactIntegrityError(
+                "render record must contain new-render cost evidence"
+            )
+        cost_event = outcome.cost_event
+        if (
+            cost_event.event_id != f"cost-{candidate.candidate_id}"
+            or cost_event.candidate_id != candidate.candidate_id
+            or cost_event.provider != candidate.provider
+            or cost_event.usage != candidate.usage
+            or cost_event.cost != candidate.cost
+        ):
+            raise ArtifactIntegrityError("render record cost evidence is inconsistent")
 
     def _path_for(self, idempotency_key: str) -> Path:
         if not isinstance(idempotency_key, str) or not _IDEMPOTENCY_KEY.fullmatch(

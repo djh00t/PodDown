@@ -1,5 +1,6 @@
 """Tests for immutable filesystem audio artifacts and render records."""
 
+import json
 from dataclasses import replace
 from decimal import Decimal
 from hashlib import sha256
@@ -45,7 +46,7 @@ def _outcome(artifact: ArtifactRef, **overrides: object) -> RenderOutcome:
     return RenderOutcome(
         candidate=candidate,
         cost_event=ProviderCostEvent(
-            event_id="cost-001",
+            event_id=f"cost-{candidate.candidate_id}",
             candidate_id=candidate.candidate_id,
             provider="local",
             usage=ProviderUsage(input_units=26, output_units=11),
@@ -138,6 +139,65 @@ def test_save_and_load_round_trip_all_render_metadata_and_decimal_costs(tmp_path
     loaded = FilesystemRenderRecordStore(tmp_path / "records").load(IDEMPOTENCY_KEY)
 
     assert loaded == outcome
+
+
+def test_load_rejects_a_candidate_key_that_differs_from_the_lookup_key(tmp_path):
+    """A record must remain bound to the key used to retrieve it."""
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
+    outcome = _outcome(artifacts.put(b"audio", media_type="audio/wav"))
+    records = FilesystemRenderRecordStore(tmp_path / "records")
+    records.save(outcome)
+    record_path = tmp_path / "records" / "records" / f"{IDEMPOTENCY_KEY}.json"
+    payload = json.loads(record_path.read_text(encoding="utf-8"))
+    payload["candidate"]["idempotency_key"] = "render-" + "b" * 64
+    record_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ArtifactIntegrityError):
+        records.load(IDEMPOTENCY_KEY)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("event_id", "cost-tampered"),
+        ("candidate_id", "candidate-tampered"),
+        ("provider", "remote"),
+        ("usage", {"input_units": 27, "output_units": 11}),
+        ("cost", "0.99"),
+    ],
+)
+def test_load_rejects_tampered_cost_event_fields(tmp_path, field, value):
+    """Cost evidence must remain internally consistent with its candidate."""
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
+    outcome = _outcome(artifacts.put(b"audio", media_type="audio/wav"))
+    records = FilesystemRenderRecordStore(tmp_path / "records")
+    records.save(outcome)
+    record_path = tmp_path / "records" / "records" / f"{IDEMPOTENCY_KEY}.json"
+    payload = json.loads(record_path.read_text(encoding="utf-8"))
+    payload["cost_event"][field] = value
+    record_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ArtifactIntegrityError):
+        records.load(IDEMPOTENCY_KEY)
+
+
+@pytest.mark.parametrize("mutation", ["missing_cost_event", "replayed"])
+def test_load_rejects_costless_or_replayed_record_payloads(tmp_path, mutation):
+    """Only newly accepted outcomes with cost evidence are durable records."""
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
+    outcome = _outcome(artifacts.put(b"audio", media_type="audio/wav"))
+    records = FilesystemRenderRecordStore(tmp_path / "records")
+    records.save(outcome)
+    record_path = tmp_path / "records" / "records" / f"{IDEMPOTENCY_KEY}.json"
+    payload = json.loads(record_path.read_text(encoding="utf-8"))
+    if mutation == "missing_cost_event":
+        payload["cost_event"] = None
+    else:
+        payload["replayed"] = True
+    record_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ArtifactIntegrityError):
+        records.load(IDEMPOTENCY_KEY)
 
 
 def test_save_of_an_identical_outcome_is_idempotent(tmp_path):
