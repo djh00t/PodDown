@@ -14,12 +14,14 @@ from poddown.content.models import (
 from poddown.content.profiles import _load_yaml
 
 _HEADING = re.compile(r"^ {0,3}#{1,6}(?:[ \t]+|$)")
-_LIST = re.compile(r"^ {0,3}(?:[-+*]|\d+[.)])[ \t]+")
-_LIST_CONTINUATION = re.compile(r"^(?: {2,}|\t| {1,3}\t)\S")
+_LIST = re.compile(
+    r"^(?P<indent> {0,3})(?P<marker>[-+*]|\d+[.)])(?P<whitespace>[ \t]+)"
+)
 _BLOCKQUOTE = re.compile(r"^ {0,3}>")
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})[ \t]*$")
 _SETEXT = re.compile(r"^ {0,3}(?:=+|-+)[ \t]*$")
+_TAB_STOP = 4
 
 
 def _frontmatter(source: str) -> tuple[Mapping[str, object], int]:
@@ -93,8 +95,29 @@ def _is_setext_underline(line: str) -> bool:
     return _SETEXT.fullmatch(line.rstrip("\r\n")) is not None
 
 
-def _is_list_continuation(line: str) -> bool:
-    return _LIST_CONTINUATION.match(line.rstrip("\r\n")) is not None
+def _expanded_columns(text: str, start: int = 0) -> int:
+    column = start
+    for character in text:
+        if character == " ":
+            column += 1
+        elif character == "\t":
+            column += _TAB_STOP - (column % _TAB_STOP)
+        else:
+            break
+    return column
+
+
+def _list_continuation_columns(line: str) -> int | None:
+    match = _LIST.match(line.rstrip("\r\n"))
+    if match is None:
+        return None
+    marker_end = _expanded_columns(match.group("indent")) + len(match.group("marker"))
+    return _expanded_columns(match.group("whitespace"), marker_end)
+
+
+def _is_list_continuation(line: str, minimum_columns: int) -> bool:
+    stripped = line.rstrip("\r\n")
+    return bool(stripped.strip()) and _expanded_columns(stripped) >= minimum_columns
 
 
 def _is_blank_line(line: str) -> bool:
@@ -165,9 +188,16 @@ def snapshot_source(source: str) -> SourceSnapshot:
         assert kind is not None
         end_index = index + 1
         if kind == "list":
+            continuation_columns = _list_continuation_columns(line)
+            assert continuation_columns is not None
             while end_index < len(lines):
                 next_line = lines[end_index][1]
-                if _kind(next_line) == kind or _is_list_continuation(next_line):
+                next_list_columns = _list_continuation_columns(next_line)
+                if next_list_columns is not None:
+                    continuation_columns = next_list_columns
+                    end_index += 1
+                    continue
+                if _is_list_continuation(next_line, continuation_columns):
                     end_index += 1
                     continue
                 if _is_blank_line(next_line):
@@ -177,8 +207,10 @@ def snapshot_source(source: str) -> SourceSnapshot:
                     ):
                         lookahead += 1
                     if lookahead < len(lines) and (
-                        _kind(lines[lookahead][1]) == kind
-                        or _is_list_continuation(lines[lookahead][1])
+                        _list_continuation_columns(lines[lookahead][1]) is not None
+                        or _is_list_continuation(
+                            lines[lookahead][1], continuation_columns
+                        )
                     ):
                         end_index += 1
                         continue

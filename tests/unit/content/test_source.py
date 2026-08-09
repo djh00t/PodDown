@@ -64,6 +64,20 @@ TAB_LIST_SOURCE = "- first item\n\tcontinuation line\n- second item\n"
 BLANK_CONTINUATION_SOURCE = (
     "- first item\n\n  continuation paragraph\n\nTop-level paragraph\n"
 )
+ORDERED_TWO_SPACE_HEADING_SOURCE = "1. first item\n\n  # New heading\n"
+WIDE_ORDERED_LIST_SOURCE = (
+    "10. first item\n\n    continuation paragraph\n\n   # New heading\n"
+)
+TAB_SPACES_LIST_SOURCE = "1. first item\n\n\t  continuation paragraph\n\nParagraph\n"
+LIST_TOP_LEVEL_BOUNDARIES_SOURCE = (
+    "1. first item\n\n"
+    "  # Heading\n\n"
+    "  > Quote\n\n"
+    "  ```python\n"
+    "  fenced\n"
+    "  ```\n\n"
+    "  Paragraph\n"
+)
 
 
 class _MutableKey(str):
@@ -311,3 +325,76 @@ def test_blank_separated_list_continuation_does_not_swallow_top_level_content():
     assert snapshot.blocks[0].end == 38
     assert snapshot.blocks[0].text == "- first item\n\n  continuation paragraph"
     assert snapshot.blocks[1].text == "Top-level paragraph"
+
+
+def test_ordered_list_does_not_swallow_two_space_heading_after_blank():
+    """A 1. item needs three expanded columns for its continuation block."""
+    snapshot = snapshot_source(ORDERED_TWO_SPACE_HEADING_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        ("list", "1. first item", 0, 13, "block-0000-44e275e2eba6"),
+        ("heading", "  # New heading", 15, 30, "block-0001-0cf16effe56c"),
+    ]
+
+
+def test_wide_ordered_marker_uses_marker_width_for_continuations():
+    """A 10. item needs four spaces while a three-space heading is top-level."""
+    snapshot = snapshot_source(WIDE_ORDERED_LIST_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        (
+            "list",
+            "10. first item\n\n    continuation paragraph",
+            0,
+            42,
+            "block-0000-adf3efae518e",
+        ),
+        ("heading", "   # New heading", 44, 60, "block-0001-86c9eff246c1"),
+    ]
+
+
+def test_tab_plus_spaces_are_expanded_for_list_continuation():
+    """Tab-expanded indentation with extra spaces remains in the list block."""
+    snapshot = snapshot_source(TAB_SPACES_LIST_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        (
+            "list",
+            "1. first item\n\n\t  continuation paragraph",
+            0,
+            40,
+            "block-0000-41d8064c274a",
+        ),
+        ("paragraph", "Paragraph", 42, 51, "block-0001-c3b03dd28595"),
+    ]
+
+
+def test_list_stops_at_new_top_level_heading_quote_fence_and_paragraph():
+    """Two-space top-level blocks after a blank must not be swallowed by a list."""
+    snapshot = snapshot_source(LIST_TOP_LEVEL_BOUNDARIES_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        ("list", "1. first item", 0, 13, "block-0000-44e275e2eba6"),
+        ("heading", "  # Heading", 15, 26, "block-0001-19ddc9c1a9b0"),
+        ("blockquote", "  > Quote", 28, 37, "block-0002-4866a8e8f6b2"),
+        (
+            "code",
+            "  ```python\n  fenced\n  ```",
+            39,
+            65,
+            "block-0003-2ea4345a62c0",
+        ),
+        ("paragraph", "  Paragraph", 67, 78, "block-0004-fa160fd9fd3a"),
+    ]
