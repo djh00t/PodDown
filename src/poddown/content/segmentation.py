@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import Literal, overload
 
@@ -242,32 +242,25 @@ def _make_segment(
     )
 
 
-class _ReadOnlyLegacyResult(dict[str, object]):
-    """Dict-shaped immutable result for the frozen BDD compatibility binding."""
+@dataclass(frozen=True)
+class _LegacySegmentationResult(Mapping[str, object]):
+    """Frozen mapping whose fields also satisfy the unchanged BDD lookup."""
 
-    def __setitem__(self, key: str, value: object) -> None:
-        raise TypeError("legacy segmentation result is read-only")
+    accepted: bool
+    error: str
 
-    def __delitem__(self, key: str) -> None:
-        raise TypeError("legacy segmentation result is read-only")
+    def __getitem__(self, key: str) -> object:
+        if key == "accepted":
+            return self.accepted
+        if key == "error":
+            return self.error
+        raise KeyError(key)
 
-    def clear(self) -> None:
-        raise TypeError("legacy segmentation result is read-only")
+    def __iter__(self) -> Iterator[str]:
+        return iter(("accepted", "error"))
 
-    def pop(self, *args: object, **kwargs: object) -> object:
-        raise TypeError("legacy segmentation result is read-only")
-
-    def popitem(self) -> tuple[str, object]:
-        raise TypeError("legacy segmentation result is read-only")
-
-    def setdefault(self, *args: object, **kwargs: object) -> object:
-        raise TypeError("legacy segmentation result is read-only")
-
-    def update(self, *args: object, **kwargs: object) -> None:
-        raise TypeError("legacy segmentation result is read-only")
-
-    def __ior__(self, other: Mapping[str, object]) -> _ReadOnlyLegacyResult:  # type: ignore[override, misc]
-        raise TypeError("legacy segmentation result is read-only")
+    def __len__(self) -> int:
+        return 2
 
 
 def _segment_legacy_mapping(
@@ -282,41 +275,40 @@ def _segment_legacy_mapping(
     Every other mapping is rejected as invalid rather than being accepted without
     canonical provenance.
     """
-    turns = script.get("turns")
-    if isinstance(turns, str) or not isinstance(turns, list | tuple) or not turns:
-        raise SegmentationError("invalid_script", "legacy turns must be non-empty")
+    if set(script) != {"turns", "renderer_text_limit"}:
+        raise SegmentationError("invalid_script", "legacy mapping fields are invalid")
+    turns = script["turns"]
+    if not isinstance(turns, list) or len(turns) != 1:
+        raise SegmentationError(
+            "invalid_script", "legacy mapping must contain exactly one turn"
+        )
     renderer_text_limit = script.get("renderer_text_limit")
     if type(renderer_text_limit) is not int or renderer_text_limit <= 0:
         raise SegmentationError(
             "invalid_script", "legacy renderer_text_limit must be positive"
         )
 
-    turn_ids: set[str] = set()
-    for turn in turns:
-        if not isinstance(turn, Mapping):
-            raise SegmentationError("invalid_script", "legacy turn must be a mapping")
-        turn_id = turn.get("turn_id")
-        speaker_id = turn.get("speaker_id")
-        source_block_anchor = turn.get("source_block_anchor")
-        text = turn.get("text")
-        if not isinstance(turn_id, str) or not turn_id:
-            raise SegmentationError("invalid_script", "legacy turn fields are invalid")
-        if not isinstance(speaker_id, str) or not speaker_id:
-            raise SegmentationError("invalid_script", "legacy turn fields are invalid")
-        if not isinstance(source_block_anchor, str) or not source_block_anchor:
-            raise SegmentationError("invalid_script", "legacy turn fields are invalid")
-        if not isinstance(text, str) or not text:
-            raise SegmentationError("invalid_script", "legacy turn fields are invalid")
-        if turn_id in turn_ids:
-            raise SegmentationError("invalid_script", "legacy turn IDs are not unique")
-        turn_ids.add(turn_id)
-        if len(text) > renderer_text_limit:
-            return _ReadOnlyLegacyResult(
-                {
-                    "accepted": False,
-                    "error": "capability: complete turn exceeds renderer_text_limit",
-                }
-            )
+    turn = turns[0]
+    if not isinstance(turn, Mapping):
+        raise SegmentationError("invalid_script", "legacy turn must be a mapping")
+    if set(turn) != {"turn_id", "speaker_id", "source_block_anchor", "text"}:
+        raise SegmentationError("invalid_script", "legacy turn fields are invalid")
+    turn_id = turn["turn_id"]
+    speaker_id = turn["speaker_id"]
+    source_block_anchor = turn["source_block_anchor"]
+    text = turn["text"]
+    if not isinstance(turn_id, str) or not turn_id:
+        raise SegmentationError("invalid_script", "legacy turn fields are invalid")
+    if not isinstance(speaker_id, str) or not speaker_id:
+        raise SegmentationError("invalid_script", "legacy turn fields are invalid")
+    if not isinstance(source_block_anchor, str) or not source_block_anchor:
+        raise SegmentationError("invalid_script", "legacy turn fields are invalid")
+    if not isinstance(text, str) or not text:
+        raise SegmentationError("invalid_script", "legacy turn fields are invalid")
+    if len(text) > renderer_text_limit:
+        return _LegacySegmentationResult(
+            False, "capability: complete turn exceeds renderer_text_limit"
+        )
 
     raise SegmentationError(
         "invalid_script", "legacy mapping cannot produce canonical segments"

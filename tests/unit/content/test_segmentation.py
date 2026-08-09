@@ -301,6 +301,8 @@ def test_segment_rejects_non_finite_estimated_duration(duration):
 
 def test_segment_script_legacy_mapping_returns_read_only_capability_rejection():
     """The frozen BDD mapping gets only its narrow capability-failure contract."""
+    from collections.abc import Mapping
+
     from poddown.content.segmentation import segment_script
 
     result = segment_script(
@@ -317,11 +319,15 @@ def test_segment_script_legacy_mapping_returns_read_only_capability_rejection():
         }
     )
 
-    assert isinstance(result, dict)
+    assert isinstance(result, Mapping)
     assert result["accepted"] is False
     assert "capability" in str(result["error"]).lower()
     with pytest.raises(TypeError):
         result["accepted"] = True  # type: ignore[index]
+    with pytest.raises(AttributeError):
+        result.accepted = True  # type: ignore[attr-defined]
+    assert result["accepted"] is False
+    assert "capability" in str(result["error"]).lower()
 
 
 def test_segment_script_legacy_mapping_rejects_non_oversized_or_malformed_input():
@@ -345,3 +351,41 @@ def test_segment_script_legacy_mapping_rejects_non_oversized_or_malformed_input(
         with pytest.raises(SegmentationError) as error:
             segment_script(legacy_script)
         assert error.value.code == "invalid_script"
+
+
+@pytest.mark.parametrize(
+    "later_turn",
+    [
+        {
+            "turn_id": "t-001",
+            "speaker_id": "spk-engineer-b",
+            "source_block_anchor": "block-robotics-controls",
+            "text": "later duplicate",
+        },
+        {
+            "turn_id": "t-002",
+            "speaker_id": "spk-engineer-b",
+            "source_block_anchor": "block-robotics-controls",
+        },
+    ],
+)
+def test_legacy_oversized_first_turn_cannot_hide_invalid_later_turn(later_turn):
+    """A capability result cannot bypass validation of later legacy turns."""
+    from poddown.content.segmentation import SegmentationError, segment_script
+
+    legacy_script = {
+        "turns": [
+            {
+                "turn_id": "t-001",
+                "speaker_id": "spk-engineer-a",
+                "source_block_anchor": "block-robotics-overview",
+                "text": "word " * 5000,
+            },
+            later_turn,
+        ],
+        "renderer_text_limit": 240,
+    }
+
+    with pytest.raises(SegmentationError) as error:
+        segment_script(legacy_script)
+    assert error.value.code == "invalid_script"
