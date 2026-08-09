@@ -7,12 +7,12 @@
 | 1 | Markdown/frontmatter | 001 | M0 |
 | 2 | Profile configuration | 001 | M0/M1 |
 | 3 | Episode job API | 004 | M3 |
-| 4 | Source-bound adaptation | 002 | M1 |
-| 5 | Dialogue/script model | 002 | M1 |
+| 4 | Source-bound adaptation | 002 | M1 complete locally; adversarial eval evidence recorded |
+| 5 | Dialogue/script model | 002 | M1 complete locally; source-bound canonical script verified |
 | 6 | Provider abstraction | 001 | M0 |
 | 7 | Voice rights/consent | 001/004 | M0/M3 |
-| 8 | Pronunciation engine | 002 | M1 |
-| 9 | Segmentation engine | 002 | M1 |
+| 8 | Pronunciation engine | 002 | M1 complete locally; deterministic token evidence verified |
+| 9 | Segmentation engine | 002 | M1 complete locally; capability-safe segmentation verified |
 | 10 | Render orchestration | 003 | M2 |
 | 11 | Candidate-take scoring | 003 | M2 |
 | 12 | Transcription/fidelity QA | 001/003 | M0/M2 |
@@ -41,9 +41,10 @@ not expand the MVP feature set; they make the approved service operable.
 - Product boundary: fully assigned.
 - Functional specifications: complete at subsystem level.
 - Dependency/order plan: complete through launch.
-- Immediate next slice: M1 content intelligence.
+- M1 content intelligence: complete locally with deterministic adversarial eval
+  evidence; it is not audio-rendering or production-readiness evidence.
+- Immediate next slice: M2 durable audio production remains pending.
 - Task-level implementation plan: intentionally produced just-in-time per
   milestone so measured interfaces and audio quality inform the next plan.
-- Known unresolved items: explicitly listed as eval-driven decisions in the
-  delivery plan; none blocks beginning M1.
-
+- Audio rendering, Temporal, API, CLI, publishing, MCP, Signal & Supply, and
+  production readiness remain pending in their assigned future milestones.
