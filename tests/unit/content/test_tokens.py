@@ -23,14 +23,34 @@ def _lexicons() -> dict[str, PronunciationLexicon]:
             scope="project",
             version="project-7",
             entries=(
-                PronunciationEntry("name-ada", "Ada Lovelace", "AY-da LUV-liss", "1"),
                 PronunciationEntry(
-                    "organization-atlas", "Atlas Robotics", "AT-las robotics", "1"
+                    "opaque-name",
+                    "Ada Lovelace",
+                    "AY-da LUV-liss",
+                    "1",
+                    category="name",
                 ),
                 PronunciationEntry(
-                    "product-poddown", "PodDown Studio", "pod down studio", "1"
+                    "opaque-organization",
+                    "Atlas Robotics",
+                    "AT-las robotics",
+                    "1",
+                    category="organization",
                 ),
-                PronunciationEntry("technical-term-lidar", "LiDAR", "LIE-dar", "1"),
+                PronunciationEntry(
+                    "opaque-product",
+                    "PodDown Studio",
+                    "pod down studio",
+                    "1",
+                    category="product",
+                ),
+                PronunciationEntry(
+                    "opaque-technical",
+                    "LiDAR",
+                    "LIE-dar",
+                    "1",
+                    category="technical_term",
+                ),
             ),
         )
     }
@@ -97,19 +117,19 @@ def test_extract_critical_tokens_preserves_all_categories_spans_and_speech():
         "C one",
         "not",
         "not",
-        "1.6 terabits per second",
-        "21.5 kilograms",
-        "12.5 percent",
+        "one point six terabits per second",
+        "twenty-one point five kilograms",
+        "twelve point five percent",
         "August 9, 2026",
-        "4.2 million dollars",
+        "four point two million dollars",
         "A A P L",
     ]
     assert [token.pronunciation_source for token in tokens[:6]] == [
-        "project:project-7:name-ada",
-        "project:project-7:organization-atlas",
-        "project:project-7:product-poddown",
+        "project:project-7:opaque-name",
+        "project:project-7:opaque-organization",
+        "project:project-7:opaque-product",
         None,
-        "project:project-7:technical-term-lidar",
+        "project:project-7:opaque-technical",
         None,
     ]
 
@@ -137,3 +157,175 @@ def test_extract_critical_tokens_is_deterministic_and_critical_values_are_frozen
     assert isinstance(first[0], CriticalToken)
     with pytest.raises(FrozenInstanceError):
         first[0].normalized = "changed"  # type: ignore[misc]
+
+
+def test_extract_critical_tokens_uses_utf8_byte_spans_and_unicode_normalization():
+    """Character offsets after a multibyte prefix would point at the wrong bytes."""
+    text = "é isn’t Cafe\u0301   O’Connor"
+    lexicons = {
+        "project": PronunciationLexicon(
+            "project",
+            "v1",
+            (
+                PronunciationEntry(
+                    "opaque", "café o'connor", "cafe", "e1", category="name"
+                ),
+            ),
+        )
+    }
+
+    tokens = extract_critical_tokens(text, lexicons)
+
+    assert [(token.category, token.normalized) for token in tokens] == [
+        ("negation", "isn't"),
+        ("name", "café o'connor"),
+    ]
+    assert tokens[0].source_span == (3, 10)
+    assert tokens[0].script_span == (3, 10)
+    assert tokens[0].source_form == "isn’t"
+    assert tokens[1].source_span == (11, 30)
+    assert tokens[1].script_span == (11, 30)
+    assert tokens[1].source_form == "Cafe\u0301   O’Connor"
+    assert tokens[1].pronunciation_source == "project:v1:opaque"
+
+
+def test_structural_categories_win_but_keep_lexicon_pronunciation_provenance():
+    """A lexicon hint must not relabel date, currency, ticker, acronym, or number."""
+    text = "2026-08-09 $AAPL SLAM 42"
+    lexicons = {
+        "episode": PronunciationLexicon(
+            "episode",
+            "episode-v1",
+            (
+                PronunciationEntry(
+                    "date-id", "2026-08-09", "launch date", "e1", category="product"
+                ),
+                PronunciationEntry(
+                    "ticker-id", "$AAPL", "apple shares", "e1", category="name"
+                ),
+                PronunciationEntry(
+                    "acronym-id", "SLAM", "slam method", "e1", category="product"
+                ),
+                PronunciationEntry(
+                    "number-id", "42", "the answer", "e1", category="name"
+                ),
+            ),
+        )
+    }
+
+    tokens = extract_critical_tokens(text, lexicons)
+
+    assert [token.category for token in tokens] == [
+        "date",
+        "ticker",
+        "acronym",
+        "number",
+    ]
+    assert [token.expected_spoken_form for token in tokens] == [
+        "launch date",
+        "apple shares",
+        "slam method",
+        "the answer",
+    ]
+    assert [token.pronunciation_source for token in tokens] == [
+        "episode:episode-v1:date-id",
+        "episode:episode-v1:ticker-id",
+        "episode:episode-v1:acronym-id",
+        "episode:episode-v1:number-id",
+    ]
+
+
+def test_structural_numeric_tokens_use_m0_compatible_verbalization():
+    """Digit-preserving speech would fail the existing deterministic fidelity gate."""
+    tokens = extract_critical_tokens(
+        "1.6 Tbit/s, 21.5 kg, 99.7%, 2026-08-09, $4.2M, and 12 minutes."
+    )
+
+    assert [(token.category, token.normalized) for token in tokens] == [
+        ("unit", "1.6 tbit/s"),
+        ("unit", "21.5 kg"),
+        ("percentage", "99.7%"),
+        ("date", "2026-08-09"),
+        ("currency", "$4.2m"),
+        ("unit", "12 minutes"),
+    ]
+    assert [token.expected_spoken_form for token in tokens] == [
+        "one point six terabits per second",
+        "twenty-one point five kilograms",
+        "ninety-nine point seven percent",
+        "August 9, 2026",
+        "four point two million dollars",
+        "twelve minutes",
+    ]
+
+
+def test_negations_cover_m0_words_contractions_and_boundaries():
+    """Every M0 negation occurrence must survive, while notable is ordinary text."""
+    text = (
+        "not no never none without neither nor cannot can not isn't isn’t "
+        "can't can’t notable"
+    )
+
+    tokens = extract_critical_tokens(text)
+
+    assert [token.normalized for token in tokens] == [
+        "not",
+        "no",
+        "never",
+        "none",
+        "without",
+        "neither",
+        "nor",
+        "cannot",
+        "can not",
+        "isn't",
+        "isn't",
+        "can't",
+        "can't",
+    ]
+    assert [token.occurrence_id for token in tokens] == [
+        f"neg-{index:02d}" for index in range(1, 14)
+    ]
+    assert [token.expected_spoken_form for token in tokens] == [
+        "not",
+        "no",
+        "never",
+        "none",
+        "without",
+        "neither",
+        "nor",
+        "can not",
+        "can not",
+        "is not",
+        "is not",
+        "can not",
+        "can not",
+    ]
+
+
+def test_token_sequence_exposes_read_only_legacy_aliases():
+    """Frozen Task 1 bindings need tuple semantics plus deterministic aliases."""
+    result = extract_critical_tokens("not and not")
+
+    assert isinstance(result, tuple)
+    assert result.tokens is result
+    assert result.manifest.deterministic is True
+    assert result.manifest.occurrence_count == 2
+    assert result[0].spoken_form == "not"
+    assert result[0].source_form == "not"
+    assert result[0].source_span_start == 0
+    assert result[0].source_span_end == 3
+    assert result[0].script_span_start == 0
+    assert result[0].script_span_end == 3
+
+
+def test_critical_token_rejects_invalid_values():
+    """Malformed token evidence must fail closed rather than reach a renderer."""
+    with pytest.raises(ValueError):
+        CriticalToken("", "number", "1", (0, 1), (0, 1), "one", None)  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        CriticalToken("tok-1", "not-a-category", "1", (0, 1), (0, 1), "one", None)  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        CriticalToken("tok-1", "number", "1", (1, 1), (1, 1), "one", None)
+    with pytest.raises(ValueError):
+        CriticalToken("tok-1", "number", "1", (0, 1), (0, 1), "", None)

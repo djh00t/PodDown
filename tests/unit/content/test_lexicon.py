@@ -84,3 +84,95 @@ def test_lexicon_values_are_frozen():
         entry.spoken_form = "lee-DAR"  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
         lexicon.version = "domain-2"  # type: ignore[misc]
+
+
+def test_category_hint_is_optional_and_entry_id_remains_opaque():
+    """Category must come from typed metadata rather than an ID naming convention."""
+    default_entry = PronunciationEntry("opaque-id", "LiDAR", "LIE-dar", "v1")
+    named_entry = PronunciationEntry(
+        "also-opaque", "Ada Lovelace", "AY-da", "v1", category="name"
+    )
+
+    assert default_entry.category == "technical_term"
+    assert named_entry.category == "name"
+    assert named_entry.entry_id == "also-opaque"
+
+
+def test_mapping_scope_must_match_each_lexicon_scope():
+    """A mislabeled layer must not silently alter precedence or provenance."""
+    project_lexicon = PronunciationLexicon(
+        scope="project",
+        version="project-1",
+        entries=(PronunciationEntry("opaque", "C1", "see one", "v1"),),
+    )
+
+    with pytest.raises(ValueError, match="scope"):
+        resolve_pronunciation("C1", {"domain": project_lexicon})
+
+
+def test_legacy_layer_lists_return_tuple_compatible_success_and_conflict_results():
+    """Frozen BDD list layers need aliases without weakening typed conflict behavior."""
+    layers = [
+        {
+            "layer": "global",
+            "version": "global-v1",
+            "entry_id": "global-id",
+            "spoken_form": "global form",
+            "scope": "global",
+        },
+        {
+            "layer": "episode",
+            "version": "episode-v4",
+            "entry_id": "episode-id",
+            "spoken_form": "episode form",
+            "scope": "episode",
+        },
+    ]
+
+    result = resolve_pronunciation("C1", layers)
+
+    assert isinstance(result, tuple)
+    assert result.accepted is True
+    assert result.selected_layer == result.selected_scope == "episode"
+    assert result.selected_spoken_form == result.spoken == "episode form"
+    assert result.version == result.lexicon_version == "episode-v4"
+    assert result.entry_id == "episode-id"
+    assert result.error is None
+
+    conflict = resolve_pronunciation(
+        "LiDAR",
+        [
+            {
+                "layer": "project",
+                "version": "project-v1",
+                "entry_id": "opaque-a",
+                "spoken_form": "LIE-dar",
+                "normalized": "lidar",
+                "scope": "project",
+            },
+            {
+                "layer": "project",
+                "version": "project-v2",
+                "entry_id": "opaque-b",
+                "spoken_form": "LIE-der",
+                "normalized": "lidar",
+                "scope": "project",
+            },
+        ],
+    )
+
+    assert isinstance(conflict, tuple)
+    assert conflict.accepted is False
+    assert "conflict" in str(conflict.error).lower()
+    assert conflict.selected_layer is None
+    assert conflict.selected_spoken_form is None
+
+
+def test_malformed_lexicon_values_fail_closed():
+    """Published lexicons must reject malformed immutable values at construction."""
+    with pytest.raises(ValueError):
+        PronunciationEntry("", "key", "spoken", "v1")
+    with pytest.raises(ValueError):
+        PronunciationEntry("id", "key", "", "v1")
+    with pytest.raises(ValueError):
+        PronunciationEntry("id", "key", "spoken", "v1", category="number")  # type: ignore[arg-type]
