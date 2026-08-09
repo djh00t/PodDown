@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from dataclasses import replace
 
 import pytest
@@ -216,3 +217,83 @@ def test_segment_script_is_deterministic_for_identical_inputs_and_duration_limit
     assert first == second
     assert [segment.turn_ids for segment in first] == [("turn-1",), ("turn-2",)]
     assert all(segment.segment_id.startswith("segment-") for segment in first)
+
+
+def test_segment_ids_distinguish_ambiguous_turn_id_boundaries():
+    """Colon-joining turn IDs would collide for different canonical boundaries."""
+    from poddown.content.segmentation import segment_script
+
+    first_script, source, _ = _script("alpha\n\nbeta", ("alpha", "beta"))
+    first_turns = tuple(
+        replace(turn, turn_id=turn_id)
+        for turn, turn_id in zip(first_script.turns, ("a:b", "c"), strict=True)
+    )
+    second_turns = tuple(
+        replace(turn, turn_id=turn_id)
+        for turn, turn_id in zip(first_script.turns, ("a", "b:c"), strict=True)
+    )
+    first_script = replace(first_script, turns=first_turns)
+    second_script = replace(first_script, turns=second_turns)
+
+    first = segment_script(first_script, source, _capabilities(), ())
+    second = segment_script(second_script, source, _capabilities(), ())
+
+    assert first[0].segment_id != second[0].segment_id
+
+
+@pytest.mark.parametrize(
+    "source_span",
+    [
+        (3, 4),  # The second byte of the UTF-8 encoding of "é".
+        (0, 6),  # Extends beyond the five source bytes in "café".
+    ],
+)
+def test_segment_script_rejects_invalid_utf8_or_non_contained_token_spans(source_span):
+    """Token assignment must reject malformed or non-contained UTF-8 byte spans."""
+    from poddown.content.segmentation import SegmentationError, segment_script
+
+    script, source, anchors = _script("café", ("café",))
+    token = CriticalToken(
+        "invalid-span",
+        "technical_term",
+        "café",
+        source_span,
+        (0, 1),
+        "cafe",
+        None,
+    )
+
+    with pytest.raises(SegmentationError, match="invalid_script"):
+        segment_script(script, source, _capabilities(), (token,))
+    assert anchors[0].end == len("café".encode())
+
+
+@pytest.mark.parametrize("duration", [math.nan, math.inf, -math.inf])
+def test_capabilities_reject_non_finite_duration_limits(duration):
+    """Non-finite limits cannot safely bound a renderer request."""
+    from poddown.content.segmentation import SegmentationCapabilities
+
+    with pytest.raises(ValueError):
+        SegmentationCapabilities(100, duration, frozenset({"host"}))
+
+
+@pytest.mark.parametrize("duration", [math.nan, math.inf, -math.inf])
+def test_segment_rejects_non_finite_estimated_duration(duration):
+    """A segment manifest must never contain a non-finite estimated duration."""
+    from poddown.content.segmentation import Segment
+
+    _, _, anchors = _script("alpha", ("alpha",))
+
+    with pytest.raises(ValueError):
+        Segment(
+            "segment-1",
+            ("turn-1",),
+            ("host",),
+            "alpha",
+            (anchors[0],),
+            (),
+            "",
+            "",
+            duration,
+            "normal",
+        )

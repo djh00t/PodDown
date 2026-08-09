@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import math
 from dataclasses import dataclass
 from typing import Literal
 
@@ -46,6 +48,7 @@ class SegmentationCapabilities:
         if self.max_duration_seconds is not None and (
             isinstance(self.max_duration_seconds, bool)
             or not isinstance(self.max_duration_seconds, int | float)
+            or not math.isfinite(self.max_duration_seconds)
             or self.max_duration_seconds <= 0
         ):
             raise ValueError("max_duration_seconds must be positive when provided")
@@ -97,8 +100,13 @@ class Segment:
             self.trailing_context, str
         ):
             raise ValueError("continuity context must be strings")
-        if self.estimated_duration_seconds <= 0:
-            raise ValueError("estimated_duration_seconds must be positive")
+        if (
+            isinstance(self.estimated_duration_seconds, bool)
+            or not isinstance(self.estimated_duration_seconds, int | float)
+            or not math.isfinite(self.estimated_duration_seconds)
+            or self.estimated_duration_seconds <= 0
+        ):
+            raise ValueError("estimated_duration_seconds must be finite and positive")
         if self.difficulty not in _DIFFICULTIES:
             raise ValueError("difficulty must be normal or difficult")
 
@@ -150,7 +158,9 @@ def _validate_script(script: ScriptVersion, source: SourceSnapshot) -> None:
             previous_end = anchor.end
 
 
-def _validate_tokens(tokens: tuple[CriticalToken, ...], script: ScriptVersion) -> None:
+def _validate_tokens(
+    tokens: tuple[CriticalToken, ...], script: ScriptVersion, source: SourceSnapshot
+) -> None:
     if not isinstance(tokens, tuple) or any(
         not isinstance(token, CriticalToken) for token in tokens
     ):
@@ -163,9 +173,21 @@ def _validate_tokens(tokens: tuple[CriticalToken, ...], script: ScriptVersion) -
     script_anchors = tuple(
         anchor for turn in script.turns for anchor in turn.source_anchors
     )
+    source_bytes = source.source.encode("utf-8")
     for token in tokens:
+        start, end = token.source_span
+        if end > len(source_bytes):
+            raise SegmentationError("invalid_script", "token span exceeds source bytes")
+        try:
+            source_bytes[start:end].decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise SegmentationError(
+                "invalid_script", "token span does not align to UTF-8 boundaries"
+            ) from error
         matches = [
-            anchor for anchor in script_anchors if _overlaps(token.source_span, anchor)
+            anchor
+            for anchor in script_anchors
+            if anchor.start <= start and end <= anchor.end
         ]
         if len(matches) != 1:
             raise SegmentationError(
@@ -174,8 +196,16 @@ def _validate_tokens(tokens: tuple[CriticalToken, ...], script: ScriptVersion) -
 
 
 def _segment_id(script: ScriptVersion, turn_ids: tuple[str, ...]) -> str:
-    boundary = ":".join(turn_ids)
-    digest = hashlib.sha256(f"{script.canonical_hash}:{boundary}".encode()).hexdigest()
+    identity = {
+        "canonical_hash": script.canonical_hash,
+        "first_turn_id": turn_ids[0],
+        "last_turn_id": turn_ids[-1],
+        "turn_ids": turn_ids,
+    }
+    canonical_identity = json.dumps(
+        identity, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    )
+    digest = hashlib.sha256(canonical_identity.encode("utf-8")).hexdigest()
     return f"segment-{digest[:16]}"
 
 
@@ -221,7 +251,7 @@ def segment_script(
     _validate_script(script, source)
     if not isinstance(capabilities, SegmentationCapabilities):
         raise SegmentationError("invalid_script", "capabilities are invalid")
-    _validate_tokens(tokens, script)
+    _validate_tokens(tokens, script, source)
     for turn in script.turns:
         if turn.speaker_id not in capabilities.supported_speakers:
             raise SegmentationError(
@@ -257,7 +287,7 @@ def segment_script(
     if current:
         turn_groups.append(tuple(current))
 
-    return tuple(
+    segments = tuple(
         _make_segment(
             script,
             turns,
@@ -269,3 +299,9 @@ def segment_script(
         )
         for index, turns in enumerate(turn_groups)
     )
+    segment_ids = tuple(segment.segment_id for segment in segments)
+    if len(segment_ids) != len(set(segment_ids)):
+        raise SegmentationError(
+            "invalid_script", "generated segment IDs are not unique"
+        )
+    return segments
