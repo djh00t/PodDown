@@ -1,6 +1,8 @@
 """Replay-safe orchestration for immutable audio render candidates."""
 
+import wave
 from dataclasses import replace
+from io import BytesIO
 
 from poddown.audio.contracts import (
     AudioRenderer,
@@ -11,7 +13,11 @@ from poddown.audio.contracts import (
     RenderRequest,
 )
 from poddown.audio.rights import VoiceConsent, require_render_rights
-from poddown.audio.storage import FilesystemArtifactStore, FilesystemRenderRecordStore
+from poddown.audio.storage import (
+    ArtifactIntegrityError,
+    FilesystemArtifactStore,
+    FilesystemRenderRecordStore,
+)
 
 
 class RenderRejectedError(ValueError):
@@ -48,6 +54,9 @@ class DurableRenderService:
         )
 
         existing = tuple(self._records.find(item.idempotency_key) for item in requests)
+        for item, stored in zip(requests, existing, strict=True):
+            if stored is not None:
+                self._validate_persisted_outcome(item, stored)
         outcomes: list[RenderOutcome] = []
         for item, stored in zip(requests, existing, strict=True):
             if stored is None:
@@ -134,3 +143,75 @@ class DurableRenderService:
             raise RenderRejectedError("renderer output usage does not match audio")
         if request.provider == "local" and not rendered.cost.is_zero():
             raise RenderRejectedError("local renderer cost must be zero")
+        if request.output_format == "wav":
+            DurableRenderService._validate_wav(
+                rendered.audio_bytes, request.sample_rate_hz
+            )
+
+    @staticmethod
+    def _validate_wav(audio_bytes: bytes, sample_rate_hz: int) -> None:
+        """Require complete mono 16-bit PCM frames in a valid WAV container."""
+        try:
+            with wave.open(BytesIO(audio_bytes), "rb") as audio:
+                channels = audio.getnchannels()
+                sample_width = audio.getsampwidth()
+                frame_rate = audio.getframerate()
+                frame_count = audio.getnframes()
+                if (
+                    audio.getcomptype() != "NONE"
+                    or channels != 1
+                    or sample_width != 2
+                    or frame_rate != sample_rate_hz
+                    or frame_count <= 0
+                ):
+                    raise RenderRejectedError("renderer returned invalid WAV metadata")
+                frame_bytes = audio.readframes(frame_count)
+                if len(frame_bytes) != frame_count * channels * sample_width:
+                    raise RenderRejectedError("renderer returned truncated WAV frames")
+        except (EOFError, OSError, ValueError, wave.Error) as error:
+            raise RenderRejectedError("renderer returned invalid WAV audio") from error
+
+    @staticmethod
+    def _validate_persisted_outcome(
+        request: RenderRequest, outcome: RenderOutcome
+    ) -> None:
+        """Authenticate persisted evidence against the request lookup boundary."""
+        candidate = outcome.candidate
+        expected_fields = {
+            "segment_id": request.segment_id,
+            "speaker_id": request.speaker_id,
+            "attempt": request.attempt,
+            "take_index": request.take_index,
+            "voice_asset_id": request.voice_asset_id,
+            "expected_spoken_text": request.expected_spoken_text,
+            "provider": request.provider,
+            "model": request.model,
+        }
+        if candidate.idempotency_key != request.idempotency_key:
+            raise ArtifactIntegrityError(
+                "persisted idempotency key does not match request"
+            )
+        if candidate.candidate_id != request.candidate_id:
+            raise ArtifactIntegrityError(
+                "persisted candidate identity does not match request"
+            )
+        for field, expected in expected_fields.items():
+            if getattr(candidate, field) != expected:
+                raise ArtifactIntegrityError(
+                    f"persisted candidate {field} does not match request"
+                )
+        if outcome.replayed:
+            raise ArtifactIntegrityError("persisted outcome cannot already be replayed")
+        cost_event = outcome.cost_event
+        if cost_event is None:
+            raise ArtifactIntegrityError("persisted outcome is missing cost evidence")
+        if cost_event.event_id != f"cost-{candidate.candidate_id}":
+            raise ArtifactIntegrityError("persisted cost event identity is invalid")
+        if cost_event.candidate_id != candidate.candidate_id:
+            raise ArtifactIntegrityError("persisted cost event candidate is invalid")
+        if cost_event.provider != candidate.provider:
+            raise ArtifactIntegrityError("persisted cost event provider is invalid")
+        if cost_event.usage != candidate.usage:
+            raise ArtifactIntegrityError("persisted cost event usage is invalid")
+        if cost_event.cost != candidate.cost:
+            raise ArtifactIntegrityError("persisted cost event cost is invalid")

@@ -1,6 +1,7 @@
 """Tests for deterministic local rendering and durable replay orchestration."""
 
 import asyncio
+import json
 import wave
 from dataclasses import replace
 from decimal import Decimal
@@ -168,6 +169,135 @@ def test_service_rejects_empty_audio_from_renderer(tmp_path):
     renderer.render = empty  # type: ignore[method-assign]
     with pytest.raises(RenderRejectedError):
         render(durable_service, renderer)
+
+
+@pytest.mark.parametrize(
+    "audio_bytes",
+    [
+        pytest.param(b"not-a-wav", id="non-wav"),
+        pytest.param(
+            "truncated-wav",
+            id="truncated-wav",
+        ),
+    ],
+)
+def test_service_rejects_malformed_wav_before_artifact_persistence(
+    tmp_path, audio_bytes
+):
+    durable_service, renderer = service(tmp_path)
+    original = renderer.render
+
+    async def malformed(render_request: RenderRequest) -> RenderedAudio:
+        valid = await original(render_request)
+        malformed_bytes = (
+            valid.audio_bytes[:-1] if audio_bytes == "truncated-wav" else audio_bytes
+        )
+        rendered = object.__new__(RenderedAudio)
+        for attribute in (
+            "audio_bytes",
+            "provider",
+            "model",
+            "request_id",
+            "usage",
+            "cost",
+            "output_format",
+            "sample_rate_hz",
+        ):
+            object.__setattr__(rendered, attribute, getattr(valid, attribute))
+        object.__setattr__(rendered, "audio_bytes", malformed_bytes)
+        object.__setattr__(
+            rendered,
+            "usage",
+            ProviderUsage(
+                len(render_request.expected_spoken_text), len(malformed_bytes)
+            ),
+        )
+        return rendered
+
+    renderer.render = malformed  # type: ignore[method-assign]
+
+    with pytest.raises(RenderRejectedError, match="WAV"):
+        render(durable_service, renderer)
+
+    assert renderer.calls == [request().idempotency_key]
+    assert list((tmp_path / "artifacts").rglob("*")) == []
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("candidate_id", "candidate-tampered"),
+        ("idempotency_key", request(take_index=1).idempotency_key),
+        ("segment_id", "segment-tampered"),
+        ("speaker_id", "speaker-tampered"),
+        ("attempt", 2),
+        ("take_index", 1),
+        ("voice_asset_id", "voice-tampered"),
+        ("expected_spoken_text", "tampered text"),
+        ("provider", "provider-tampered"),
+        ("model", "model-tampered"),
+    ],
+)
+def test_service_rejects_tampered_request_bound_replay_identity(tmp_path, field, value):
+    durable_service, renderer = service(tmp_path)
+    (outcome,) = render(durable_service, renderer)
+    record_path = next((tmp_path / "records" / "records").glob("*.json"))
+    payload = json.loads(record_path.read_text(encoding="utf-8"))
+    payload["candidate"][field] = value
+    record_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ArtifactIntegrityError):
+        render(durable_service, renderer)
+
+    assert outcome.candidate.idempotency_key == request().idempotency_key
+    assert len(renderer.calls) == 1
+
+
+def test_service_rejects_tampered_persisted_cost_event_before_replay(tmp_path):
+    durable_service, renderer = service(tmp_path)
+    render(durable_service, renderer)
+    record_path = next((tmp_path / "records" / "records").glob("*.json"))
+    payload = json.loads(record_path.read_text(encoding="utf-8"))
+    payload["cost_event"]["event_id"] = "cost-tampered"
+    record_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ArtifactIntegrityError):
+        render(durable_service, renderer)
+
+    assert len(renderer.calls) == 1
+
+
+def test_service_authenticates_all_replays_before_dispatching_missing_takes(tmp_path):
+    durable_service, renderer = service(tmp_path)
+    base_request = request()
+    take_one_request = replace(base_request, take_index=1)
+    asyncio.run(
+        durable_service.render_takes(
+            take_one_request, consent(), renderer, take_count=1
+        )
+    )
+    record_path = next((tmp_path / "records" / "records").glob("*.json"))
+    payload = json.loads(record_path.read_text(encoding="utf-8"))
+    payload["candidate"]["segment_id"] = "segment-tampered"
+    record_path.write_text(json.dumps(payload), encoding="utf-8")
+    renderer.calls.clear()
+
+    with pytest.raises(ArtifactIntegrityError):
+        asyncio.run(
+            durable_service.render_takes(
+                base_request, consent(), renderer, take_count=2
+            )
+        )
+
+    assert renderer.calls == []
+
+
+def test_changing_attempt_changes_candidate_and_idempotency_identity():
+    original = request()
+    changed_attempt = replace(original, attempt=original.attempt + 1)
+
+    assert changed_attempt.candidate_id != original.candidate_id
+    assert changed_attempt.idempotency_key != original.idempotency_key
 
 
 def test_service_replays_persisted_outcome_without_dispatch_or_new_cost_event(tmp_path):
