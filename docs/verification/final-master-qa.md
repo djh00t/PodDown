@@ -64,8 +64,8 @@ Focused quality checks:
 The complete changed-scope repository gate, audio regressions, build,
 documentation build, schema validation, dependency audit, security audit,
 and clean-diff results are recorded here before the stacked PR handoff.
-Changed-scope evidence: make check passed 508 tests with 1 live-provider
-test deselected and 87.20% total branch coverage; Ruff and strict mypy
+Changed-scope evidence: make check passed 511 tests with 1 live-provider
+test deselected and 87.22% total branch coverage; Ruff and strict mypy
 passed across 35 source files. make build, make docs, uv lock --check,
 uv pip check, compileall, schema-field validation, credential audit, and
 git diff --check all passed. No live provider credentials or external
