@@ -4,8 +4,6 @@ import hashlib
 import re
 from collections.abc import Mapping
 
-import yaml
-
 from poddown.content.models import (
     SourceAnchor,
     SourceBlock,
@@ -13,6 +11,7 @@ from poddown.content.models import (
     SourceSnapshot,
     freeze_mapping,
 )
+from poddown.content.profiles import _load_yaml
 
 _HEADING = re.compile(r"^ {0,3}#{1,6}(?:[ \t]+|$)")
 _LIST = re.compile(r"^ {0,3}(?:[-+*]|\d+[.)])[ \t]+")
@@ -31,10 +30,7 @@ def _frontmatter(source: str) -> tuple[Mapping[str, object], int]:
     offset = first_end
     for line in lines[1:]:
         if line.rstrip("\r\n") == "---":
-            try:
-                parsed = yaml.safe_load(source[first_end:offset])
-            except yaml.YAMLError as error:
-                raise ValueError(f"Invalid YAML frontmatter: {error}") from error
+            parsed = _load_yaml(source[first_end:offset])
             if not isinstance(parsed, dict):
                 raise ValueError("Markdown frontmatter must be an object")
             return parsed, offset + len(line)
@@ -158,24 +154,6 @@ def snapshot_source(source: str) -> SourceSnapshot:
             continue
         kind = _kind(line)
         assert kind is not None
-        is_setext = (
-            kind == "paragraph"
-            and index + 1 < len(lines)
-            and _is_setext_underline(lines[index + 1][1])
-        )
-        if is_setext:
-            end_index = index + 2
-            blocks.append(
-                _block(
-                    len(blocks),
-                    "heading",
-                    source,
-                    start,
-                    _line_end(lines, end_index - 1),
-                )
-            )
-            index = end_index
-            continue
         end_index = index + 1
         if kind in {"list", "blockquote"}:
             while end_index < len(lines) and _kind(lines[end_index][1]) == kind:
@@ -191,6 +169,9 @@ def snapshot_source(source: str) -> SourceSnapshot:
                 ):
                     break
                 end_index += 1
+            if end_index < len(lines) and _is_setext_underline(lines[end_index][1]):
+                end_index += 1
+                kind = "heading"
         blocks.append(
             _block(len(blocks), kind, source, start, _line_end(lines, end_index - 1))
         )

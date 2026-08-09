@@ -86,7 +86,6 @@ class _DocumentMetadataModel(BaseModel):
 
     profile: StrictStr | None = None
     format: Literal["narration", "dialogue"] | None = None
-    format_type: Literal["narration", "dialogue"] | None = None
     target_minutes: StrictInt | None = Field(default=None, ge=1, le=180)
     pronunciation_overrides: dict[StrictStr, StrictStr] | None = None
     style: dict[StrictStr, object] | None = None
@@ -173,12 +172,8 @@ def resolve_profile_metadata(
 
     values: dict[str, object] = {}
     allowlist = profile.document_overridable
-    if parsed.format is not None and (
-        "format" in allowlist or "format_type" in allowlist
-    ):
+    if parsed.format is not None and "format" in allowlist:
         values["format_type"] = parsed.format
-    elif parsed.format_type is not None and "format_type" in allowlist:
-        values["format_type"] = parsed.format_type
     if parsed.target_minutes is not None and "target_minutes" in allowlist:
         values["target_minutes"] = parsed.target_minutes
     for field in ("style", "audio", "quality"):

@@ -56,6 +56,10 @@ CRLF_COMMONMARK_SOURCE = (
     "````\r\n"
 )
 
+MULTILINE_SETEXT_SOURCE = (
+    "First line\ncontinued line\n----------------\n\nNext paragraph\n"
+)
+
 
 def test_snapshot_preserves_original_utf8_source_and_indexes_blocks():
     """Changing a source byte or dropping Markdown syntax breaks fidelity."""
@@ -195,6 +199,25 @@ def test_frontmatter_preserves_string_keys_and_rejects_non_string_collisions():
 
     with pytest.raises(ValueError, match="string"):
         snapshot_source('---\ncustom:\n  1: number\n  "1": text\n---\n')
+
+
+def test_frontmatter_rejects_duplicate_keys_at_every_nesting_level():
+    """Duplicate metadata keys must not be silently resolved by YAML order."""
+    with pytest.raises(ValueError, match="duplicate"):
+        snapshot_source("---\ntitle: first\ntitle: second\n---\n")
+    with pytest.raises(ValueError, match="duplicate"):
+        snapshot_source("---\ncustom:\n  label: first\n  label: second\n---\n")
+
+
+def test_multiline_setext_heading_has_one_exact_heading_block():
+    """Setext underlines must include all preceding paragraph continuation lines."""
+    snapshot = snapshot_source(MULTILINE_SETEXT_SOURCE)
+
+    assert snapshot.blocks[0].kind == "heading"
+    assert snapshot.blocks[0].block_id == "block-0000-fa1cde26f8c7"
+    assert snapshot.blocks[0].start == 0
+    assert snapshot.blocks[0].end == 42
+    assert snapshot.blocks[0].text == "First line\ncontinued line\n----------------"
 
 
 def test_crlf_frontmatter_and_commonmark_block_boundaries_are_preserved():

@@ -4,6 +4,7 @@ import hashlib
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date, time
 from types import MappingProxyType
 from typing import Literal
 
@@ -15,8 +16,9 @@ _PROFILE_FORMATS = frozenset({"narration", "dialogue"})
 _SCRIPT_KINDS = frozenset({"factual", "editorial"})
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 DOCUMENT_OVERRIDABLE_FIELDS = frozenset(
-    {"format", "format_type", "target_minutes", "style", "audio", "quality"}
+    {"format", "target_minutes", "style", "audio", "quality"}
 )
+_IMMUTABLE_METADATA_TYPES = (type(None), bool, int, float, str, bytes, date, time)
 
 
 def _non_empty_string(name: str, value: object) -> str:
@@ -50,7 +52,9 @@ def freeze_value(value: object) -> object:
         return tuple(freeze_value(item) for item in value)
     if isinstance(value, set | frozenset):
         return frozenset(freeze_value(item) for item in value)
-    return value
+    if isinstance(value, _IMMUTABLE_METADATA_TYPES):
+        return value
+    raise TypeError(f"unsupported mutable metadata value: {type(value).__name__}")
 
 
 def freeze_mapping(value: Mapping[str, object]) -> Mapping[str, object]:

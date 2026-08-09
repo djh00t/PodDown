@@ -106,6 +106,22 @@ def test_nested_profile_values_are_copied_and_frozen():
         profile.style["nested"]["values"] += ("changed",)
 
 
+def test_profile_rejects_unsupported_mutable_metadata_values():
+    """Unrecognized mutable values must not remain shared through a frozen profile."""
+    with pytest.raises(TypeError, match="metadata"):
+        Profile(
+            "profile-1",
+            "1.0.0",
+            "narration",
+            12,
+            (SpeakerProfile("speaker-1", "Speaker", "voice-1"),),
+            {"raw": bytearray(b"mutable")},
+            {},
+            {},
+            frozenset(),
+        )
+
+
 @pytest.mark.parametrize(
     "builder",
     [
@@ -228,7 +244,7 @@ def test_resolve_profile_metadata_applies_only_allowlisted_overrides():
         {
             "poddown": {
                 "target_minutes": 15,
-                "format_type": "narration",
+                "format": "narration",
                 "audio": {"pace": "fast"},
             }
         },
@@ -265,3 +281,20 @@ def test_resolve_profile_metadata_maps_document_format_and_rejects_unknown_keys(
 
     with pytest.raises(ValueError, match="object"):
         resolve_profile_metadata(profile, {"poddown": []})
+
+
+def test_resolve_profile_metadata_rejects_undocumented_format_type_aliases():
+    """Document metadata exposes only the external PodDown format key."""
+    profile = load_profile(
+        VALID_PROFILE.replace("- target_minutes", "- format"),
+        _assets(),
+        _consents(),
+    )
+
+    with pytest.raises(ValueError, match="extra|format_type"):
+        resolve_profile_metadata(profile, {"poddown": {"format_type": "narration"}})
+    with pytest.raises(ValueError, match="extra|format_type"):
+        resolve_profile_metadata(
+            profile,
+            {"poddown": {"format": "narration", "format_type": "dialogue"}},
+        )
