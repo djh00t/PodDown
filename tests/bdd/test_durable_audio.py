@@ -103,9 +103,7 @@ def render_three_local_takes(audio_context):
 @when("the request is rendered with one local take")
 def render_one_local_take(audio_context):
     expected_error = (
-        RightsDeniedError
-        if audio_context["consent"] is None
-        else RenderRejectedError
+        RightsDeniedError if audio_context["consent"] is None else RenderRejectedError
     )
     with pytest.raises(expected_error):
         _render(audio_context)
@@ -164,9 +162,7 @@ def no_artifact_or_cost_event_recorded(audio_context):
     records = audio_context["records"]
     request = audio_context["request"]
     artifact_files = [
-        path
-        for path in audio_context["artifacts_root"].rglob("*")
-        if path.is_file()
+        path for path in audio_context["artifacts_root"].rglob("*") if path.is_file()
     ]
     assert records.find(request.idempotency_key) is None
     assert artifact_files == []
