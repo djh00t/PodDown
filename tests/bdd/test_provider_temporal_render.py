@@ -2,6 +2,8 @@
 
 import asyncio
 from dataclasses import replace
+from decimal import Decimal
+from hashlib import sha256
 from typing import Any
 
 import pytest
@@ -24,10 +26,59 @@ from poddown.audio import (
     build_durable_render_activity,
 )
 from poddown.audio.selection import CandidateQuality
-from poddown.audio.storage import FilesystemArtifactStore, FilesystemRenderRecordStore
+from poddown.audio.storage import (
+    FilesystemArtifactStore,
+    FilesystemQualityRecordStore,
+    FilesystemRenderRecordStore,
+    FilesystemTranscriptionRecordStore,
+)
 from poddown.audio.workflow import RENDER_SEGMENT_ACTIVITY_NAME
+from poddown.domain import ProviderUsage
+from poddown.providers.contracts import TranscriptResult
 
 scenarios("../features/provider_temporal_render.feature")
+
+
+class MatchingFakeTranscriber:
+    """Return a matching transcript and count dispatches without network use."""
+
+    def __init__(self, text: str):
+        self.text = text
+        self.calls = 0
+
+    async def transcribe(self, audio: bytes) -> TranscriptResult:
+        assert audio
+        self.calls += 1
+        return TranscriptResult(
+            text=self.text,
+            words=(),
+            provider="fake-transcriber",
+            model="fake-model-v1",
+            usage=ProviderUsage(1, 1),
+            request_id="fake-request-1",
+            checksum=sha256(audio).hexdigest(),
+            cost=Decimal("0.01"),
+        )
+
+
+class MalformedNonRetryableFakeTranscriber:
+    """Simulate a malformed terminal provider response."""
+
+    def __init__(self):
+        self.calls = 0
+
+    async def transcribe(self, audio: bytes) -> TranscriptResult:
+        assert audio
+        self.calls += 1
+        raise ValueError("malformed transcription response")
+
+
+class RetryableFailingFakeTranscriber:
+    """Simulate a provider timeout so Temporal owns bounded retries."""
+
+    async def transcribe(self, audio: bytes) -> TranscriptResult:
+        assert audio
+        raise TimeoutError("transcription timeout")
 
 
 def _configure_local_activity(
@@ -410,3 +461,200 @@ def transient_take_is_excluded_from_provider_usage(context):
     transient_key = replace(request, take_index=transient_take_index).idempotency_key
     assert transient_key not in renderer.calls
     assert records.find(transient_key) is None
+
+
+def _configure_injected_transcriber(context, tmp_path, transcriber: object) -> None:
+    """Keep injected-transcriber scenarios on the same isolated local fixture."""
+    _configure_local_activity(
+        context,
+        tmp_path,
+        consent=VoiceConsent("voice-host-v1", "consent-local-1", frozenset({"local"})),
+    )
+    context.values["transcriber"] = transcriber
+    context.values["quality_records"] = FilesystemQualityRecordStore(
+        tmp_path / "quality"
+    )
+    context.values["transcription_records"] = FilesystemTranscriptionRecordStore(
+        tmp_path / "transcriptions"
+    )
+
+
+def _run_injected_activity(context) -> dict[str, object]:
+    """Build the planned injected activity boundary and execute one payload."""
+    artifacts = context.values["artifacts"]
+    records = context.values["records"]
+    renderer = context.values["renderer"]
+    transcriber = context.values["transcriber"]
+    quality_records = context.values["quality_records"]
+    transcription_records = context.values["transcription_records"]
+    assert isinstance(artifacts, FilesystemArtifactStore)
+    assert isinstance(records, FilesystemRenderRecordStore)
+    assert isinstance(renderer, DeterministicLocalRenderer)
+    assert isinstance(quality_records, FilesystemQualityRecordStore)
+    assert isinstance(transcription_records, FilesystemTranscriptionRecordStore)
+    activity_handler = build_durable_render_activity(
+        DurableRenderService(artifacts, records),
+        renderer,
+        artifacts,
+        transcriber=transcriber,
+        quality_records=quality_records,
+        transcription_records=transcription_records,
+    )
+    return asyncio.run(activity_handler(_payload(context)))
+
+
+@given("a consented segment with an injected matching transcriber")
+def matching_injected_transcriber(context, tmp_path):
+    _configure_injected_transcriber(
+        context,
+        tmp_path,
+        MatchingFakeTranscriber("Temporal local activity renders durable audio."),
+    )
+
+
+@given("a consented segment with an injected transcriber missing a critical token")
+def missing_token_injected_transcriber(context, tmp_path):
+    _configure_injected_transcriber(
+        context,
+        tmp_path,
+        MatchingFakeTranscriber("local activity renders durable audio."),
+    )
+
+
+@given("a consented segment with a malformed non-retryable transcriber")
+def malformed_non_retryable_transcriber(context, tmp_path):
+    _configure_injected_transcriber(
+        context, tmp_path, MalformedNonRetryableFakeTranscriber()
+    )
+
+
+@given("a consented segment with a retryable failing transcriber")
+def retryable_failing_transcriber(context, tmp_path):
+    _configure_injected_transcriber(
+        context, tmp_path, RetryableFailingFakeTranscriber()
+    )
+
+
+@when("the provider-bound activity runs with the injected transcriber")
+def run_injected_transcriber_activity(context):
+    try:
+        context.values["result"] = _run_injected_activity(context)
+    except ApplicationError as error:
+        context.values["error"] = error
+
+
+@then("the returned quality includes transcription provenance")
+def quality_includes_transcription_provenance(context):
+    result = context.values["result"]
+    assert isinstance(result, dict)
+    transcription = result["transcription"]
+    assert transcription["provider"] == "fake-transcriber"
+    assert transcription["model"] == "fake-model-v1"
+    assert transcription["request_id"] == "fake-request-1"
+    assert transcription["cost"] == "0.01"
+
+
+@then("the returned quality requires segment rerender")
+def quality_requires_segment_rerender(context):
+    result = context.values["result"]
+    assert isinstance(result, dict)
+    fidelity = result["fidelity"]
+    assert fidelity["passed"] is False
+    assert fidelity["accuracy"] < 1.0
+    assert fidelity["rerender_scope"] == "segment"
+
+
+@then("transcription fails closed without canonical-text fallback")
+def transcription_fails_closed_without_fallback(context):
+    error = context.values["error"]
+    assert isinstance(error, ApplicationError)
+    assert error.type == "TranscriptionFailureError"
+    assert error.non_retryable is True
+    assert "result" not in context.values
+    assert context.values["renderer"].calls
+
+
+@when("the Temporal episode workflow runs with retryable transcription failures")
+def run_retryable_transcription_workflow(context):
+    episode = replace(context.values["episode"], max_attempts=1)
+    artifacts = context.values["artifacts"]
+    records = context.values["records"]
+    renderer = context.values["renderer"]
+    transcriber = context.values["transcriber"]
+    quality_records = context.values["quality_records"]
+    transcription_records = context.values["transcription_records"]
+    assert isinstance(artifacts, FilesystemArtifactStore)
+    assert isinstance(records, FilesystemRenderRecordStore)
+    assert isinstance(renderer, DeterministicLocalRenderer)
+    assert isinstance(quality_records, FilesystemQualityRecordStore)
+    assert isinstance(transcription_records, FilesystemTranscriptionRecordStore)
+
+    activity_handler = build_durable_render_activity(
+        DurableRenderService(artifacts, records),
+        renderer,
+        artifacts,
+        transcriber=transcriber,
+        quality_records=quality_records,
+        transcription_records=transcription_records,
+    )
+
+    async def run_workflow():
+        async with (
+            await WorkflowEnvironment.start_local() as environment,
+            Worker(
+                environment.client,
+                task_queue="poddown-bdd-transcription-retry",
+                workflows=[EpisodeRenderWorkflow],
+                activities=[activity_handler],
+            ),
+        ):
+            return await TemporalEpisodeWorkflowService(
+                environment.client, "poddown-bdd-transcription-retry"
+            ).run_episode(episode)
+
+    context.values["workflow_result"] = asyncio.run(run_workflow())
+
+
+@then("the workflow fails with a transcription gate after bounded retries")
+def transcription_retry_exhaustion_is_structured(context):
+    result = context.values["workflow_result"]
+    assert result.status == "failed"
+    assert result.terminal_failure is not None
+    assert result.terminal_failure.failed_gates == ("transcription",)
+    assert result.terminal_failure.last_error_code == "TranscriptionTransientError"
+
+
+@when("the provider-bound activity runs twice with the same durable quality key")
+def replay_injected_transcriber_activity(context):
+    first = _run_injected_activity(context)
+    request = context.values["request"]
+    records_root = context.values["records_root"]
+    assert isinstance(request, RenderRequest)
+    assert isinstance(records_root, type(context.values["artifacts_root"]))
+    (records_root / "records" / f"{request.idempotency_key}.json").unlink()
+    second = _run_injected_activity(context)
+    context.values["results"] = (first, second)
+
+
+@then("transcription dispatch count remains one")
+def transcription_dispatch_count_remains_one(context):
+    transcriber = context.values["transcriber"]
+    assert isinstance(transcriber, MatchingFakeTranscriber)
+    assert transcriber.calls == 1
+    first, second = context.values["results"]
+    assert first["transcription"] == second["transcription"]
+    renderer = context.values["renderer"]
+    request = context.values["request"]
+    assert isinstance(renderer, DeterministicLocalRenderer)
+    assert isinstance(request, RenderRequest)
+    assert renderer.calls == [request.idempotency_key]
+
+
+@then("the quality evidence is explicitly deterministic local and zero-cost")
+def deterministic_local_quality_is_explicit_and_zero_cost(context):
+    result = context.values["result"]
+    assert isinstance(result, dict)
+    transcription = result["transcription"]
+    assert transcription["provider"] == "local"
+    assert transcription["mode"] == "deterministic-local"
+    assert transcription["cost"] == "0"

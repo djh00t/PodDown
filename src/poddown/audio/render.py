@@ -51,8 +51,7 @@ class DurableRenderService:
         """Render up to three takes, replaying verified evidence when available."""
         if type(take_count) is not int or not 1 <= take_count <= 3:
             raise RenderRejectedError("take_count must be between 1 and 3")
-        require_render_rights(request, consent)
-        self._require_capabilities(request, renderer)
+        self.preflight(request, consent, renderer)
         requests = tuple(
             replace(request, take_index=request.take_index + offset)
             for offset in range(take_count)
@@ -80,6 +79,16 @@ class DurableRenderService:
                         )
                     )
             return tuple(outcomes)
+
+    def preflight(
+        self,
+        request: RenderRequest,
+        consent: VoiceConsent | None,
+        renderer: AudioRenderer,
+    ) -> None:
+        """Validate rights and capabilities without dispatching a renderer."""
+        require_render_rights(request, consent)
+        self._require_capabilities(request, renderer)
 
     @asynccontextmanager
     async def _claim(self, idempotency_key: str) -> AsyncIterator[None]:

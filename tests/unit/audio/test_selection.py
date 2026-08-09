@@ -13,7 +13,7 @@ from poddown.audio.selection import (
     select_candidate,
 )
 from poddown.domain import FidelityResult, ProviderUsage
-from poddown.providers.contracts import TranscriptWord, TranscriptionResult
+from poddown.providers.contracts import TranscriptionResult, TranscriptWord
 
 
 def quality(
@@ -119,6 +119,7 @@ def test_candidate_quality_round_trips_transcription_evidence():
         transcription=TranscriptionResult(
             provider="openai",
             text="one point six terabit",
+            model="test-model",
             words=(TranscriptWord("one", 0.0, 0.2),),
             usage=ProviderUsage(7, 5),
             request_id="tx-request",
@@ -145,7 +146,7 @@ def test_malformed_activity_quality_is_rejected(payload):
 
 @pytest.mark.parametrize(
     "transcription",
-    [None, {}, {"provider": "openai", "text": "hello"}],
+    [{}, {"provider": "openai", "text": "hello"}],
 )
 def test_malformed_transcription_evidence_is_rejected(transcription):
     payload = quality("candidate-1").to_dict()

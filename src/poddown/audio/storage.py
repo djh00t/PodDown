@@ -14,10 +14,15 @@ from poddown.audio.contracts import (
     ProviderCostEvent,
     RenderCandidate,
     RenderOutcome,
+    TranscriptionCostEvent,
+    TranscriptionRecord,
 )
+from poddown.audio.selection import CandidateQuality, CandidateSelectionError
 from poddown.domain import ProviderUsage
+from poddown.providers.contracts import TranscriptResult, TranscriptWord
 
 _IDEMPOTENCY_KEY = re.compile(r"^render-[0-9a-f]{64}$")
+_CANDIDATE_ID = re.compile(r"^candidate-[0-9a-f]{64}$")
 
 
 class ArtifactIntegrityError(RuntimeError):
@@ -294,4 +299,259 @@ class FilesystemRenderRecordStore:
             candidate=candidate,
             cost_event=cost_event,
             replayed=payload["replayed"],
+        )
+
+
+class FilesystemQualityRecordStore:
+    """Persist immutable candidate QA, including transcription evidence."""
+
+    def __init__(self, root: Path) -> None:
+        self._root = root.resolve()
+
+    def save(self, quality: CandidateQuality) -> None:
+        """Store quality once or reject conflicting evidence for its candidate."""
+        if not isinstance(quality, CandidateQuality):
+            raise TypeError("quality must be CandidateQuality")
+        path = self._path_for(quality.candidate_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(quality.to_dict(), sort_keys=True, separators=(",", ":"))
+        with NamedTemporaryFile(
+            dir=path.parent, mode="w", encoding="utf-8", delete=False
+        ) as temporary:
+            temporary.write(payload)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary_path = Path(temporary.name)
+        try:
+            try:
+                os.link(temporary_path, path)
+            except FileExistsError:
+                if self.load(quality.candidate_id) != quality:
+                    raise IdempotencyConflictError(
+                        "candidate already has different quality evidence"
+                    ) from None
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+    def find(self, candidate_id: str) -> CandidateQuality | None:
+        """Return quality evidence when it has already been persisted."""
+        path = self._path_for(candidate_id)
+        if not path.exists():
+            return None
+        return self.load(candidate_id)
+
+    def load(self, candidate_id: str) -> CandidateQuality:
+        """Load quality evidence or fail closed when it is malformed."""
+        path = self._path_for(candidate_id)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            quality = CandidateQuality.from_dict(payload)
+        except (
+            CandidateSelectionError,
+            OSError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as error:
+            raise ArtifactIntegrityError("quality record is malformed") from error
+        if quality.candidate_id != candidate_id:
+            raise ArtifactIntegrityError("quality record candidate does not match key")
+        return quality
+
+    def _path_for(self, candidate_id: str) -> Path:
+        if (
+            not isinstance(candidate_id, str)
+            or _CANDIDATE_ID.fullmatch(candidate_id) is None
+        ):
+            raise ArtifactIntegrityError("candidate ID is not canonical")
+        path = (self._root / "quality" / f"{candidate_id}.json").resolve()
+        try:
+            path.relative_to(self._root)
+        except ValueError as error:
+            raise ArtifactIntegrityError("quality path escapes storage root") from error
+        return path
+
+
+class FilesystemTranscriptionRecordStore:
+    """Persist one transcript response and its estimated cost atomically."""
+
+    def __init__(self, root: Path) -> None:
+        self._root = root.resolve()
+
+    def save(self, candidate_id: str, result: TranscriptResult) -> TranscriptionRecord:
+        """Store transcript and cost evidence once for a candidate."""
+        if not isinstance(result, TranscriptResult):
+            raise TypeError("transcription result must be TranscriptResult")
+        path = self._path_for(candidate_id)
+        record = TranscriptionRecord(
+            candidate_id=candidate_id,
+            result=result,
+            cost_event=TranscriptionCostEvent(
+                event_id=f"transcription-cost-{candidate_id}",
+                candidate_id=candidate_id,
+                provider=result.provider,
+                request_id=result.request_id,
+                audio_checksum=result.checksum,
+                usage=result.usage,
+                cost=result.cost,
+            ),
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(
+            self._serialize(record), sort_keys=True, separators=(",", ":")
+        )
+        with NamedTemporaryFile(
+            dir=path.parent, mode="w", encoding="utf-8", delete=False
+        ) as temporary:
+            temporary.write(payload)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary_path = Path(temporary.name)
+        try:
+            try:
+                os.link(temporary_path, path)
+            except FileExistsError:
+                if self.load(candidate_id) != record:
+                    raise IdempotencyConflictError(
+                        "candidate already has different transcription evidence"
+                    ) from None
+        finally:
+            temporary_path.unlink(missing_ok=True)
+        return record
+
+    def find(self, candidate_id: str) -> TranscriptionRecord | None:
+        """Return a stored transcript, or None before the first transcription."""
+        path = self._path_for(candidate_id)
+        if not path.exists():
+            return None
+        return self.load(candidate_id)
+
+    def load(self, candidate_id: str) -> TranscriptionRecord:
+        """Load complete transcript and cost evidence or fail closed."""
+        path = self._path_for(candidate_id)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            record = self._deserialize(payload)
+        except (
+            InvalidOperation,
+            KeyError,
+            OSError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as error:
+            raise ArtifactIntegrityError("transcription record is malformed") from error
+        if record.candidate_id != candidate_id:
+            raise ArtifactIntegrityError(
+                "transcription record candidate does not match key"
+            )
+        return record
+
+    def _path_for(self, candidate_id: str) -> Path:
+        if (
+            not isinstance(candidate_id, str)
+            or _CANDIDATE_ID.fullmatch(candidate_id) is None
+        ):
+            raise ArtifactIntegrityError("candidate ID is not canonical")
+        path = (self._root / "transcriptions" / f"{candidate_id}.json").resolve()
+        try:
+            path.relative_to(self._root)
+        except ValueError as error:
+            raise ArtifactIntegrityError(
+                "transcription path escapes storage root"
+            ) from error
+        return path
+
+    @staticmethod
+    def _serialize(record: TranscriptionRecord) -> dict[str, object]:
+        result = record.result
+        return {
+            "candidate_id": record.candidate_id,
+            "result": {
+                "text": result.text,
+                "words": [
+                    {"word": word.word, "start": word.start, "end": word.end}
+                    for word in result.words
+                ],
+                "provider": result.provider,
+                "model": result.model,
+                "usage": asdict(result.usage),
+                "request_id": result.request_id,
+                "checksum": result.checksum,
+                "cost": str(result.cost),
+                "confidence": result.confidence,
+                "mode": result.mode,
+            },
+            "cost_event": {
+                "event_id": record.cost_event.event_id,
+                "candidate_id": record.cost_event.candidate_id,
+                "provider": record.cost_event.provider,
+                "request_id": record.cost_event.request_id,
+                "audio_checksum": record.cost_event.audio_checksum,
+                "usage": asdict(record.cost_event.usage),
+                "cost": str(record.cost_event.cost),
+            },
+        }
+
+    @staticmethod
+    def _deserialize(payload: object) -> TranscriptionRecord:
+        if not isinstance(payload, dict):
+            raise ValueError("transcription record must be an object")
+        result_payload = payload["result"]
+        event_payload = payload["cost_event"]
+        if not isinstance(result_payload, dict) or not isinstance(event_payload, dict):
+            raise ValueError("transcription record members must be objects")
+        usage_payload = result_payload["usage"]
+        event_usage_payload = event_payload["usage"]
+        words_payload = result_payload["words"]
+        if (
+            not isinstance(usage_payload, dict)
+            or not isinstance(event_usage_payload, dict)
+            or not isinstance(words_payload, list)
+        ):
+            raise ValueError("transcription record metadata is malformed")
+        if not all(isinstance(item, dict) for item in words_payload):
+            raise ValueError("transcription record words are malformed")
+        result = TranscriptResult(
+            text=result_payload["text"],
+            words=tuple(
+                TranscriptWord(
+                    word=item["word"],
+                    start=float(item["start"]),
+                    end=float(item["end"]),
+                )
+                for item in words_payload
+            ),
+            provider=result_payload["provider"],
+            model=result_payload["model"],
+            usage=ProviderUsage(
+                input_units=usage_payload["input_units"],
+                output_units=usage_payload["output_units"],
+            ),
+            request_id=result_payload["request_id"],
+            checksum=result_payload["checksum"],
+            cost=Decimal(str(result_payload["cost"])),
+            confidence=(
+                float(result_payload["confidence"])
+                if result_payload.get("confidence") is not None
+                else None
+            ),
+            mode=result_payload.get("mode", "provider"),
+        )
+        cost_event = TranscriptionCostEvent(
+            event_id=event_payload["event_id"],
+            candidate_id=event_payload["candidate_id"],
+            provider=event_payload["provider"],
+            request_id=event_payload["request_id"],
+            audio_checksum=event_payload["audio_checksum"],
+            usage=ProviderUsage(
+                input_units=event_usage_payload["input_units"],
+                output_units=event_usage_payload["output_units"],
+            ),
+            cost=Decimal(str(event_payload["cost"])),
+        )
+        return TranscriptionRecord(
+            candidate_id=payload["candidate_id"],
+            result=result,
+            cost_event=cost_event,
         )

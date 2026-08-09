@@ -27,6 +27,10 @@ class TransientActivityError(RuntimeError):
     """Marker error for activity failures that Temporal may retry."""
 
 
+class TranscriptionTransientError(TransientActivityError):
+    """Marker error for transcription failures that Temporal may retry."""
+
+
 class MalformedAudioError(WorkflowContractError):
     """Marker error for invalid audio that must not be retried."""
 
@@ -35,12 +39,21 @@ class RightsFailureError(WorkflowContractError):
     """Marker error for failed rights checks that must not be retried."""
 
 
+class TranscriptionFailureError(WorkflowContractError):
+    """Marker error for malformed or terminal transcription evidence."""
+
+
 NON_RETRYABLE_ERROR_TYPES = (
     MalformedAudioError.__name__,
     RightsFailureError.__name__,
+    TranscriptionFailureError.__name__,
     WorkflowContractError.__name__,
 )
 ACTIVITY_CONFIGURATION_ERROR_TYPES = ("ActivityNotConfigured",)
+TRANSCRIPTION_ERROR_TYPES = (
+    TranscriptionFailureError.__name__,
+    TranscriptionTransientError.__name__,
+)
 
 WORKFLOW_ACTIVITY_RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(seconds=1),
@@ -67,6 +80,8 @@ def _require_positive(name: str, value: object) -> None:
 
 def _json_value(value: Any) -> Any:
     """Convert supported immutable values to canonical JSON-compatible data."""
+    if isinstance(value, CandidateQuality):
+        return value.to_dict()
     if is_dataclass(value):
         return {
             key: _json_value(item) for key, item in asdict(cast(Any, value)).items()
@@ -397,7 +412,11 @@ def _non_retryable_activity_code(error: ActivityError) -> str | None:
     cause = error.cause
     if not isinstance(cause, ApplicationError):
         return None
-    if not cause.non_retryable and cause.type not in NON_RETRYABLE_ERROR_TYPES:
+    if (
+        not cause.non_retryable
+        and cause.type not in NON_RETRYABLE_ERROR_TYPES
+        and cause.type not in TRANSCRIPTION_ERROR_TYPES
+    ):
         return None
     return cause.type or "NON_RETRYABLE_ACTIVITY_FAILURE"
 
@@ -412,6 +431,8 @@ def _failed_gates_for(
         return ("audio",)
     if failure_code == WorkflowContractError.__name__:
         return ("contract",)
+    if failure_code in TRANSCRIPTION_ERROR_TYPES:
+        return ("transcription",)
     if failure_code in ACTIVITY_CONFIGURATION_ERROR_TYPES:
         return ("configuration",)
     if failure_code == "QUALITY_GATES_EXHAUSTED":
@@ -534,27 +555,31 @@ class EpisodeRenderWorkflow:
                     candidates=(),
                     failure_code="MALFORMED_ACTIVITY_OUTPUT",
                 )
-            terminal_error = next(
-                (
-                    code
-                    for code in (
-                        _non_retryable_activity_code(error) for error in activity_errors
-                    )
-                    if code is not None
-                ),
-                None,
-            )
-            if terminal_error is not None:
-                return SegmentDecision(
-                    segment_id=segment.segment_id,
-                    attempt=attempt,
-                    accepted_candidate_id=None,
-                    candidates=last_candidates,
-                    failure_code=terminal_error,
+            terminal_error: str | None = None
+            if activity_errors:
+                terminal_error = next(
+                    (
+                        error_code
+                        for error_code in (
+                            _non_retryable_activity_code(error)
+                            for error in activity_errors
+                        )
+                        if error_code is not None
+                    ),
+                    None,
                 )
-            if activity_errors and not last_candidates:
-                last_error = "ACTIVITY_RETRY_EXHAUSTED"
-                continue
+                if terminal_error is not None:
+                    if terminal_error not in TRANSCRIPTION_ERROR_TYPES:
+                        return SegmentDecision(
+                            segment_id=segment.segment_id,
+                            attempt=attempt,
+                            accepted_candidate_id=None,
+                            candidates=last_candidates,
+                            failure_code=terminal_error,
+                        )
+                    last_error = terminal_error
+                    if not last_candidates:
+                        continue
             selected = select_candidate(last_candidates)
             if selected is not None:
                 return SegmentDecision(
@@ -564,7 +589,8 @@ class EpisodeRenderWorkflow:
                     candidates=last_candidates,
                     failure_code=None,
                 )
-            last_error = "QUALITY_GATES_EXHAUSTED"
+            if terminal_error is None:
+                last_error = "QUALITY_GATES_EXHAUSTED"
         return SegmentDecision(
             segment_id=segment.segment_id,
             attempt=episode_input.max_attempts,
@@ -587,6 +613,9 @@ __all__ = [
     "SegmentDecision",
     "SegmentWorkflowInput",
     "TransientActivityError",
+    "TranscriptionFailureError",
+    "TranscriptionTransientError",
+    "TRANSCRIPTION_ERROR_TYPES",
     "WORKFLOW_ACTIVITY_RETRY_POLICY",
     "WorkflowContractError",
     "WorkflowFailure",

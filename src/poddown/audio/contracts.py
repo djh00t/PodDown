@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Protocol
 
 from poddown.domain import ProviderUsage
-from poddown.providers.contracts import ProviderCapabilities
+from poddown.providers.contracts import ProviderCapabilities, TranscriptResult
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _OUTPUT_FORMATS = frozenset({"wav"})
@@ -169,6 +169,66 @@ class ProviderCostEvent:
         _non_empty_string("provider", self.provider)
         _usage(self.usage)
         _cost(self.cost)
+
+
+@dataclass(frozen=True)
+class TranscriptionCostEvent:
+    """Immutable estimated-cost evidence for one transcription request."""
+
+    event_id: str
+    candidate_id: str
+    provider: str
+    request_id: str
+    audio_checksum: str
+    usage: ProviderUsage
+    cost: Decimal
+
+    def __post_init__(self) -> None:
+        _non_empty_string("event_id", self.event_id)
+        _non_empty_string("candidate_id", self.candidate_id)
+        _non_empty_string("provider", self.provider)
+        _non_empty_string("request_id", self.request_id)
+        if (
+            not isinstance(self.audio_checksum, str)
+            or _SHA256.fullmatch(self.audio_checksum) is None
+        ):
+            raise ValueError("audio_checksum must be a lowercase SHA-256 digest")
+        if not isinstance(self.usage, ProviderUsage):
+            raise ValueError("usage must be ProviderUsage")
+        if (
+            type(self.usage.input_units) is not int
+            or self.usage.input_units < 0
+            or type(self.usage.output_units) is not int
+            or self.usage.output_units < 0
+        ):
+            raise ValueError("transcription usage must be non-negative integers")
+        _cost(self.cost)
+
+
+@dataclass(frozen=True)
+class TranscriptionRecord:
+    """Atomic transcript response and metering record for one candidate."""
+
+    candidate_id: str
+    result: TranscriptResult
+    cost_event: TranscriptionCostEvent
+
+    def __post_init__(self) -> None:
+        _non_empty_string("candidate_id", self.candidate_id)
+        if not isinstance(self.result, TranscriptResult):
+            raise ValueError("result must be TranscriptResult")
+        if not isinstance(self.cost_event, TranscriptionCostEvent):
+            raise ValueError("cost_event must be TranscriptionCostEvent")
+        if (
+            self.cost_event.event_id != f"transcription-cost-{self.candidate_id}"
+            or self.cost_event.candidate_id != self.candidate_id
+            or self.cost_event.provider != self.result.provider
+            or self.cost_event.request_id != self.result.request_id
+            or self.cost_event.audio_checksum != self.result.checksum
+            or self.cost_event.usage != self.result.usage
+            or self.cost_event.cost != self.result.cost
+        ):
+            raise ValueError("transcription cost event does not match result")
 
 
 @dataclass(frozen=True)

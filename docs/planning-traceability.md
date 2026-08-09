@@ -15,9 +15,9 @@
 | 9 | Segmentation engine | 002 | M1 complete locally; capability-safe segmentation verified |
 | 10 | Render orchestration | 003 | M2 foundation plus bounded Temporal orchestration and provider-bound local activity wiring locally verified: [durable BDD](../tests/features/durable_audio.feature), [Temporal BDD](../tests/features/temporal_orchestration.feature), [provider-activity BDD](../tests/features/provider_temporal_render.feature), [durable integration](../tests/integration/test_durable_render.py), [Temporal integration](../tests/integration/test_temporal_orchestration.py), [provider-activity integration](../tests/integration/test_temporal_durable_render_activity.py), [terminal failure integration](../tests/integration/test_temporal_failure_semantics.py), [partial-take retry BDD](../tests/features/provider_temporal_render.feature), [concurrent claim integration](../tests/integration/test_durable_render_concurrency.py), [separate-process claim integration](../tests/integration/test_durable_render_multiprocess.py), and [verification evidence](verification/provider-temporal-render-activity.md) |
 | 11 | Candidate-take scoring | 003 | M2 locally verified for deterministic hard-gate selection and stable ranking: [selection tests](../tests/unit/audio/test_selection.py) and [Temporal verification](verification/temporal-orchestration-qa.md); provider-backed scoring remains pending |
-| 12 | Transcription/fidelity QA | 001/003 | M0/M2 |
-| 13 | Critical-token verification | 001/002/003 | M0–M2 |
-| 14 | Audio quality gates | 003 | M2 locally verified for WAV diagnostics, clipping regression, provider-bound artifact checks, and hard gates: [diagnostic tests](../tests/unit/audio/test_diagnostics.py), [local renderer regression](../tests/unit/audio/test_local.py), and [provider-activity verification](verification/provider-temporal-render-activity.md); final-master and listening gates remain pending |
+| 12 | Transcription/fidelity QA | 001/003 | M0/M2 locally verified for injected normalized transcript QA, audio-bound checksum/empty-text rejection, deterministic local mode, transcription failure mapping, atomic transcription response plus estimated-cost replay, immutable quality replay, and provider usage/cost evidence: [provider BDD](../tests/features/provider_temporal_render.feature), [provider contract tests](../tests/contract/providers/test_openai_transcription.py), [activity tests](../tests/unit/audio/test_activities.py), [quality/unit tests](../tests/unit/audio/test_selection.py), [quality storage tests](../tests/unit/audio/test_storage.py), and [verification evidence](verification/transcription-fidelity-qa.md); external billing reconciliation remains M3 |
+| 13 | Critical-token verification | 001/002/003 | M0–M2 locally verified against provider transcript text with segment-only rerender evidence; final-master verification remains pending |
+| 14 | Audio quality gates | 003 | M2 locally verified for WAV diagnostics, clipping regression, provider-bound artifact checks, and hard gates: [diagnostic tests](../tests/unit/audio/test_diagnostics.py), [local renderer regression](../tests/unit/audio/test_local.py), [provider-activity verification](verification/provider-temporal-render-activity.md), and [transcription/fidelity verification](verification/transcription-fidelity-qa.md); final-master and listening gates remain pending |
 | 15 | Mastering | 003 | M2 |
 | 16 | Package/provenance | 001/003 | M0/M2 |
 | 17 | Publishing adapters | 007 | M5 |
@@ -57,7 +57,13 @@ not expand the MVP feature set; they make the approved service operable.
   filesystem claim prevents concurrent local-process dispatch for one
   idempotency key; the crash window after provider dispatch and before record
   save still belongs to hosted provider idempotency and reconciliation.
-  Transcription, mastering, packaging, and publication remain pending.
+  injected transcription/fidelity QA now records normalized provider evidence
+  plus an atomic estimated-cost event, binds transcript checksums to audio,
+  rejects empty evidence, maps terminal and retryable transcription failures to
+  the transcription gate, and replays persisted quality without a second
+  renderer or transcription dispatch. External billing reconciliation remains
+  M3-owned. The deterministic-local mode is explicitly labeled and zero-cost.
+  Mastering, final-master QA, packaging, and publication remain pending.
 - Task-level implementation plan: intentionally produced just-in-time per
   milestone so measured interfaces and audio quality inform the next plan.
 - Audio rendering, Temporal, API, CLI, publishing, MCP, Signal & Supply, and

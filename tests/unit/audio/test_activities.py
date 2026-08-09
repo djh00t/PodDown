@@ -2,6 +2,8 @@
 
 import asyncio
 from dataclasses import replace
+from decimal import Decimal
+from hashlib import sha256
 
 import pytest
 from temporalio.exceptions import ApplicationError
@@ -15,6 +17,7 @@ from poddown.audio import (
     VoiceConsent,
     activity_key_for,
     build_durable_render_activity,
+    build_transcription_quality_evaluator,
     deterministic_quality_evaluator,
     diagnose_wav,
 )
@@ -22,8 +25,63 @@ from poddown.audio.render import RenderRejectedError
 from poddown.audio.selection import CandidateQuality
 from poddown.audio.storage import (
     FilesystemArtifactStore,
+    FilesystemQualityRecordStore,
     FilesystemRenderRecordStore,
+    FilesystemTranscriptionRecordStore,
 )
+from poddown.audio.workflow import (
+    TranscriptionFailureError,
+    TranscriptionTransientError,
+)
+from poddown.domain import ProviderUsage
+from poddown.providers.contracts import TranscriptResult
+
+
+class FixedFakeTranscriber:
+    """Return deterministic transcript evidence without contacting a provider."""
+
+    def __init__(self, *, text: str):
+        self.text = text
+        self.calls = 0
+
+    async def transcribe(self, audio: bytes) -> TranscriptResult:
+        assert audio
+        self.calls += 1
+        return TranscriptResult(
+            text=self.text,
+            words=(),
+            provider="fake-transcriber",
+            model="fake-model-v1",
+            usage=ProviderUsage(1, 1),
+            request_id="fake-request-1",
+            checksum=sha256(audio).hexdigest(),
+            cost=Decimal("0.01"),
+        )
+
+
+class RaisingFakeTranscriber:
+    """Raise a selected deterministic provider-side failure."""
+
+    def __init__(self, error: Exception):
+        self.error = error
+
+    async def transcribe(self, audio: bytes) -> TranscriptResult:
+        assert audio
+        raise self.error
+
+
+class FailOnceQualityRecordStore(FilesystemQualityRecordStore):
+    """Simulate worker loss after the transcription record is committed."""
+
+    def __init__(self, root):
+        super().__init__(root)
+        self.failed = False
+
+    def save(self, quality: CandidateQuality) -> None:
+        if not self.failed:
+            self.failed = True
+            raise RuntimeError("simulated quality persistence failure")
+        super().save(quality)
 
 
 def request_for(*, attempt: int = 1, take: int = 0) -> RenderRequest:
@@ -82,6 +140,24 @@ def activity_for(tmp_path, renderer: DeterministicLocalRenderer):
     records = FilesystemRenderRecordStore(tmp_path / "records", artifacts)
     return build_durable_render_activity(
         DurableRenderService(artifacts, records), renderer, artifacts
+    )
+
+
+def transcription_activity_for(tmp_path, transcriber):
+    """Build an activity with isolated durable stores and a fake transcriber."""
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
+    records = FilesystemRenderRecordStore(tmp_path / "records", artifacts)
+    quality_records = FilesystemQualityRecordStore(tmp_path / "quality")
+    transcription_records = FilesystemTranscriptionRecordStore(
+        tmp_path / "transcriptions"
+    )
+    return build_durable_render_activity(
+        DurableRenderService(artifacts, records),
+        DeterministicLocalRenderer(),
+        artifacts,
+        transcriber=transcriber,
+        quality_records=quality_records,
+        transcription_records=transcription_records,
     )
 
 
@@ -176,6 +252,90 @@ def test_deterministic_quality_evaluator_verifies_expected_critical_tokens():
     assert quality.diagnostics.passes_hard_gates is True
 
 
+def test_transcription_quality_evaluator_passes_normalized_transcript_to_fidelity():
+    """Use provider text for fidelity, including its deterministic normalization."""
+    request = replace(request_for(), expected_spoken_text="canonical expected text")
+    rendered = asyncio.run(DeterministicLocalRenderer().render(request))
+    diagnostics = diagnose_wav(
+        rendered.audio_bytes,
+        expected_sample_rate_hz=request.sample_rate_hz,
+        expected_channels=1,
+    )
+    transcriber = FixedFakeTranscriber(text="  NORMALIZED!  ")
+    evaluator = build_transcription_quality_evaluator(transcriber)
+
+    quality = asyncio.run(
+        evaluator(request, rendered.audio_bytes, diagnostics, ("normalized",))
+    )
+
+    assert quality.fidelity.passed is True
+    assert quality.transcription is not None
+    assert quality.transcription.text == "  NORMALIZED!  "
+    assert transcriber.calls == 1
+
+
+def test_transcription_quality_evaluator_rejects_transcript_for_other_audio():
+    """Never score transcript evidence that is not bound to this audio bytestring."""
+    request = request_for()
+    rendered = asyncio.run(DeterministicLocalRenderer().render(request))
+    diagnostics = diagnose_wav(
+        rendered.audio_bytes,
+        expected_sample_rate_hz=request.sample_rate_hz,
+        expected_channels=1,
+    )
+    transcriber = FixedFakeTranscriber(text=request.expected_spoken_text)
+    result = asyncio.run(transcriber.transcribe(b"different-audio"))
+
+    class MismatchedTranscriber:
+        async def transcribe(self, audio: bytes) -> TranscriptResult:
+            del audio
+            return result
+
+    evaluator = build_transcription_quality_evaluator(MismatchedTranscriber())
+
+    with pytest.raises(TranscriptionFailureError, match="checksum"):
+        asyncio.run(
+            evaluator(request, rendered.audio_bytes, diagnostics, ("Temporal",))
+        )
+
+
+def test_transcription_quality_evaluator_rejects_empty_transcript():
+    """An empty transcript cannot pass an empty critical-token configuration."""
+    request = request_for()
+    rendered = asyncio.run(DeterministicLocalRenderer().render(request))
+    diagnostics = diagnose_wav(
+        rendered.audio_bytes,
+        expected_sample_rate_hz=request.sample_rate_hz,
+        expected_channels=1,
+    )
+    evaluator = build_transcription_quality_evaluator(FixedFakeTranscriber(text="   "))
+
+    with pytest.raises(TranscriptionFailureError, match="invalid evidence"):
+        asyncio.run(evaluator(request, rendered.audio_bytes, diagnostics, ()))
+
+
+@pytest.mark.parametrize(
+    ("provider_error", "expected_type", "non_retryable"),
+    [
+        (ValueError("malformed response"), TranscriptionFailureError, True),
+        (TimeoutError("provider timeout"), TranscriptionTransientError, False),
+    ],
+)
+def test_activity_maps_transcription_provider_failures(
+    tmp_path, provider_error, expected_type, non_retryable
+):
+    """Expose stable Temporal error types and retry semantics to callers."""
+    activity = transcription_activity_for(
+        tmp_path, RaisingFakeTranscriber(provider_error)
+    )
+
+    with pytest.raises(ApplicationError) as error:
+        asyncio.run(activity(payload_for(episode_for())))
+
+    assert error.value.type == expected_type.__name__
+    assert error.value.non_retryable is non_retryable
+
+
 def test_activity_rejects_quality_for_a_different_candidate(tmp_path):
     """Catch activity results whose quality evidence names another candidate."""
     renderer = DeterministicLocalRenderer()
@@ -208,6 +368,42 @@ def test_activity_rejects_quality_for_a_different_candidate(tmp_path):
 
     assert error.value.non_retryable is True
     assert error.value.type == "WorkflowContractError"
+
+
+def test_activity_replays_atomic_transcription_record_after_quality_failure(tmp_path):
+    """Recover a committed provider response without a second transcription call."""
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
+    records = FilesystemRenderRecordStore(tmp_path / "records", artifacts)
+    quality_records = FailOnceQualityRecordStore(tmp_path / "quality")
+    transcription_records = FilesystemTranscriptionRecordStore(
+        tmp_path / "transcriptions"
+    )
+    renderer = DeterministicLocalRenderer()
+    transcriber = FixedFakeTranscriber(text="Temporal rendering is not optional.")
+    activity = build_durable_render_activity(
+        DurableRenderService(artifacts, records),
+        renderer,
+        artifacts,
+        transcriber=transcriber,
+        quality_records=quality_records,
+        transcription_records=transcription_records,
+    )
+    base_episode = episode_for()
+    episode = replace(
+        base_episode,
+        segments=(replace(base_episode.segments[0], critical_tokens=("not",)),),
+    )
+
+    with pytest.raises(RuntimeError, match="quality persistence"):
+        asyncio.run(activity(payload_for(episode)))
+
+    assert transcriber.calls == 1
+    assert transcription_records.find(episode.segments[0].render_request.candidate_id)
+
+    result = asyncio.run(activity(payload_for(episode)))
+
+    assert CandidateQuality.from_dict(result).passes_hard_gates is True
+    assert transcriber.calls == 1
 
 
 def test_quality_evaluator_rejects_empty_audio():

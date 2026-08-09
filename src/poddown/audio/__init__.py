@@ -4,6 +4,7 @@ from poddown.audio.activities import (
     ActivityHandler,
     QualityEvaluator,
     build_durable_render_activity,
+    build_transcription_quality_evaluator,
     deterministic_quality_evaluator,
 )
 from poddown.audio.contracts import (
@@ -14,6 +15,8 @@ from poddown.audio.contracts import (
     RenderedAudio,
     RenderOutcome,
     RenderRequest,
+    TranscriptionCostEvent,
+    TranscriptionRecord,
 )
 from poddown.audio.diagnostics import (
     AudioDiagnostics,
@@ -42,12 +45,15 @@ from poddown.audio.workflow import (
     RightsFailureError,
     SegmentDecision,
     SegmentWorkflowInput,
+    TranscriptionFailureError,
+    TranscriptionTransientError,
     TransientActivityError,
     WorkflowContractError,
     WorkflowFailure,
     activity_key_for,
     workflow_id_for,
 )
+from poddown.providers.contracts import Transcriber, TranscriptResult, TranscriptWord
 
 __all__ = [
     "ArtifactRef",
@@ -66,6 +72,8 @@ __all__ = [
     "LocalOrchestrationError",
     "MalformedAudioError",
     "ProviderCostEvent",
+    "TranscriptionCostEvent",
+    "TranscriptionRecord",
     "QualityEvaluator",
     "RenderCandidate",
     "RenderedAudio",
@@ -78,11 +86,17 @@ __all__ = [
     "SegmentWorkflowInput",
     "TemporalEpisodeWorkflowService",
     "TransientActivityError",
+    "TranscriptResult",
+    "TranscriptWord",
+    "Transcriber",
+    "TranscriptionFailureError",
+    "TranscriptionTransientError",
     "VoiceConsent",
     "WorkflowContractError",
     "WorkflowFailure",
     "activity_key_for",
     "build_durable_render_activity",
+    "build_transcription_quality_evaluator",
     "diagnose_wav",
     "deterministic_quality_evaluator",
     "require_render_rights",

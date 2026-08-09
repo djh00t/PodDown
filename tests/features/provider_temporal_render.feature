@@ -46,3 +46,33 @@ Feature: durable provider-bound Temporal render activity
     When the Temporal episode workflow runs with an unknown terminal activity failure
     Then the workflow fails on its first attempt with an activity gate
     And no provider dispatch or durable cost record exists
+
+  Scenario: matching injected transcription returns provenance
+    Given a consented segment with an injected matching transcriber
+    When the provider-bound activity runs with the injected transcriber
+    Then the returned quality includes transcription provenance
+
+  Scenario: missing critical token produces segment rerender evidence
+    Given a consented segment with an injected transcriber missing a critical token
+    When the provider-bound activity runs with the injected transcriber
+    Then the returned quality requires segment rerender
+
+  Scenario: malformed non-retryable transcription fails closed
+    Given a consented segment with a malformed non-retryable transcriber
+    When the provider-bound activity runs with the injected transcriber
+    Then transcription fails closed without canonical-text fallback
+
+  Scenario: retryable transcription exhaustion reports a transcription gate
+    Given a consented segment with a retryable failing transcriber
+    When the Temporal episode workflow runs with retryable transcription failures
+    Then the workflow fails with a transcription gate after bounded retries
+
+  Scenario: durable quality replay avoids a second transcription dispatch
+    Given a consented segment with an injected matching transcriber
+    When the provider-bound activity runs twice with the same durable quality key
+    Then transcription dispatch count remains one
+
+  Scenario: deterministic local mode is explicit and zero-cost
+    Given a consented deterministic local render segment
+    When the provider-bound Temporal activity runs
+    Then the quality evidence is explicitly deterministic local and zero-cost
