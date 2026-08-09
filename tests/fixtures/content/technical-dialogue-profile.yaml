@@ -1,0 +1,15 @@
+poddown:
+  profile: technical-dialogue
+  quality_targets:
+    fidelity: 1.0
+    determinism: strict
+  pronunciation_keys:
+    - C1
+    - lidar
+    - hertz
+  critical_tokens:
+    - not
+    - lidar
+    - hertz
+  disallow_unsourced_numbers: true
+  renderer_text_limit: 240

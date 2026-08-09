@@ -1,0 +1,74 @@
+{
+  "proposal_id": "m1-robotics-mapping-source-bound-v1",
+  "source_episode_id": "episode-robotics-mapping-v1",
+  "disagreement_turn_id": "t-robotics-003",
+  "source_speaker_ids": [
+    "spk-archivist-1",
+    "spk-controls-2"
+  ],
+  "source_turns": [
+    {
+      "turn_id": "t-robotics-001",
+      "speaker_id": "spk-archivist-1",
+      "source_block_anchor": "block-robotics-overview",
+      "claim_anchor": "claim-robotics-001",
+      "text": "The mapping rig uses lidar at 13 hertz for obstacle fusion.",
+      "supported_by_source": true
+    },
+    {
+      "turn_id": "t-robotics-002",
+      "speaker_id": "spk-controls-2",
+      "source_block_anchor": "block-robotics-controls",
+      "claim_anchor": "claim-robotics-002",
+      "text": "The controller is not silent and not stable during high-frequency vibration bursts.",
+      "supported_by_source": true
+    },
+    {
+      "turn_id": "t-robotics-003",
+      "speaker_id": "spk-controls-2",
+      "source_block_anchor": "block-robotics-disagreement",
+      "claim_anchor": "claim-robotics-003",
+      "text": "I disagree that this architecture can safely split the render path into three independent turns.",
+      "supported_by_source": true
+    }
+  ],
+  "claims": [
+    {
+      "claim_anchor": "claim-robotics-001",
+      "source_block_anchor": "block-robotics-overview",
+      "source_value": "13 hertz",
+      "adapted_value": "13 hertz",
+      "speaker_id": "spk-archivist-1",
+      "turn_id": "t-robotics-001",
+      "supported": true
+    },
+    {
+      "claim_anchor": "claim-robotics-002",
+      "source_block_anchor": "block-robotics-controls",
+      "source_value": "not silent",
+      "adapted_value": "not silent",
+      "speaker_id": "spk-controls-2",
+      "turn_id": "t-robotics-002",
+      "supported": true
+    },
+    {
+      "claim_anchor": "claim-robotics-002",
+      "source_block_anchor": "block-robotics-controls",
+      "source_value": "not stable",
+      "adapted_value": "not stable",
+      "speaker_id": "spk-controls-2",
+      "turn_id": "t-robotics-002",
+      "supported": true
+    },
+    {
+      "claim_anchor": "claim-robotics-003",
+      "source_block_anchor": "block-robotics-disagreement",
+      "source_value": "safely split the render path",
+      "adapted_value": "safely split the render path",
+      "speaker_id": "spk-controls-2",
+      "turn_id": "t-robotics-003",
+      "supported": true,
+      "disagreement": true
+    }
+  ]
+}
