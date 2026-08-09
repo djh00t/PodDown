@@ -272,6 +272,8 @@ rate = 13.8 hertz
     assert {block.kind for block in (code, table)} == {"code", "table"}
     assert error.value.code == "unsupported_claim"
     assert source not in str(error.value)
+    assert "rate = 13.9 hertz" not in str(error.value)
+    assert "controller stable" not in str(error.value)
 
 
 def test_homographs_and_repeated_negations_keep_distinct_occurrences():

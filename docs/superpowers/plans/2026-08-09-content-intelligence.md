@@ -315,23 +315,25 @@ git commit -m "feat(content): assemble deterministic preparation manifest"
 **Files:**
 - Create: `tests/evals/test_content_intelligence.py`
 - Create: `tests/fixtures/content/adversarial-adaptation.json`
+- Create: `scripts/verify_content_mutation.py`
 - Create: `docs/verification/content-intelligence.md`
 - Modify: `docs/planning-traceability.md`
 - Modify: `docs/product-delivery-plan.md`
+- Modify: `pyproject.toml`
 
 **Interfaces:**
 - The evals consume only public M1 ports and deterministic fixtures; they do not call live AI or voice providers.
 - The verification report records exact commit SHA, commands, test counts, coverage, fixture hashes, and any intentionally deferred risks.
 
 - [ ] **Step 1: Write adversarial evals before any documentation claims.** Cover absent-but-plausible claims, contradictions, changed numbers, changed units, changed dates, inserted/removed negation, repeated tokens, code/table blocks, homographs, and source-anchor tampering.
-- [ ] **Step 2: Run evals and confirm they fail if the corresponding validation is weakened.** Use a mutation check by temporarily changing one expected literal or branch in a disposable worktree copy; restore the source tree without altering the implementation branch.
+- [ ] **Step 2: Run evals and confirm they fail if the corresponding validation is weakened.** Run `PYDANTIC_DISABLE_PLUGINS=1 .venv/bin/python scripts/verify_content_mutation.py`; the isolated copy bypasses the adaptation token-count and orchestration source-token binding gates and must report the changed-number and changed-date evals failing. The implementation branch remains unchanged.
 - [ ] **Step 3: Implement only missing test fixtures or test utilities needed by the evals.** Do not weaken a gate to make an adversarial case pass.
 - [ ] **Step 4: Run `make check`, `make build`, and `make docs`; record fresh output and fixture/version IDs in `docs/verification/content-intelligence.md`.**
 - [ ] **Step 5: Update traceability only for evidence that is actually present.** Mark M1 content-intelligence requirements implemented when BDD, unit, integration, and eval evidence exists; keep audio rendering, Temporal, API, CLI, publishing, MCP, Signal & Supply, and production-readiness rows explicitly pending.
 - [ ] **Step 6: Commit the M1 evidence.**
 
 ```bash
-git add tests/evals/test_content_intelligence.py tests/fixtures/content/adversarial-adaptation.json docs/verification/content-intelligence.md docs/planning-traceability.md docs/product-delivery-plan.md
+git add tests/evals/test_content_intelligence.py tests/fixtures/content/adversarial-adaptation.json scripts/verify_content_mutation.py docs/verification/content-intelligence.md docs/planning-traceability.md docs/product-delivery-plan.md
 git commit -m "test(content): verify M1 adversarial source fidelity"
 ```
 
