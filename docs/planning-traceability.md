@@ -17,9 +17,9 @@
 | 11 | Candidate-take scoring | 003 | M2 locally verified for deterministic hard-gate selection and stable ranking: [selection tests](../tests/unit/audio/test_selection.py) and [Temporal verification](verification/temporal-orchestration-qa.md); provider-backed scoring remains pending |
 | 12 | Transcription/fidelity QA | 001/003 | M0/M2 locally verified for injected normalized transcript QA, audio-bound checksum/empty-text rejection, deterministic local mode, transcription failure mapping, atomic transcription response plus estimated-cost replay, immutable quality replay, and provider usage/cost evidence: [provider BDD](../tests/features/provider_temporal_render.feature), [provider contract tests](../tests/contract/providers/test_openai_transcription.py), [activity tests](../tests/unit/audio/test_activities.py), [quality/unit tests](../tests/unit/audio/test_selection.py), [quality storage tests](../tests/unit/audio/test_storage.py), and [verification evidence](verification/transcription-fidelity-qa.md); external billing reconciliation remains M3 |
 | 13 | Critical-token verification | 001/002/003 | M0–M2 locally verified against provider transcript text with segment-only rerender evidence; final-master verification remains pending |
-| 14 | Audio quality gates | 003 | M2 locally verified for WAV diagnostics, clipping regression, provider-bound artifact checks, and hard gates: [diagnostic tests](../tests/unit/audio/test_diagnostics.py), [local renderer regression](../tests/unit/audio/test_local.py), [provider-activity verification](verification/provider-temporal-render-activity.md), and [transcription/fidelity verification](verification/transcription-fidelity-qa.md); final-master and listening gates remain pending |
-| 15 | Mastering | 003 | M2 |
-| 16 | Package/provenance | 001/003 | M0/M2 |
+| 14 | Audio quality gates | 003 | M2 locally verified for WAV diagnostics, clipping regression, provider-bound artifact checks, deterministic mastering input/output gates, and hard gates: [diagnostic tests](../tests/unit/audio/test_diagnostics.py), [local renderer regression](../tests/unit/audio/test_local.py), [provider-activity verification](verification/provider-temporal-render-activity.md), [transcription/fidelity verification](verification/transcription-fidelity-qa.md), and [deterministic mastering verification](verification/deterministic-mastering.md); final-master and listening gates remain pending |
+| 15 | Mastering | 003 | M2 deterministic mastering boundary locally verified for stable ordering, profile validation, injected ffmpeg/ffprobe boundaries, WAV/MP3 inspection, and immutable provenance: [mastering BDD](../tests/features/mastering.feature), [mastering unit tests](../tests/unit/audio/test_mastering.py), and [verification evidence](verification/deterministic-mastering.md); final-master QA remains pending |
+| 16 | Package/provenance | 001/003 | M0/M2 mastering provenance locally verified in [deterministic mastering evidence](verification/deterministic-mastering.md); immutable nine-file package and final hash remain pending |
 | 17 | Publishing adapters | 007 | M5 |
 | 18 | CLI | 005 | M4 |
 | 19 | MCP server | 006 | M5 |
@@ -63,7 +63,10 @@ not expand the MVP feature set; they make the approved service operable.
   the transcription gate, and replays persisted quality without a second
   renderer or transcription dispatch. External billing reconciliation remains
   M3-owned. The deterministic-local mode is explicitly labeled and zero-cost.
-  Mastering, final-master QA, packaging, and publication remain pending.
+  Deterministic mastering now locally verifies stable segment assembly,
+  profile-bound WAV/MP3 media inspection, mandatory MP3 metadata, injected
+  ffprobe failure handling, and read-only provenance/checksum evidence. Final-
+  master transcription, package assembly, and publication remain pending.
 - Task-level implementation plan: intentionally produced just-in-time per
   milestone so measured interfaces and audio quality inform the next plan.
 - Audio rendering, Temporal, API, CLI, publishing, MCP, Signal & Supply, and

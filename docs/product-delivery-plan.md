@@ -17,7 +17,7 @@ Publishing, MCP and Signal & Supply then extend that proven pipeline.
 |---|---|---|
 | M0 Foundation | Merged PR #1 contracts and adapters | 68 tests, provider contracts, branch coverage gate |
 | M1 Content intelligence | Treatment, canonical script, lexicons, token extraction, segmentation | Complete locally: source-bound adversarial evals and `002` BDD pass; no provider or live-mode claim |
-| M2 Audio engine | Temporal render/takes/QA/repair/master/package | [Bounded local foundation evidence](verification/durable-audio-foundation.md); real 10–15 minute robotics episode still must clear objective and listening gates |
+| M2 Audio engine | Temporal render/takes/QA/repair/master/package | [Bounded local foundation evidence](verification/durable-audio-foundation.md), [transcription/fidelity evidence](verification/transcription-fidelity-qa.md), and [deterministic mastering evidence](verification/deterministic-mastering.md); final package and real 10–15 minute robotics episode still must clear objective and listening gates |
 | M3 Episode service | PostgreSQL/S3 model, FastAPI async jobs, metering, Compose | API end-to-end, restart/idempotency and tenant-isolation tests |
 | M4 Developer experience | CLI and GitHub Action | Markdown commit can validate/render; package verifies locally |
 | M5 Distribution | Publishing adapters, MCP and PodDown skill | Protected publish and agent eval suites pass |
@@ -67,8 +67,9 @@ focused verification, full-suite verification and a bounded Conventional Commit.
 
 ### M2 — Durable audio production
 
-Status: pending. Audio rendering, Temporal orchestration, provider-backed QA,
-and final-master evidence are not part of M1 verification.
+Status: active. Audio rendering, Temporal orchestration, provider-backed QA, and
+deterministic mastering now have bounded local evidence; final-master and
+package evidence are still pending.
 
 1. Define BDD for retries, fan-out, takes, partial repair, mastering and replay.
 2. Add Temporal workflow/activity contracts and local test environment.
