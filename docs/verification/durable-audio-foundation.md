@@ -25,9 +25,10 @@ candidate identity and artifact digest, with one new renderer call.
 
 ## Validation record
 
-The test was written first. Its initial run was red because the test passed the
-public keyword-only `take_count` argument positionally; after correcting that
-test invocation, the isolated integration test passed: `1 passed in 0.04s`.
+The follow-up assertions were added before implementation changes. The existing
+durable foundation already provides this behavior, so the strengthened
+integration test passed immediately: `1 passed in 0.06s`; no production change
+was needed.
 
 The literal focused command from the task brief was also run:
 
@@ -52,17 +53,23 @@ tests/unit/audio tests/unit/test_rendering.py -q --cov=poddown.audio \
 --cov-branch --cov-report=term-missing
 ```
 
-Result: `117 passed in 0.33s`; `poddown.audio` branch coverage was `88.68%`
+Result: `117 passed in 0.40s`; `poddown.audio` branch coverage was `88.68%`
 (the repository threshold is 80%). The selected suite exercises preflight
 rejection, new rendering, replay, and persisted-artifact integrity failures.
 
-`PYDANTIC_DISABLE_PLUGINS=1 PYTHONPATH=src make check` ran its test target
-successfully: `325 passed, 1 deselected in 2.82s`, with `87.32%` total branch
-coverage. Its subsequent format check failed only because the unowned
-`tests/bdd/test_durable_audio.py` would be reformatted; this evidence slice did
-not modify that file. `ruff check src tests` passed, strict mypy passed for 28
-source files, and `make build` produced the source distribution and wheel.
-`git diff --check` produced no errors.
+The pre-format package run at commit `1cfef67728fd1f38cbe0fec8ee5796583b830d95`
+ran its test target successfully but stopped at the then-unformatted
+`tests/bdd/test_durable_audio.py`; that is historical context, not the current
+gate status. After formatting commit `f44b443`, the final
+`PYDANTIC_DISABLE_PLUGINS=1 PYTHONPATH=src make check` passed: `325 passed, 1 deselected in 2.85s`, with `87.32%` total branch coverage. Final `ruff format
+--check src tests`, `ruff check src tests`, and strict mypy all passed; `make
+build` produced the source distribution and wheel, and `git diff --check`
+produced no errors.
+
+The explicit BDD command
+`PYDANTIC_DISABLE_PLUGINS=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src
+uv run pytest -p pytest_bdd.plugin tests/bdd/test_durable_audio.py -q` passed
+`5 passed in 0.06s`.
 
 ## Deferred work
 

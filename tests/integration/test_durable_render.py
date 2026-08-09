@@ -56,13 +56,28 @@ def test_filesystem_records_replay_across_fresh_service_instances_and_attempts(
     initial_service = DurableRenderService(artifacts, records)
 
     initial = _render(initial_service, request, initial_renderer, take_count=3)
+    assert len(initial) == 3
+    assert [outcome.candidate.take_index for outcome in initial] == [0, 1, 2]
+    assert all(outcome.cost_event is not None for outcome in initial)
     initial_artifacts = [
         artifacts.read(outcome.candidate.artifact) for outcome in initial
     ]
-    initial_cost_events = [
-        records.find(outcome.candidate.idempotency_key).cost_event
-        for outcome in initial
+    initial_records = [
+        records.find(outcome.candidate.idempotency_key) for outcome in initial
     ]
+    initial_cost_events = [
+        record.cost_event for record in initial_records if record is not None
+    ]
+    assert len(initial_records) == 3
+    assert len(initial_cost_events) == 3
+    assert all(record is not None for record in initial_records)
+    for outcome, record in zip(initial, initial_records, strict=True):
+        assert record is not None
+        canonical_request = replace(request, take_index=outcome.candidate.take_index)
+        assert record.candidate.attempt == 1
+        assert record.candidate.candidate_id == canonical_request.candidate_id
+        assert record.candidate.idempotency_key == canonical_request.idempotency_key
+        assert record.cost_event is not None
 
     restarted_artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
     restarted_records = FilesystemRenderRecordStore(tmp_path / "records")
@@ -83,17 +98,28 @@ def test_filesystem_records_replay_across_fresh_service_instances_and_attempts(
         restarted_records.find(outcome.candidate.idempotency_key).cost_event
         for outcome in replayed
     ] == initial_cost_events
+    assert all(outcome.cost_event is None for outcome in replayed)
     assert [
         restarted_artifacts.read(outcome.candidate.artifact) for outcome in replayed
     ] == initial_artifacts
-    assert all(outcome.replayed and outcome.cost_event is None for outcome in replayed)
+    assert all(outcome.replayed for outcome in replayed)
 
+    attempt_two_request = replace(request, attempt=2)
     next_attempt = _render(
         restarted_service,
-        replace(request, attempt=2),
+        attempt_two_request,
         restarted_renderer,
         take_count=1,
     )
+    assert len(next_attempt) == 1
+    assert next_attempt[0].cost_event is not None
+    next_record = restarted_records.find(next_attempt[0].candidate.idempotency_key)
+    assert next_record is not None
+    assert next_record.candidate.attempt == 2
+    assert next_record.candidate.candidate_id == attempt_two_request.candidate_id
+    assert next_record.candidate.idempotency_key == attempt_two_request.idempotency_key
+    assert next_record.cost_event is not None
+    assert next_record.cost_event == next_attempt[0].cost_event
 
     assert next_attempt[0].candidate.candidate_id != initial[0].candidate.candidate_id
     assert (
