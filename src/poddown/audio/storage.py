@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 from dataclasses import asdict
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -15,6 +16,8 @@ from poddown.audio.contracts import (
     RenderOutcome,
 )
 from poddown.domain import ProviderUsage
+
+_IDEMPOTENCY_KEY = re.compile(r"^render-[0-9a-f]{64}$")
 
 
 class ArtifactIntegrityError(RuntimeError):
@@ -66,6 +69,11 @@ class FilesystemArtifactStore:
 
     def _path_for(self, artifact: ArtifactRef) -> Path:
         relative_path = Path(artifact.relative_path)
+        expected_path = (
+            Path("artifacts") / artifact.sha256[:2] / f"{artifact.sha256}.wav"
+        )
+        if relative_path != expected_path:
+            raise ArtifactIntegrityError("artifact path is not canonical")
         if relative_path.is_absolute():
             raise ArtifactIntegrityError("artifact path must be relative")
         path = (self._root / relative_path).resolve()
@@ -92,8 +100,13 @@ class FilesystemArtifactStore:
 class FilesystemRenderRecordStore:
     """Persist immutable render outcomes keyed by idempotency key."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self, root: Path, artifact_store: FilesystemArtifactStore | None = None
+    ) -> None:
         self._root = root.resolve()
+        self._artifacts = artifact_store or FilesystemArtifactStore(
+            self._root.parent / "artifacts"
+        )
 
     def save(self, outcome: RenderOutcome) -> None:
         """Store an outcome once or reject conflicting evidence for its key."""
@@ -135,7 +148,9 @@ class FilesystemRenderRecordStore:
             raise ArtifactIntegrityError("render record is missing") from error
         try:
             payload = json.loads(raw)
-            return self._deserialize(payload)
+            outcome = self._deserialize(payload)
+            self._artifacts.read(outcome.candidate.artifact)
+            return outcome
         except (
             InvalidOperation,
             KeyError,
@@ -146,8 +161,10 @@ class FilesystemRenderRecordStore:
             raise ArtifactIntegrityError("render record is malformed") from error
 
     def _path_for(self, idempotency_key: str) -> Path:
-        if not isinstance(idempotency_key, str) or not idempotency_key:
-            raise ArtifactIntegrityError("idempotency key must be a non-empty string")
+        if not isinstance(idempotency_key, str) or not _IDEMPOTENCY_KEY.fullmatch(
+            idempotency_key
+        ):
+            raise ArtifactIntegrityError("idempotency key is not canonical")
         relative_path = Path("records") / f"{idempotency_key}.json"
         path = (self._root / relative_path).resolve()
         try:

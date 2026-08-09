@@ -20,11 +20,13 @@ from poddown.audio.storage import (
 )
 from poddown.domain import ProviderUsage
 
+IDEMPOTENCY_KEY = "render-" + "a" * 64
+
 
 def _outcome(artifact: ArtifactRef, **overrides: object) -> RenderOutcome:
     candidate_values: dict[str, object] = {
         "candidate_id": "candidate-001",
-        "idempotency_key": "render-001",
+        "idempotency_key": IDEMPOTENCY_KEY,
         "segment_id": "segment-001",
         "speaker_id": "host",
         "attempt": 1,
@@ -114,38 +116,51 @@ def test_put_refuses_to_overwrite_a_corrupted_existing_object(tmp_path):
     assert artifact_path.read_bytes() == b"tampered"
 
 
+def test_read_rejects_valid_bytes_at_a_noncanonical_artifact_path(tmp_path):
+    """A digest reference must resolve only to its derived artifact path."""
+    content = b"audio"
+    digest = sha256(content).hexdigest()
+    artifact = ArtifactRef(digest, "audio/wav", len(content), "artifacts/other.wav")
+    artifact_path = tmp_path / artifact.relative_path
+    artifact_path.parent.mkdir(parents=True)
+    artifact_path.write_bytes(content)
+
+    with pytest.raises(ArtifactIntegrityError):
+        FilesystemArtifactStore(tmp_path).read(artifact)
+
+
 def test_save_and_load_round_trip_all_render_metadata_and_decimal_costs(tmp_path):
     """Dropping nested render metadata would make replay and billing unverifiable."""
-    artifacts = FilesystemArtifactStore(tmp_path)
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
     outcome = _outcome(artifacts.put(b"audio", media_type="audio/wav"))
-    FilesystemRenderRecordStore(tmp_path).save(outcome)
+    FilesystemRenderRecordStore(tmp_path / "records").save(outcome)
 
-    loaded = FilesystemRenderRecordStore(tmp_path).load("render-001")
+    loaded = FilesystemRenderRecordStore(tmp_path / "records").load(IDEMPOTENCY_KEY)
 
     assert loaded == outcome
 
 
 def test_save_of_an_identical_outcome_is_idempotent(tmp_path):
     """A retry must not produce a second record for one idempotency key."""
-    artifacts = FilesystemArtifactStore(tmp_path)
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
     outcome = _outcome(artifacts.put(b"audio", media_type="audio/wav"))
-    records = FilesystemRenderRecordStore(tmp_path)
+    records = FilesystemRenderRecordStore(tmp_path / "records")
 
     records.save(outcome)
     records.save(outcome)
 
-    assert records.load("render-001") == outcome
+    assert records.load(IDEMPOTENCY_KEY) == outcome
 
 
 def test_save_rejects_a_different_outcome_for_an_existing_idempotency_key(tmp_path):
     """Accepting conflicting replay evidence would break exactly-once rendering."""
-    artifacts = FilesystemArtifactStore(tmp_path)
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
     outcome = _outcome(artifacts.put(b"audio", media_type="audio/wav"))
     conflicting = replace(
         outcome,
         candidate=replace(outcome.candidate, request_id="different-request"),
     )
-    records = FilesystemRenderRecordStore(tmp_path)
+    records = FilesystemRenderRecordStore(tmp_path / "records")
     records.save(outcome)
 
     with pytest.raises(IdempotencyConflictError):
@@ -159,14 +174,53 @@ def test_load_rejects_missing_and_malformed_json_records(tmp_path):
     with pytest.raises(ArtifactIntegrityError):
         records.load("missing")
 
-    record_path = tmp_path / "records" / "render-001.json"
+    record_path = tmp_path / "records" / f"{IDEMPOTENCY_KEY}.json"
     record_path.parent.mkdir(parents=True)
     record_path.write_text("not json", encoding="utf-8")
 
     with pytest.raises(ArtifactIntegrityError):
-        records.load("render-001")
+        records.load(IDEMPOTENCY_KEY)
+
+
+@pytest.mark.parametrize("operation", ["find", "load"])
+@pytest.mark.parametrize("mutation", ["delete", "corrupt"])
+def test_replay_rejects_missing_or_corrupted_artifact(tmp_path, operation, mutation):
+    """Replay must fail closed when the referenced immutable bytes are not valid."""
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
+    outcome = _outcome(artifacts.put(b"audio", media_type="audio/wav"))
+    records = FilesystemRenderRecordStore(tmp_path / "records")
+    records.save(outcome)
+    artifact_path = tmp_path / "artifacts" / outcome.candidate.artifact.relative_path
+    if mutation == "delete":
+        artifact_path.unlink()
+    else:
+        artifact_path.write_bytes(b"tampered")
+
+    with pytest.raises(ArtifactIntegrityError):
+        getattr(records, operation)(IDEMPOTENCY_KEY)
+
+
+@pytest.mark.parametrize(
+    "idempotency_key",
+    [
+        "../sibling",
+        "nested/key",
+        "render-" + "a" * 63,
+        "render-" + "g" * 64,
+        "render-" + "A" * 64,
+    ],
+)
+def test_record_store_rejects_noncanonical_idempotency_keys(tmp_path, idempotency_key):
+    """Record keys must remain one generated SHA-256 path component."""
+    records = FilesystemRenderRecordStore(tmp_path / "records")
+
+    with pytest.raises(ArtifactIntegrityError):
+        records.find(idempotency_key)
 
 
 def test_find_returns_none_for_an_unknown_idempotency_key(tmp_path):
     """A first render must distinguish no record from a corrupted record."""
-    assert FilesystemRenderRecordStore(tmp_path).find("unknown") is None
+    assert (
+        FilesystemRenderRecordStore(tmp_path / "records").find("render-" + "b" * 64)
+        is None
+    )
