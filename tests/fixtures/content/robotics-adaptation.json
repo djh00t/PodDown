@@ -108,11 +108,11 @@
     }
   ],
   "expected_critical_tokens": [
-    {"surface": "LiDAR", "source_form": "LiDAR", "spoken_form": "LIE-dar", "category": "technical-name", "occurrence_id": "tok-01"},
-    {"surface": "C1", "source_form": "C1", "spoken_form": "see one", "category": "acronym", "occurrence_id": "tok-02"},
-    {"surface": "13.8 hertz", "source_form": "13.8 hertz", "spoken_form": "13.8 hertz", "category": "number", "occurrence_id": "tok-03"},
-    {"surface": "99.7%", "source_form": "99.7%", "spoken_form": "ninety-nine point seven percent", "category": "percentage", "occurrence_id": "tok-04"},
-    {"surface": "12 minutes", "source_form": "12 minutes", "spoken_form": "twelve minutes", "category": "duration", "occurrence_id": "tok-05"},
+    {"surface": "LiDAR", "source_form": "LiDAR", "spoken_form": "LIE-dar", "category": "technical_term", "occurrence_id": "tok-06"},
+    {"surface": "C1", "source_form": "C1", "spoken_form": "see one", "category": "acronym", "occurrence_id": "tok-07"},
+    {"surface": "13.8 hertz", "source_form": "13.8 hertz", "spoken_form": "13.8 hertz", "category": "unit", "occurrence_id": "tok-08"},
+    {"surface": "99.7%", "source_form": "99.7%", "spoken_form": "ninety-nine point seven percent", "category": "percentage", "occurrence_id": "tok-10"},
+    {"surface": "12", "source_form": "12", "spoken_form": "twelve", "category": "number", "occurrence_id": "tok-05"},
     {"surface": "not", "source_form": "not", "spoken_form": "not", "category": "negation", "occurrence_id": "neg-01"},
     {"surface": "not", "source_form": "not", "spoken_form": "not", "category": "negation", "occurrence_id": "neg-02"}
   ]

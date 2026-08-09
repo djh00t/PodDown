@@ -23,6 +23,7 @@ from poddown.content.lexicon import (
     LexiconScope,
     PronunciationEntry,
     PronunciationLexicon,
+    normalize_lexicon_key,
 )
 from poddown.content.models import (
     Profile,
@@ -625,6 +626,7 @@ def _compatibility_result(
             or not isinstance(claim.get("claim_anchor"), str)
             or not isinstance(claim.get("source_block_anchor"), str)
             or not isinstance(claim.get("source_value"), str)
+            or not isinstance(claim.get("speaker_id"), str)
             or claim.get("source_value") != claim.get("adapted_value")
         ):
             raise AdaptationError("unsupported_claim")
@@ -665,6 +667,11 @@ def _compatibility_result(
             or any(
                 claim["source_block_anchor"] != source_label
                 or claim["claim_anchor"] != claim_label
+                or claim["speaker_id"] != turn.speaker_id
+                or normalize_lexicon_key(str(claim["source_value"]))
+                not in normalize_lexicon_key(
+                    _legacy_claim_text(result.snapshot, turn.source_anchors[0])
+                )
                 for claim in turn_claims
             )
         ):
@@ -687,7 +694,8 @@ def _compatibility_result(
                 "turn_id": turn.turn_id,
             }
         )
-    if set(proposal_turns) != {turn.turn_id for turn in result.script.turns}:
+    typed_turn_ids = {turn.turn_id for turn in result.script.turns}
+    if set(proposal_turns) != typed_turn_ids or set(claims_by_turn) != typed_turn_ids:
         raise AdaptationError("unsupported_claim")
     canonical_script = {"turns": canonical_turns}
     compatibility_tokens: list[Mapping[str, object]] = []
@@ -703,10 +711,7 @@ def _compatibility_result(
                 candidate
                 for candidate in result.tokens
                 if candidate.occurrence_id not in used_tokens
-                and (
-                    candidate.source_form == source_form
-                    or source_form.replace(" ", "-").startswith(candidate.source_form)
-                )
+                and candidate.source_form == source_form
             ),
             None,
         )
