@@ -13,11 +13,11 @@
 | 7 | Voice rights/consent | 001/004 | M0/M3 |
 | 8 | Pronunciation engine | 002 | M1 complete locally; deterministic token evidence verified |
 | 9 | Segmentation engine | 002 | M1 complete locally; capability-safe segmentation verified |
-| 10 | Render orchestration | 003 | M2 foundation plus bounded Temporal orchestration locally verified: [durable BDD](../tests/features/durable_audio.feature), [Temporal BDD](../tests/features/temporal_orchestration.feature), [durable integration](../tests/integration/test_durable_render.py), [Temporal integration](../tests/integration/test_temporal_orchestration.py), and [verification evidence](verification/temporal-orchestration-qa.md) |
+| 10 | Render orchestration | 003 | M2 foundation plus bounded Temporal orchestration and provider-bound local activity wiring locally verified: [durable BDD](../tests/features/durable_audio.feature), [Temporal BDD](../tests/features/temporal_orchestration.feature), [provider-activity BDD](../tests/features/provider_temporal_render.feature), [durable integration](../tests/integration/test_durable_render.py), [Temporal integration](../tests/integration/test_temporal_orchestration.py), [provider-activity integration](../tests/integration/test_temporal_durable_render_activity.py), [terminal failure integration](../tests/integration/test_temporal_failure_semantics.py), [partial-take retry BDD](../tests/features/provider_temporal_render.feature), [concurrent claim integration](../tests/integration/test_durable_render_concurrency.py), [separate-process claim integration](../tests/integration/test_durable_render_multiprocess.py), and [verification evidence](verification/provider-temporal-render-activity.md) |
 | 11 | Candidate-take scoring | 003 | M2 locally verified for deterministic hard-gate selection and stable ranking: [selection tests](../tests/unit/audio/test_selection.py) and [Temporal verification](verification/temporal-orchestration-qa.md); provider-backed scoring remains pending |
 | 12 | Transcription/fidelity QA | 001/003 | M0/M2 |
 | 13 | Critical-token verification | 001/002/003 | M0–M2 |
-| 14 | Audio quality gates | 003 | M2 locally verified for WAV diagnostics and hard gates: [diagnostic tests](../tests/unit/audio/test_diagnostics.py) and [Temporal verification](verification/temporal-orchestration-qa.md); final-master and listening gates remain pending |
+| 14 | Audio quality gates | 003 | M2 locally verified for WAV diagnostics, clipping regression, provider-bound artifact checks, and hard gates: [diagnostic tests](../tests/unit/audio/test_diagnostics.py), [local renderer regression](../tests/unit/audio/test_local.py), and [provider-activity verification](verification/provider-temporal-render-activity.md); final-master and listening gates remain pending |
 | 15 | Mastering | 003 | M2 |
 | 16 | Package/provenance | 001/003 | M0/M2 |
 | 17 | Publishing adapters | 007 | M5 |
@@ -48,8 +48,16 @@ not expand the MVP feature set; they make the approved service operable.
   and replay across fresh service instances; later M2 work remains pending.
 - M2 Temporal orchestration and audio QA boundary: locally verified for bounded
   retry, three-take selection, hard-gate precedence, failed-segment repair,
-  structured failure, and completed-workflow replay; provider-bound activity
-  wiring, mastering, packaging, and publication remain pending.
+  structured failure, completed-workflow replay, provider-bound activity
+  wiring, rights-before-dispatch, immutable artifact persistence, and one
+  local cost event per candidate across post-persist replay. Non-retryable
+  rights failures now terminate on the original attempt, successful takes
+  remain selectable when a sibling take exhausts transient retries, unknown
+  terminal activity failures report configuration/activity gates, and the
+  filesystem claim prevents concurrent local-process dispatch for one
+  idempotency key; the crash window after provider dispatch and before record
+  save still belongs to hosted provider idempotency and reconciliation.
+  Transcription, mastering, packaging, and publication remain pending.
 - Task-level implementation plan: intentionally produced just-in-time per
   milestone so measured interfaces and audio quality inform the next plan.
 - Audio rendering, Temporal, API, CLI, publishing, MCP, Signal & Supply, and

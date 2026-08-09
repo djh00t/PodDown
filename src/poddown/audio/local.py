@@ -32,7 +32,7 @@ class DeterministicLocalRenderer:
         digest = hashlib.sha256(request.idempotency_key.encode("ascii")).digest()
         frame_count = 1_024 + int.from_bytes(digest[:2], "big") % 1_024
         frames = b"".join(
-            ((digest[index % len(digest)] - 128) * 256).to_bytes(
+            ((digest[index % len(digest)] - 128) * 255).to_bytes(
                 2, "little", signed=True
             )
             for index in range(frame_count)

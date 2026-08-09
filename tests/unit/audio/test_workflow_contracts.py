@@ -148,6 +148,12 @@ def test_workflow_result_round_trips_through_temporal_json_boundary():
     assert EpisodeWorkflowResult.from_json(result.to_json()) == result
 
 
+def test_episode_input_round_trips_through_decoded_temporal_mapping():
+    episode = workflow_input()
+
+    assert EpisodeWorkflowInput.from_dict(episode.to_dict()) == episode
+
+
 @pytest.mark.parametrize("payload", ["{", "[]", '{"segments": [{}]}'])
 def test_malformed_temporal_input_fails_with_workflow_contract_error(payload: str):
     with pytest.raises(WorkflowContractError):
@@ -194,6 +200,8 @@ def test_workflow_identity_boundaries_reject_invalid_arguments():
 
 
 def test_nested_temporal_result_boundaries_reject_malformed_values():
+    with pytest.raises(WorkflowContractError):
+        EpisodeWorkflowInput.from_dict(None)  # type: ignore[arg-type]
     with pytest.raises(WorkflowContractError):
         SegmentWorkflowInput.from_dict(None)  # type: ignore[arg-type]
     with pytest.raises(WorkflowContractError):

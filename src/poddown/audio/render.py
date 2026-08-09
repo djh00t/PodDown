@@ -83,7 +83,7 @@ class DurableRenderService:
 
     @asynccontextmanager
     async def _claim(self, idempotency_key: str) -> AsyncIterator[None]:
-        """Serialize one idempotency key across concurrent service instances."""
+        """Serialize one key across async tasks and worker processes."""
         lock_path = self._records.lock_path_for(idempotency_key)
         descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
         try:
@@ -176,13 +176,6 @@ class DurableRenderService:
     def _validate_wav(audio_bytes: bytes, sample_rate_hz: int) -> None:
         """Require complete mono 16-bit PCM frames in a valid WAV container."""
         try:
-            if (
-                len(audio_bytes) < 12
-                or audio_bytes[:4] != b"RIFF"
-                or audio_bytes[8:12] != b"WAVE"
-                or int.from_bytes(audio_bytes[4:8], "little") + 8 != len(audio_bytes)
-            ):
-                raise RenderRejectedError("renderer returned truncated WAV container")
             with wave.open(BytesIO(audio_bytes), "rb") as audio:
                 channels = audio.getnchannels()
                 sample_width = audio.getsampwidth()

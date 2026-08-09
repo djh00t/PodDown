@@ -163,7 +163,7 @@ class FilesystemRenderRecordStore:
             raise ArtifactIntegrityError("render record is malformed") from error
 
     def lock_path_for(self, idempotency_key: str) -> Path:
-        """Return the canonical per-key lock path below the record root."""
+        """Return the canonical per-key claim path below the record root."""
         self._path_for(idempotency_key)
         path = (self._root / ".locks" / f"{idempotency_key}.lock").resolve()
         try:

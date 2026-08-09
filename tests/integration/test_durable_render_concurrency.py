@@ -54,6 +54,11 @@ async def _run_concurrent_render_claim(tmp_path) -> None:
         service_a.render_takes(request, consent, renderer),
         service_b.render_takes(request, consent, renderer),
     )
+    outcomes = first + second
 
     assert len(renderer.calls) == 1
-    assert sorted(outcome.replayed for outcome in first + second) == [False, True]
+    assert sorted(outcome.replayed for outcome in outcomes) == [False, True]
+    record = records_a.find(request.idempotency_key)
+    assert record is not None
+    assert record.cost_event is not None
+    assert len(list((tmp_path / "records").rglob("*.json"))) == 1

@@ -40,6 +40,7 @@ NON_RETRYABLE_ERROR_TYPES = (
     RightsFailureError.__name__,
     WorkflowContractError.__name__,
 )
+ACTIVITY_CONFIGURATION_ERROR_TYPES = ("ActivityNotConfigured",)
 
 WORKFLOW_ACTIVITY_RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(seconds=1),
@@ -206,28 +207,31 @@ class EpisodeWorkflowInput:
         return _canonical(self)
 
     @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> EpisodeWorkflowInput:
+        """Reconstruct a snapshot from a decoded Temporal payload mapping."""
+        if not isinstance(value, dict) or not isinstance(value.get("segments"), list):
+            raise WorkflowContractError("episode snapshot is malformed")
+        try:
+            return cls(
+                episode_id=value["episode_id"],
+                episode_version=value["episode_version"],
+                segments=tuple(
+                    SegmentWorkflowInput.from_dict(segment)
+                    for segment in value["segments"]
+                ),
+                max_attempts=value.get("max_attempts", 2),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise WorkflowContractError("episode snapshot is malformed") from error
+
+    @classmethod
     def from_json(cls, value: str) -> EpisodeWorkflowInput:
         """Reconstruct a snapshot from a Temporal JSON payload."""
         try:
             decoded = json.loads(value)
         except (TypeError, json.JSONDecodeError) as error:
             raise WorkflowContractError("episode snapshot is malformed") from error
-        if not isinstance(decoded, dict) or not isinstance(
-            decoded.get("segments"), list
-        ):
-            raise WorkflowContractError("episode snapshot is malformed")
-        try:
-            return cls(
-                episode_id=decoded["episode_id"],
-                episode_version=decoded["episode_version"],
-                segments=tuple(
-                    SegmentWorkflowInput.from_dict(segment)
-                    for segment in decoded["segments"]
-                ),
-                max_attempts=decoded.get("max_attempts", 2),
-            )
-        except (KeyError, TypeError, ValueError) as error:
-            raise WorkflowContractError("episode snapshot is malformed") from error
+        return cls.from_dict(decoded)
 
 
 @dataclass(frozen=True)
@@ -422,6 +426,29 @@ def activity_key_for(
     return f"activity-{_digest(payload)}"
 
 
+def _non_retryable_activity_code(error: ActivityError) -> str | None:
+    """Return a terminal application-error type carried by an activity error."""
+    cause = error.cause
+    if not isinstance(cause, ApplicationError):
+        return None
+    if not cause.non_retryable and cause.type not in NON_RETRYABLE_ERROR_TYPES:
+        return None
+    return cause.type or "NON_RETRYABLE_ACTIVITY_FAILURE"
+
+
+def _failed_gates_for(failure_code: str) -> tuple[str, ...]:
+    """Map terminal activity classes to the gates that actually failed."""
+    if failure_code == RightsFailureError.__name__:
+        return ("rights",)
+    if failure_code == MalformedAudioError.__name__:
+        return ("audio",)
+    if failure_code == WorkflowContractError.__name__:
+        return ("contract",)
+    if failure_code in ACTIVITY_CONFIGURATION_ERROR_TYPES:
+        return ("configuration",)
+    return ("activity",)
+
+
 RENDER_SEGMENT_ACTIVITY_NAME = "poddown.audio.render_segment"
 
 
@@ -450,6 +477,7 @@ class EpisodeRenderWorkflow:
             decision = await self._run_segment(episode_input, segment)
             decisions.append(decision)
             if decision.accepted_candidate_id is None:
+                failure_code = decision.failure_code or "QUALITY_GATES_EXHAUSTED"
                 terminal_failure = WorkflowFailure(
                     segment_id=segment.segment_id,
                     attempt_count=decision.attempt,
@@ -479,6 +507,7 @@ class EpisodeRenderWorkflow:
                     RENDER_SEGMENT_ACTIVITY_NAME,
                     args=[
                         {
+                            "episode": episode_input.to_dict(),
                             "segment": segment.to_dict(),
                             "attempt": attempt,
                             "take": take,

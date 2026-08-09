@@ -1,5 +1,11 @@
 """Public immutable durable-audio contracts and rights policy."""
 
+from poddown.audio.activities import (
+    ActivityHandler,
+    QualityEvaluator,
+    build_durable_render_activity,
+    deterministic_quality_evaluator,
+)
 from poddown.audio.contracts import (
     ArtifactRef,
     AudioRenderer,
@@ -45,6 +51,7 @@ from poddown.audio.workflow import (
 
 __all__ = [
     "ArtifactRef",
+    "ActivityHandler",
     "AudioRenderer",
     "AudioDiagnostics",
     "AudioDiagnosticsError",
@@ -59,6 +66,7 @@ __all__ = [
     "LocalOrchestrationError",
     "MalformedAudioError",
     "ProviderCostEvent",
+    "QualityEvaluator",
     "RenderCandidate",
     "RenderedAudio",
     "RenderOutcome",
@@ -74,7 +82,9 @@ __all__ = [
     "WorkflowContractError",
     "WorkflowFailure",
     "activity_key_for",
+    "build_durable_render_activity",
     "diagnose_wav",
+    "deterministic_quality_evaluator",
     "require_render_rights",
     "rank_candidates",
     "select_candidate",
