@@ -6,7 +6,7 @@
 
 **Architecture:** Build a small `src/poddown` package with immutable domain values and application functions. Provider SDKs remain outside this slice; deterministic in-memory adapters establish and test the ports before ElevenLabs/OpenAI HTTP integration. Each Gherkin scenario must be observed failing before its minimum implementation is added.
 
-**Tech Stack:** Python 3.12, uv, pytest 8, pytest-bdd 8, pytest-cov 6, PyYAML, Pydantic 2
+**Tech Stack:** Python 3.12, uv, pytest 9, pytest-bdd 8, pytest-cov 6, PyYAML, Pydantic 2
 
 ## Global Constraints
 
