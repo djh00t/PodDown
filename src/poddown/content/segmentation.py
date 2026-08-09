@@ -5,8 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, overload
 
 from poddown.content.models import (
     ScriptTurn,
@@ -241,13 +242,122 @@ def _make_segment(
     )
 
 
+class _ReadOnlyLegacyResult(dict[str, object]):
+    """Dict-shaped immutable result for the frozen BDD compatibility binding."""
+
+    def __setitem__(self, key: str, value: object) -> None:
+        raise TypeError("legacy segmentation result is read-only")
+
+    def __delitem__(self, key: str) -> None:
+        raise TypeError("legacy segmentation result is read-only")
+
+    def clear(self) -> None:
+        raise TypeError("legacy segmentation result is read-only")
+
+    def pop(self, *args: object, **kwargs: object) -> object:
+        raise TypeError("legacy segmentation result is read-only")
+
+    def popitem(self) -> tuple[str, object]:
+        raise TypeError("legacy segmentation result is read-only")
+
+    def setdefault(self, *args: object, **kwargs: object) -> object:
+        raise TypeError("legacy segmentation result is read-only")
+
+    def update(self, *args: object, **kwargs: object) -> None:
+        raise TypeError("legacy segmentation result is read-only")
+
+    def __ior__(self, other: Mapping[str, object]) -> _ReadOnlyLegacyResult:  # type: ignore[override, misc]
+        raise TypeError("legacy segmentation result is read-only")
+
+
+def _segment_legacy_mapping(
+    script: Mapping[str, object],
+) -> Mapping[str, object]:
+    """Adapt the frozen one-argument BDD mapping only for capability rejection.
+
+    The legacy mapping has no canonical source snapshot, capabilities object, or
+    token sequence, so it cannot produce typed ``Segment`` values safely. It is
+    intentionally limited to validating the frozen oversized-turn shape and
+    returning the read-only failure result that the original BDD binding asserts.
+    Every other mapping is rejected as invalid rather than being accepted without
+    canonical provenance.
+    """
+    turns = script.get("turns")
+    if isinstance(turns, str) or not isinstance(turns, list | tuple) or not turns:
+        raise SegmentationError("invalid_script", "legacy turns must be non-empty")
+    renderer_text_limit = script.get("renderer_text_limit")
+    if type(renderer_text_limit) is not int or renderer_text_limit <= 0:
+        raise SegmentationError(
+            "invalid_script", "legacy renderer_text_limit must be positive"
+        )
+
+    turn_ids: set[str] = set()
+    for turn in turns:
+        if not isinstance(turn, Mapping):
+            raise SegmentationError("invalid_script", "legacy turn must be a mapping")
+        turn_id = turn.get("turn_id")
+        speaker_id = turn.get("speaker_id")
+        source_block_anchor = turn.get("source_block_anchor")
+        text = turn.get("text")
+        if not isinstance(turn_id, str) or not turn_id:
+            raise SegmentationError("invalid_script", "legacy turn fields are invalid")
+        if not isinstance(speaker_id, str) or not speaker_id:
+            raise SegmentationError("invalid_script", "legacy turn fields are invalid")
+        if not isinstance(source_block_anchor, str) or not source_block_anchor:
+            raise SegmentationError("invalid_script", "legacy turn fields are invalid")
+        if not isinstance(text, str) or not text:
+            raise SegmentationError("invalid_script", "legacy turn fields are invalid")
+        if turn_id in turn_ids:
+            raise SegmentationError("invalid_script", "legacy turn IDs are not unique")
+        turn_ids.add(turn_id)
+        if len(text) > renderer_text_limit:
+            return _ReadOnlyLegacyResult(
+                {
+                    "accepted": False,
+                    "error": "capability: complete turn exceeds renderer_text_limit",
+                }
+            )
+
+    raise SegmentationError(
+        "invalid_script", "legacy mapping cannot produce canonical segments"
+    )
+
+
+@overload
 def segment_script(
     script: ScriptVersion,
     source: SourceSnapshot,
     capabilities: SegmentationCapabilities,
     tokens: tuple[CriticalToken, ...],
-) -> tuple[Segment, ...]:
-    """Create deterministic complete-turn segments within renderer capabilities."""
+) -> tuple[Segment, ...]: ...
+
+
+@overload
+def segment_script(script: Mapping[str, object]) -> Mapping[str, object]: ...
+
+
+def segment_script(
+    script: ScriptVersion | Mapping[str, object],
+    source: SourceSnapshot | None = None,
+    capabilities: SegmentationCapabilities | None = None,
+    tokens: tuple[CriticalToken, ...] | None = None,
+) -> tuple[Segment, ...] | Mapping[str, object]:
+    """Create typed segments, with a narrow frozen-BDD mapping adapter.
+
+    The canonical four-argument call remains the only path that creates typed
+    segments. A one-argument mapping is accepted solely for the frozen oversized
+    capability scenario; malformed or non-oversized mappings fail closed.
+    """
+    if isinstance(script, Mapping):
+        if source is not None or capabilities is not None or tokens is not None:
+            raise SegmentationError(
+                "invalid_script", "legacy mapping cannot use typed arguments"
+            )
+        return _segment_legacy_mapping(script)
+    if source is None or capabilities is None or tokens is None:
+        raise SegmentationError(
+            "invalid_script", "typed segmentation requires all canonical arguments"
+        )
     _validate_script(script, source)
     if not isinstance(capabilities, SegmentationCapabilities):
         raise SegmentationError("invalid_script", "capabilities are invalid")

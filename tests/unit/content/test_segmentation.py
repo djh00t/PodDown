@@ -297,3 +297,51 @@ def test_segment_rejects_non_finite_estimated_duration(duration):
             duration,
             "normal",
         )
+
+
+def test_segment_script_legacy_mapping_returns_read_only_capability_rejection():
+    """The frozen BDD mapping gets only its narrow capability-failure contract."""
+    from poddown.content.segmentation import segment_script
+
+    result = segment_script(
+        {
+            "turns": [
+                {
+                    "turn_id": "t-001",
+                    "speaker_id": "spk-engineer-a",
+                    "source_block_anchor": "block-robotics-overview",
+                    "text": "word " * 5000,
+                }
+            ],
+            "renderer_text_limit": 240,
+        }
+    )
+
+    assert isinstance(result, dict)
+    assert result["accepted"] is False
+    assert "capability" in str(result["error"]).lower()
+    with pytest.raises(TypeError):
+        result["accepted"] = True  # type: ignore[index]
+
+
+def test_segment_script_legacy_mapping_rejects_non_oversized_or_malformed_input():
+    """The compatibility boundary must not claim success without canonical inputs."""
+    from poddown.content.segmentation import SegmentationError, segment_script
+
+    valid_but_incomplete = {
+        "turns": [
+            {
+                "turn_id": "t-001",
+                "speaker_id": "spk-engineer-a",
+                "source_block_anchor": "block-robotics-overview",
+                "text": "short",
+            }
+        ],
+        "renderer_text_limit": 240,
+    }
+    malformed = {"turns": [], "renderer_text_limit": 240}
+
+    for legacy_script in (valid_but_incomplete, malformed):
+        with pytest.raises(SegmentationError) as error:
+            segment_script(legacy_script)
+        assert error.value.code == "invalid_script"
