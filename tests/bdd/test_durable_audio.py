@@ -1,16 +1,17 @@
 """Executable acceptance tests for durable single-segment audio rendering."""
 
+import asyncio
 from dataclasses import FrozenInstanceError, replace
 from decimal import Decimal
 
 import pytest
-from poddown.audio.local import DeterministicLocalRenderer
-from poddown.audio.render import DurableRenderService, RenderRejectedError
-from poddown.audio.storage import FilesystemArtifactStore, FilesystemRenderRecordStore
 from pytest_bdd import given, scenarios, then, when
 
 from poddown.audio.contracts import RenderRequest
-from poddown.audio.rights import VoiceConsent
+from poddown.audio.local import DeterministicLocalRenderer
+from poddown.audio.render import DurableRenderService, RenderRejectedError
+from poddown.audio.rights import RightsDeniedError, VoiceConsent
+from poddown.audio.storage import FilesystemArtifactStore, FilesystemRenderRecordStore
 
 scenarios("../features/durable_audio.feature")
 
@@ -53,11 +54,13 @@ def audio_context(tmp_path):
 
 
 def _render(audio_context, *, take_count=1):
-    return audio_context["service"].render_takes(
-        audio_context["request"],
-        audio_context["consent"],
-        audio_context["renderer"],
-        take_count=take_count,
+    return asyncio.run(
+        audio_context["service"].render_takes(
+            audio_context["request"],
+            audio_context["consent"],
+            audio_context["renderer"],
+            take_count=take_count,
+        )
     )
 
 
@@ -99,7 +102,12 @@ def render_three_local_takes(audio_context):
 
 @when("the request is rendered with one local take")
 def render_one_local_take(audio_context):
-    with pytest.raises(RenderRejectedError):
+    expected_error = (
+        RightsDeniedError
+        if audio_context["consent"] is None
+        else RenderRejectedError
+    )
+    with pytest.raises(expected_error):
         _render(audio_context)
 
 
