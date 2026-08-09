@@ -79,7 +79,6 @@ def _parse_frontmatter_manual(frontmatter_text: str) -> dict:
             current[key] = new
             stack.append((new, indent + 2))
         else:
-            normalized = value
             if value.lower() in {"true", "false"}:
                 parsed = value.lower() == "true"
             elif re.fullmatch(r"-?\d+\.\d+", value):
@@ -87,7 +86,7 @@ def _parse_frontmatter_manual(frontmatter_text: str) -> dict:
             elif re.fullmatch(r"-?\d+", value):
                 parsed = int(value)
             else:
-                parsed = value.strip('"\'')
+                parsed = value.strip("\"'")
             current[key] = parsed
 
     return root
@@ -134,7 +133,8 @@ def _invoke_prepare_content(prepare_fn, context):
     signature = inspect.signature(prepare_fn)
     if "renderer" not in signature.parameters:
         raise AssertionError(
-            "poddown.content.service.prepare_content must expose renderer boundary argument"
+            "poddown.content.service.prepare_content must expose renderer "
+            "boundary argument"
         )
 
     try:
@@ -146,7 +146,8 @@ def _invoke_prepare_content(prepare_fn, context):
         )
     except TypeError as error:
         raise AssertionError(
-            "poddown.content.service.prepare_content must accept the explicit renderer boundary argument"
+            "poddown.content.service.prepare_content must accept the explicit "
+            "renderer boundary argument"
         ) from error
 
 
@@ -179,12 +180,16 @@ def _expected_negation_occurrences():
 def _span_bounds(token, prefix: str) -> tuple[int, int]:
     start = _attribute_or_key(token, f"{prefix}_span_start")
     end = _attribute_or_key(token, f"{prefix}_span_end")
-    assert isinstance(start, int) and isinstance(end, int), f"{prefix} span fields are not integers"
+    assert isinstance(start, int) and isinstance(end, int), (
+        f"{prefix} span fields are not integers"
+    )
     assert start < end, f"{prefix} span end must be greater than start"
     return (start, end)
 
 
-given_given_source_profile = "the robotics mapping source and technical dialogue profile"
+given_given_source_profile = (
+    "the robotics mapping source and technical dialogue profile"
+)
 
 
 @given(given_given_source_profile)
@@ -192,7 +197,9 @@ def robotics_source_with_profile(context):
     context.values["source"] = _load_text_fixture("robotics-mapping.md")
     context.values["profile"] = _load_text_fixture("technical-dialogue-profile.yaml")
     context.values["proposal"] = _load_json_fixture("robotics-adaptation.json")
-    context.values["source_frontmatter"] = _extract_frontmatter(context.values["source"])
+    context.values["source_frontmatter"] = _extract_frontmatter(
+        context.values["source"]
+    )
     context.values["source_sha256"] = _sha256(context.values["source"])
     context.values["renderer_probe"] = RendererProbe()
 
@@ -213,7 +220,9 @@ def proposal_with_changed_number(context):
     context.values["source"] = _load_text_fixture("robotics-mapping.md")
     context.values["profile"] = _load_text_fixture("technical-dialogue-profile.yaml")
     context.values["proposal"] = proposal
-    context.values["source_frontmatter"] = _extract_frontmatter(context.values["source"])
+    context.values["source_frontmatter"] = _extract_frontmatter(
+        context.values["source"]
+    )
     context.values["source_sha256"] = _sha256(context.values["source"])
     context.values["renderer_probe"] = RendererProbe()
 
@@ -222,10 +231,34 @@ def proposal_with_changed_number(context):
 def lexicon_layers_for_key(context):
     context.values["lexicon_key"] = "C1"
     context.values["lexicon_layers"] = [
-        {"layer": "global", "version": "global-v1", "entry_id": "c1-global-v1", "spoken_form": "see one global", "scope": "global"},
-        {"layer": "domain", "version": "domain-v2", "entry_id": "c1-domain-v2", "spoken_form": "see one domain", "scope": "domain"},
-        {"layer": "project", "version": "project-v3", "entry_id": "c1-project-v3", "spoken_form": "see one project", "scope": "project"},
-        {"layer": "episode", "version": "episode-v4", "entry_id": "c1-episode-v4", "spoken_form": "see one episode", "scope": "episode"},
+        {
+            "layer": "global",
+            "version": "global-v1",
+            "entry_id": "c1-global-v1",
+            "spoken_form": "see one global",
+            "scope": "global",
+        },
+        {
+            "layer": "domain",
+            "version": "domain-v2",
+            "entry_id": "c1-domain-v2",
+            "spoken_form": "see one domain",
+            "scope": "domain",
+        },
+        {
+            "layer": "project",
+            "version": "project-v3",
+            "entry_id": "c1-project-v3",
+            "spoken_form": "see one project",
+            "scope": "project",
+        },
+        {
+            "layer": "episode",
+            "version": "episode-v4",
+            "entry_id": "c1-episode-v4",
+            "spoken_form": "see one episode",
+            "scope": "episode",
+        },
     ]
 
 
@@ -233,8 +266,22 @@ def lexicon_layers_for_key(context):
 def conflicting_project_lexicon_entries(context):
     context.values["lexicon_key"] = "LiDAR"
     context.values["lexicon_layers"] = [
-        {"layer": "project", "version": "project-v1", "entry_id": "lidar-project-a", "spoken_form": "LIE-dar", "normalized": "lidar", "scope": "project"},
-        {"layer": "project", "version": "project-v2", "entry_id": "lidar-project-b", "spoken_form": "LIE-der", "normalized": "lidar", "scope": "project"},
+        {
+            "layer": "project",
+            "version": "project-v1",
+            "entry_id": "lidar-project-a",
+            "spoken_form": "LIE-dar",
+            "normalized": "lidar",
+            "scope": "project",
+        },
+        {
+            "layer": "project",
+            "version": "project-v2",
+            "entry_id": "lidar-project-b",
+            "spoken_form": "LIE-der",
+            "normalized": "lidar",
+            "scope": "project",
+        },
     ]
 
 
@@ -269,7 +316,9 @@ def prepare_episode(context):
 
     prepare_fn = getattr(service, "prepare_content", None)
     if prepare_fn is None:
-        raise AssertionError("poddown.content.service.prepare_content is not implemented")
+        raise AssertionError(
+            "poddown.content.service.prepare_content is not implemented"
+        )
 
     context.values["result"] = _invoke_prepare_content(prepare_fn, context)
 
@@ -283,9 +332,13 @@ def resolve_pronunciation(context):
 
     resolve_fn = getattr(lexicon, "resolve_pronunciation", None)
     if resolve_fn is None:
-        raise AssertionError("poddown.content.lexicon.resolve_pronunciation is not implemented")
+        raise AssertionError(
+            "poddown.content.lexicon.resolve_pronunciation is not implemented"
+        )
 
-    context.values["result"] = resolve_fn(key="C1", layers=context.values["lexicon_layers"])
+    context.values["result"] = resolve_fn(
+        key="C1", layers=context.values["lexicon_layers"]
+    )
 
 
 @when("the project pronunciation is resolved")
@@ -297,7 +350,9 @@ def resolve_project_pronunciation(context):
 
     resolve_fn = getattr(lexicon, "resolve_pronunciation", None)
     if resolve_fn is None:
-        raise AssertionError("poddown.content.lexicon.resolve_pronunciation is not implemented")
+        raise AssertionError(
+            "poddown.content.lexicon.resolve_pronunciation is not implemented"
+        )
 
     context.values["result"] = resolve_fn(
         key=context.values["lexicon_key"], layers=context.values["lexicon_layers"]
@@ -313,7 +368,9 @@ def extract_tokens(context):
 
     extract_fn = getattr(tokens, "extract_critical_tokens", None)
     if extract_fn is None:
-        raise AssertionError("poddown.content.tokens.extract_critical_tokens is not implemented")
+        raise AssertionError(
+            "poddown.content.tokens.extract_critical_tokens is not implemented"
+        )
 
     context.values["result"] = extract_fn(context.values["critical_text"])
 
@@ -323,11 +380,15 @@ def segment_script(context):
     try:
         segmentation = import_module("poddown.content.segmentation")
     except ModuleNotFoundError as error:
-        raise AssertionError("poddown.content.segmentation is not implemented") from error
+        raise AssertionError(
+            "poddown.content.segmentation is not implemented"
+        ) from error
 
     segment_fn = getattr(segmentation, "segment_script", None)
     if segment_fn is None:
-        raise AssertionError("poddown.content.segmentation.segment_script is not implemented")
+        raise AssertionError(
+            "poddown.content.segmentation.segment_script is not implemented"
+        )
 
     context.values["result"] = segment_fn(context.values["script"])
 
@@ -357,7 +418,10 @@ def script_has_stable_speakers(context):
 def source_frontmatter_and_hash_is_preserved(context):
     result = context.values["result"]
     source_snapshot = _attribute_or_key(result, "source_snapshot", {})
-    assert _attribute_or_key(source_snapshot, "source_sha256") == context.values["source_sha256"]
+    assert (
+        _attribute_or_key(source_snapshot, "source_sha256")
+        == context.values["source_sha256"]
+    )
 
     frontmatter = _attribute_or_key(source_snapshot, "frontmatter", {})
     if isinstance(frontmatter, str):
@@ -366,7 +430,9 @@ def source_frontmatter_and_hash_is_preserved(context):
 
     expected_frontmatter = context.values["source_frontmatter"]
     assert frontmatter == expected_frontmatter
-    assert _sha256(_canonical_json(frontmatter)) == _sha256(_canonical_json(expected_frontmatter))
+    assert _sha256(_canonical_json(frontmatter)) == _sha256(
+        _canonical_json(expected_frontmatter)
+    )
 
 
 @then("the script contains disagreement without unsupported claims")
@@ -441,7 +507,9 @@ def segmentation_manifest_preserves_structure(context):
     assert source_block_ids == expected_source_blocks
     assert isinstance(segments, list) and segments
 
-    expected_turn_positions = {turn_id: index for index, turn_id in enumerate(expected_turn_order)}
+    expected_turn_positions = {
+        turn_id: index for index, turn_id in enumerate(expected_turn_order)
+    }
     expected_source_positions = {
         block_id: index for index, block_id in enumerate(expected_source_blocks)
     }
@@ -450,9 +518,17 @@ def segmentation_manifest_preserves_structure(context):
         segment_source_block_ids = _attribute_or_key(segment, "source_block_ids", [])
         assert isinstance(segment_turn_ids, list) and segment_turn_ids
         assert isinstance(segment_source_block_ids, list) and segment_source_block_ids
-        assert all(isinstance(turn_id, str) and turn_id.strip() for turn_id in segment_turn_ids)
-        assert all(isinstance(block_id, str) and block_id.strip() for block_id in segment_source_block_ids)
-        assert all(segment_turn_ids[index] in expected_turn_positions for index in range(len(segment_turn_ids)))
+        assert all(
+            isinstance(turn_id, str) and turn_id.strip() for turn_id in segment_turn_ids
+        )
+        assert all(
+            isinstance(block_id, str) and block_id.strip()
+            for block_id in segment_source_block_ids
+        )
+        assert all(
+            segment_turn_ids[index] in expected_turn_positions
+            for index in range(len(segment_turn_ids))
+        )
         assert all(
             expected_turn_positions[segment_turn_ids[index]]
             < expected_turn_positions[segment_turn_ids[index + 1]]
@@ -520,10 +596,12 @@ def negation_occurrences(context):
         expected["occurrence_id"] for expected in expected_negations
     ]
     assert [tuple(_span_bounds(token, "source")) for token in negations] == [
-        (expected["source_span_start"], expected["source_span_end"]) for expected in expected_negations
+        (expected["source_span_start"], expected["source_span_end"])
+        for expected in expected_negations
     ]
     assert [tuple(_span_bounds(token, "script")) for token in negations] == [
-        (expected["script_span_start"], expected["script_span_end"]) for expected in expected_negations
+        (expected["script_span_start"], expected["script_span_end"])
+        for expected in expected_negations
     ]
 
 
@@ -531,7 +609,9 @@ def negation_occurrences(context):
 def deterministic_token_manifest(context):
     manifest = _attribute_or_key(context.values["result"], "manifest", {})
     assert _attribute_or_key(manifest, "deterministic") is True
-    assert _attribute_or_key(manifest, "occurrence_count") == len(context.values["expected_negation_occurrences"])
+    assert _attribute_or_key(manifest, "occurrence_count") == len(
+        context.values["expected_negation_occurrences"]
+    )
 
 
 @then("segmentation fails with a capability error")
