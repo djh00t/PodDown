@@ -13,6 +13,12 @@ from poddown.content.models import (
 )
 from poddown.content.profiles import load_profile, resolve_profile_metadata
 from poddown.content.source import anchor_text, snapshot_source
+from poddown.content.service import (
+    ContentPreparationRequest,
+    ContentPreparationResult,
+    canonical_manifest,
+    prepare_content,
+)
 
 __all__ = [
     "Profile",
@@ -25,7 +31,11 @@ __all__ = [
     "VoiceAsset",
     "VoiceConsent",
     "anchor_text",
+    "canonical_manifest",
     "load_profile",
+    "ContentPreparationRequest",
+    "ContentPreparationResult",
+    "prepare_content",
     "resolve_profile_metadata",
     "snapshot_source",
 ]
