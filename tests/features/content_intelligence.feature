@@ -5,6 +5,7 @@ Feature: Prepare source-bound technical content
     And a deterministic source-bound adaptation proposal
     When content intelligence prepares the episode
     Then the canonical script has two stable speakers and complete factual anchors
+    And the source snapshot frontmatter and hash are preserved
     And the script contains disagreement without unsupported claims
     And every extracted critical token has an expected spoken form
     And the segmentation manifest preserves turn order and source grouping

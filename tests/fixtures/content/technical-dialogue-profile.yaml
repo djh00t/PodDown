@@ -1,5 +1,9 @@
 poddown:
   profile: technical-dialogue
+  duration_minutes: 12
+  source_window:
+    start: 00:00
+    end: 12:00
   quality_targets:
     fidelity: 1.0
     determinism: strict
@@ -8,8 +12,12 @@ poddown:
     - lidar
     - hertz
   critical_tokens:
-    - not
     - lidar
-    - hertz
+    - c1
+    - hz
+    - 13.8 hertz
+    - 99.7%
+    - not
+    - 12 minutes
   disallow_unsourced_numbers: true
   renderer_text_limit: 240
