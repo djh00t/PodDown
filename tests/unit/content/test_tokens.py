@@ -8,7 +8,12 @@ from poddown.content.lexicon import (
     PronunciationEntry,
     PronunciationLexicon,
 )
-from poddown.content.tokens import CriticalToken, extract_critical_tokens
+from poddown.content.tokens import (
+    CriticalToken,
+    TokenExtractionConflictError,
+    extract_critical_tokens,
+)
+from poddown.qa.fidelity import evaluate_critical_tokens
 
 TEXT = (
     "Ada Lovelace from Atlas Robotics shipped PodDown Studio with SLAM, LiDAR, "
@@ -120,7 +125,7 @@ def test_extract_critical_tokens_preserves_all_categories_spans_and_speech():
         "one point six terabits per second",
         "twenty-one point five kilograms",
         "twelve point five percent",
-        "August 9, 2026",
+        "August ninth, two thousand twenty-six",
         "four point two million dollars",
         "A A P L",
     ]
@@ -253,7 +258,7 @@ def test_structural_numeric_tokens_use_m0_compatible_verbalization():
         "one point six terabits per second",
         "twenty-one point five kilograms",
         "ninety-nine point seven percent",
-        "August 9, 2026",
+        "August ninth, two thousand twenty-six",
         "four point two million dollars",
         "twelve minutes",
     ]
@@ -294,7 +299,7 @@ def test_negations_cover_m0_words_contractions_and_boundaries():
         "without",
         "neither",
         "nor",
-        "can not",
+        "cannot",
         "can not",
         "is not",
         "is not",
@@ -329,3 +334,75 @@ def test_critical_token_rejects_invalid_values():
         CriticalToken("tok-1", "number", "1", (1, 1), (1, 1), "one", None)
     with pytest.raises(ValueError):
         CriticalToken("tok-1", "number", "1", (0, 1), (0, 1), "", None)
+
+
+def test_nested_lexicon_matches_fail_closed_instead_of_dropping_an_occurrence():
+    """Keeping only the longer or shorter configured name loses declared evidence."""
+    lexicons = {
+        "project": PronunciationLexicon(
+            "project",
+            "v1",
+            (
+                PronunciationEntry("short", "Atlas", "atlas", "e1", category="name"),
+                PronunciationEntry(
+                    "long",
+                    "Atlas Robotics",
+                    "atlas robotics",
+                    "e1",
+                    category="organization",
+                ),
+            ),
+        )
+    }
+
+    with pytest.raises(TokenExtractionConflictError, match="overlap"):
+        extract_critical_tokens("Atlas Robotics", lexicons)
+
+
+def test_partial_lexicon_overlap_with_structural_span_fails_closed():
+    """A partial date match must not inherit pronunciation from an incomplete span."""
+    lexicons = {
+        "project": PronunciationLexicon(
+            "project",
+            "v1",
+            (PronunciationEntry("partial", "2026-08", "partial date", "e1"),),
+        )
+    }
+
+    with pytest.raises(TokenExtractionConflictError, match="overlap"):
+        extract_critical_tokens("2026-08-09", lexicons)
+
+
+@pytest.mark.parametrize("malformed", [[], ""])
+def test_falsy_supplied_lexicons_are_not_treated_as_no_layers(malformed):
+    """Only None means no layers; falsy malformed values must be rejected."""
+    with pytest.raises(TypeError, match="mapping"):
+        extract_critical_tokens("SLAM", malformed)  # type: ignore[arg-type]
+
+
+def test_cannot_expected_speech_passes_m0_fidelity_as_one_token():
+    """The required negation occurrence must retain M0's one-token cannot form."""
+    token = extract_critical_tokens("cannot")[0]
+
+    assert token.category == "negation"
+    assert token.normalized == "cannot"
+    assert token.expected_spoken_form == "cannot"
+    assert (
+        evaluate_critical_tokens((token.expected_spoken_form,), "cannot").passed is True
+    )
+
+
+def test_date_speech_is_fully_verbal_and_passes_m0_fidelity():
+    """Digits in an expected date would fail the deterministic spoken contract."""
+    token = extract_critical_tokens("2026-08-09")[0]
+
+    assert token.category == "date"
+    assert token.expected_spoken_form == "August ninth, two thousand twenty-six"
+    assert not any(character.isdigit() for character in token.expected_spoken_form)
+    assert (
+        evaluate_critical_tokens(
+            (token.expected_spoken_form,),
+            "The launch date is August ninth, two thousand twenty-six.",
+        ).passed
+        is True
+    )

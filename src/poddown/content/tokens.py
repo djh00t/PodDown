@@ -102,6 +102,40 @@ _MONTHS = (
     "November",
     "December",
 )
+_ORDINALS = (
+    "",
+    "first",
+    "second",
+    "third",
+    "fourth",
+    "fifth",
+    "sixth",
+    "seventh",
+    "eighth",
+    "ninth",
+    "tenth",
+    "eleventh",
+    "twelfth",
+    "thirteenth",
+    "fourteenth",
+    "fifteenth",
+    "sixteenth",
+    "seventeenth",
+    "eighteenth",
+    "nineteenth",
+    "twentieth",
+    "twenty-first",
+    "twenty-second",
+    "twenty-third",
+    "twenty-fourth",
+    "twenty-fifth",
+    "twenty-sixth",
+    "twenty-seventh",
+    "twenty-eighth",
+    "twenty-ninth",
+    "thirtieth",
+    "thirty-first",
+)
 _UNIT_SPOKEN = {
     "tbit/s": "terabits per second",
     "tb/s": "terabytes per second",
@@ -187,6 +221,10 @@ _NUMBER = re.compile(r"(?<![\w.])-?\d+(?:\.\d+)?(?![\w.])")
 
 class TokenExtractionError(ValueError):
     """Raised when a critical-looking structural value is malformed."""
+
+
+class TokenExtractionConflictError(TokenExtractionError):
+    """Raised when declared token spans overlap ambiguously."""
 
 
 def _validate_span(
@@ -390,7 +428,10 @@ def _spoken_date(year: str, month: str, day: str) -> str:
             raise ValueError
     except (TypeError, ValueError) as error:
         raise TokenExtractionError("malformed ISO date token") from error
-    return f"{_MONTHS[month_number - 1]} {day_number}, {year_number}"
+    return (
+        f"{_MONTHS[month_number - 1]} {_ORDINALS[day_number]}, "
+        f"{_spoken_integer(year_number)}"
+    )
 
 
 def _spoken_currency(value: str, suffix: str) -> str:
@@ -585,7 +626,9 @@ def _negation_spoken(value: str) -> str:
     normalized = normalize_lexicon_key(value)
     if normalized in _NEGATION_CONTRACTIONS:
         return _NEGATION_CONTRACTIONS[normalized]
-    if normalized in {"cannot", "can not"}:
+    if normalized == "cannot":
+        return "cannot"
+    if normalized == "can not":
         return "can not"
     return normalized
 
@@ -602,16 +645,25 @@ def _merge_lexicon_matches(
         if not overlaps:
             matches.append(candidate)
             continue
-        structural_index = next(
-            (
-                index
-                for index in overlaps
-                if matches[index].category in _STRUCTURAL_CATEGORIES
-            ),
-            None,
-        )
-        if structural_index is not None:
+        structural_indices = [
+            index
+            for index in overlaps
+            if matches[index].category in _STRUCTURAL_CATEGORIES
+        ]
+        if structural_indices:
+            if len(overlaps) != 1:
+                raise TokenExtractionConflictError(
+                    "lexicon span overlaps multiple token spans"
+                )
+            structural_index = structural_indices[0]
             structural = matches[structural_index]
+            if (candidate.start, candidate.end) != (
+                structural.start,
+                structural.end,
+            ):
+                raise TokenExtractionConflictError(
+                    "lexicon span partially overlaps a structural token span"
+                )
             matches[structural_index] = _Match(
                 start=structural.start,
                 end=structural.end,
@@ -619,6 +671,8 @@ def _merge_lexicon_matches(
                 spoken_form=candidate.spoken_form,
                 pronunciation_source=candidate.pronunciation_source,
             )
+            continue
+        raise TokenExtractionConflictError("overlapping lexicon token spans")
 
 
 def extract_critical_tokens(
@@ -627,9 +681,12 @@ def extract_critical_tokens(
     """Extract all critical occurrences with deterministic precedence and IDs."""
     if not isinstance(text, str):
         raise ValueError("text must be a string")
-    layers: Mapping[LexiconScope, PronunciationLexicon] = lexicons or {}
-    if not isinstance(layers, Mapping):
-        raise TypeError("lexicons must be a typed mapping")
+    if lexicons is None:
+        layers: Mapping[LexiconScope, PronunciationLexicon] = {}
+    elif not isinstance(lexicons, Mapping):
+        raise TypeError("lexicons must be a mapping or None")
+    else:
+        layers = lexicons
     _validate_mapping_layers(layers)
 
     matches = _structural_matches(text)

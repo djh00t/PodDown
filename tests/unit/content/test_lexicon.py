@@ -176,3 +176,15 @@ def test_malformed_lexicon_values_fail_closed():
         PronunciationEntry("id", "key", "", "v1")
     with pytest.raises(ValueError):
         PronunciationEntry("id", "key", "spoken", "v1", category="number")  # type: ignore[arg-type]
+
+
+def test_blank_typed_key_still_validates_supplied_layer_bindings():
+    """A blank lookup must not bypass strict scope-map validation."""
+    project_lexicon = PronunciationLexicon(
+        scope="project",
+        version="project-1",
+        entries=(PronunciationEntry("opaque", "C1", "see one", "v1"),),
+    )
+
+    with pytest.raises(ValueError, match="scope"):
+        resolve_pronunciation("", {"domain": project_lexicon})

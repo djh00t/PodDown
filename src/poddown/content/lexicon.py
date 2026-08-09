@@ -234,10 +234,10 @@ def normalize_lexicon_key(value: str) -> str:
 def _resolve_typed_pronunciation(
     key: str, layers: Mapping[LexiconScope, PronunciationLexicon]
 ) -> PronunciationResolution | None:
+    _validate_mapping_layers(layers)
     normalized_key = normalize_lexicon_key(key)
     if not normalized_key:
         return None
-    _validate_mapping_layers(layers)
     for scope in _SCOPE_ORDER:
         lexicon = layers.get(scope)
         if lexicon is None:
