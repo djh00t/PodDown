@@ -324,6 +324,42 @@ def test_adapt_source_preserves_defined_non_factual_editorial_dialogue():
     assert script.turns[0] == editorial_prompt
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Please explain clouds contain water.",
+        "Do you agree that clouds contain water?",
+    ],
+)
+def test_adapt_source_rejects_factual_payloads_after_editorial_prefix(text):
+    """Editorial prefixes cannot make an unanchored factual payload safe."""
+    from poddown.content.adaptation import AdaptationError
+    from poddown.content.models import ScriptTurn
+
+    snapshot = snapshot_source(SOURCE)
+    treatment = _treatment(snapshot)
+    proposal = _proposal(snapshot, treatment)
+    editorial_fact = ScriptTurn(
+        proposal.turns[0].turn_id,
+        proposal.turns[0].speaker_id,
+        text,
+        "editorial",
+        (),
+        (),
+    )
+
+    with pytest.raises(AdaptationError) as error:
+        _adapt(
+            snapshot,
+            replace(proposal, turns=(editorial_fact, *proposal.turns[1:])),
+            treatment,
+        )
+
+    assert error.value.code == "unsupported_claim"
+    assert error.value.detail == "claim is not supported by its claim anchors"
+    assert text not in error.value.detail
+
+
 def test_adapt_source_requires_canonical_turn_ids_two_speakers_and_disagreement():
     """Duplicate IDs, single-speaker dialogue, and filler-only dialogue are invalid."""
     from poddown.content.adaptation import AdaptationError

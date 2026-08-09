@@ -31,13 +31,16 @@ AdaptationErrorCode = Literal[
 _COMPARISONS = re.compile(
     r"\b(?:more|less|higher|lower|better|worse|faster|slower)\b", re.IGNORECASE
 )
-_EDITORIAL_QUESTION = re.compile(
-    r"^(?:who|what|when|where|why|how|can|could|would|should|do|does|did|is|are)\b.*\?$",
-    re.IGNORECASE,
-)
-_EDITORIAL_DIRECTIVE = re.compile(
-    r"^(?:let's|let us|please|tell me|walk me through|explain|consider|imagine|"
-    r"moving on|before we (?:continue|begin))\b.*[.!]?$",
+_EDITORIAL_TEMPLATE = re.compile(
+    r"^(?:"
+    r"(?:please )?(?:explain|clarify)(?: (?:that|this|it))?|"
+    r"(?:can|could|would) you (?:explain|clarify)(?: (?:that|this|it))?|"
+    r"do you agree(?: with (?:that|this|it))?|"
+    r"(?:what|how) should we (?:examine|proceed|continue)(?: next)?|"
+    r"let(?:'s| us) (?:examine|explore) (?:that|this|it)|"
+    r"let(?:'s| us) (?:continue|move on)|"
+    r"(?:tell me|walk me through) (?:that|this|it|more)"
+    r")$",
     re.IGNORECASE,
 )
 _EDITORIAL_EXACT = frozenset(
@@ -265,11 +268,7 @@ def _token_counts(text: str) -> Counter[tuple[str, str]]:
 def _is_allowed_editorial_utterance(text: str) -> bool:
     normalized = " ".join(text.casefold().split())
     bare = normalized.rstrip(".!?")
-    return (
-        bare in _EDITORIAL_EXACT
-        or bool(_EDITORIAL_QUESTION.fullmatch(normalized))
-        or bool(_EDITORIAL_DIRECTIVE.fullmatch(normalized))
-    )
+    return bare in _EDITORIAL_EXACT or bool(_EDITORIAL_TEMPLATE.fullmatch(bare))
 
 
 def _assert_source_bound(turn: ScriptTurn, source: SourceSnapshot) -> None:
