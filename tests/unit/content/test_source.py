@@ -93,6 +93,8 @@ PARAGRAPH_FOLLOWED_BY_NON_ONE_ORDERED_SOURCE = "Paragraph\n2. item\n"
 PARAGRAPH_FOLLOWED_BY_EMPTY_BULLET_SOURCE = "Paragraph\n*\n"
 PARAGRAPH_FOLLOWED_BY_INDENTED_CODE_LIST_SOURCE = "Paragraph\n1.     indented code\n"
 LAZY_LIST_CONTINUATION_SOURCE = "1. first item\nlazy continuation\n"
+LIST_HEADING_CHILD_SOURCE = "- item\n  # Child heading\nTop-level text\n"
+LIST_FENCE_CHILD_SOURCE = "- item\n  ```python\n  child code\n  ```\nTop-level text\n"
 
 
 class _MutableKey(str):
@@ -535,4 +537,42 @@ def test_lazy_unindented_continuation_stays_in_list_block():
             31,
             "block-0000-81ba044434ca",
         ),
+    ]
+
+
+def test_lazy_continuation_stops_after_an_indented_heading_child():
+    """A heading child closes the active list paragraph before top-level text."""
+    snapshot = snapshot_source(LIST_HEADING_CHILD_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        (
+            "list",
+            "- item\n  # Child heading",
+            0,
+            24,
+            "block-0000-d2d1b4f7ab15",
+        ),
+        ("paragraph", "Top-level text", 25, 39, "block-0001-c32100e08057"),
+    ]
+
+
+def test_lazy_continuation_stops_after_an_indented_fenced_child():
+    """A fenced code child closes the active list paragraph."""
+    snapshot = snapshot_source(LIST_FENCE_CHILD_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        (
+            "list",
+            "- item\n  ```python\n  child code\n  ```",
+            0,
+            37,
+            "block-0000-fc7cb119cc70",
+        ),
+        ("paragraph", "Top-level text", 38, 52, "block-0001-c32100e08057"),
     ]

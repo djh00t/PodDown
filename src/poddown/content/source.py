@@ -158,6 +158,19 @@ def _is_list_continuation(line: str, minimum_columns: int) -> bool:
     return bool(stripped.strip()) and _expanded_columns(stripped) >= minimum_columns
 
 
+def _is_list_paragraph_continuation(
+    lines: list[tuple[int, str]], index: int, minimum_columns: int
+) -> bool:
+    line = lines[index][1]
+    return (
+        _kind(line) == "paragraph"
+        and _fence_open(line) is None
+        and not _is_table_start(lines, index)
+        and not _is_setext_underline(line)
+        and _expanded_columns(line.rstrip("\r\n")) < minimum_columns + 4
+    )
+
+
 def _is_blank_line(line: str) -> bool:
     return not line.rstrip("\r\n").strip()
 
@@ -229,8 +242,15 @@ def snapshot_source(source: str) -> SourceSnapshot:
             continuation_columns = _list_continuation_columns(line)
             assert continuation_columns is not None
             item_has_paragraph = _list_item_has_paragraph(line)
+            active_fence: tuple[str, int] | None = None
             while end_index < len(lines):
                 next_line = lines[end_index][1]
+                if active_fence is not None:
+                    if _fence_close(next_line, *active_fence):
+                        active_fence = None
+                    item_has_paragraph = False
+                    end_index += 1
+                    continue
                 next_list_columns = _list_continuation_columns(next_line)
                 if next_list_columns is not None:
                     continuation_columns = next_list_columns
@@ -238,6 +258,14 @@ def snapshot_source(source: str) -> SourceSnapshot:
                     end_index += 1
                     continue
                 if _is_list_continuation(next_line, continuation_columns):
+                    fence = _fence_open(next_line)
+                    active_fence = fence
+                    item_has_paragraph = (
+                        fence is None
+                        and _is_list_paragraph_continuation(
+                            lines, end_index, continuation_columns
+                        )
+                    )
                     end_index += 1
                     continue
                 if _is_blank_line(next_line):
