@@ -118,7 +118,7 @@ class RenderOutcome:
 
 class AudioRenderer(Protocol):
     capabilities: ProviderCapabilities
-    def render(self, request: RenderRequest) -> RenderedAudio: ...
+    async def render(self, request: RenderRequest) -> RenderedAudio: ...
 
 # poddown.audio.rights
 @dataclass(frozen=True)
@@ -148,7 +148,7 @@ class FilesystemRenderRecordStore:
 # poddown.audio.render
 class DurableRenderService:
     def __init__(self, artifacts: ArtifactStore, records: RenderRecordStore) -> None: ...
-    def render_takes(
+    async def render_takes(
         self,
         request: RenderRequest,
         consent: VoiceConsent | None,
@@ -291,11 +291,11 @@ git commit -m "feat(audio): persist immutable render artifacts"
 - Produces: `DeterministicLocalRenderer` and `DurableRenderService.render_takes(...)` used by BDD and integration tests.
 
 - [ ] **Step 1: Write renderer and service tests before implementation.** Cover three takes, rights rejection before `renderer.calls` changes, capability rejection before dispatch, empty bytes rejection, provider/model/format/sample-rate/usage/cost mismatch rejection, replay from the same filesystem stores without a second renderer call, partial replay where only a missing take dispatches, and distinct attempt/take identities.
-- [ ] **Step 2: Implement `DeterministicLocalRenderer`.** Expose WAV/44.1 kHz, model and voice pinning, a high text limit, timestamps disabled, and provider idempotency; generate a deterministic valid PCM WAV using `wave` from a digest-derived frame count; return `local-{key-prefix}` request IDs, exact request provider/model/format/rate, character/byte usage, and `Decimal("0")` cost; append each request key to `calls`.
+- [ ] **Step 2: Implement `DeterministicLocalRenderer`.** Expose WAV/44.1 kHz, model and voice pinning, a high text limit, timestamps disabled, and provider idempotency; implement `async def render(request)` and generate a deterministic valid PCM WAV using `wave` from a digest-derived frame count; return `local-{key-prefix}` request IDs, exact request provider/model/format/rate, character/byte usage, and `Decimal("0")` cost; append each request key to `calls`.
 - [ ] **Step 3: Implement service preflight and take expansion.** Validate `1 <= take_count <= 3`; require rights; require requested format/sample rate/text length/model pinning/voice pinning/provider idempotency; create `replace(request, take_index=request.take_index + offset)` for each take; look up and verify existing records/artifacts before any renderer call.
-- [ ] **Step 4: Implement the new-render path.** Call the injected renderer exactly once per missing take, validate non-empty bytes and exact normalized metadata, persist bytes through `ArtifactStore`, construct one candidate and one cost event whose `event_id` equals `cost-{candidate_id}`, save the immutable outcome, and return `replayed=False`.
+- [ ] **Step 4: Implement the new-render path.** Await the injected renderer exactly once per missing take, validate non-empty bytes and exact normalized metadata, persist bytes through `ArtifactStore`, construct one candidate and one cost event whose `event_id` equals `cost-{candidate_id}`, save the immutable outcome, and return `replayed=False`.
 - [ ] **Step 5: Implement replay and integrity behavior.** Return `RenderOutcome(replayed=True, cost_event=None)` for an intact record; verify the stored artifact digest/size before returning; propagate an integrity error for missing/corrupt artifacts without dispatching a replacement or creating a duplicate cost event.
-- [ ] **Step 6: Run focused render and BDD tests.**
+- [ ] **Step 6: Run focused render and BDD tests.** The synchronous BDD steps must invoke the async service with `asyncio.run` so the executable feature remains compatible with the repository's current pytest-bdd setup.
 
 Run: `PYDANTIC_DISABLE_PLUGINS=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src uv run pytest tests/unit/audio/test_render.py tests/bdd/test_durable_audio.py -q`
 
