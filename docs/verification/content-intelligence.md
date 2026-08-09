@@ -33,7 +33,9 @@ repository source is never modified.
 
 The environment uses `PYDANTIC_DISABLE_PLUGINS=1` because automatic third-party
 Pydantic plugin discovery is not required for this deterministic local suite.
-Every command also sets `PYTHONPATH=src` so tests resolve the checked-out source.
+The focused checked-out-source test commands set `PYTHONPATH=src` so tests
+resolve the repository source. The mutation verifier replaces that with the
+isolated copy's source path.
 
 | Command | Result |
 | --- | --- |
