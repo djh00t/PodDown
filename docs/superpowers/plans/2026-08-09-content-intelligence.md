@@ -320,6 +320,7 @@ git commit -m "feat(content): assemble deterministic preparation manifest"
 - Modify: `docs/planning-traceability.md`
 - Modify: `docs/product-delivery-plan.md`
 - Modify: `pyproject.toml`
+- Modify: `Makefile`
 
 **Interfaces:**
 - The evals consume only public M1 ports and deterministic fixtures; they do not call live AI or voice providers.

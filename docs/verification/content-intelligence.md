@@ -7,6 +7,7 @@
   `tests/fixtures/content/adversarial-adaptation.json`, plus the disposable
   `scripts/verify_content_mutation.py` verifier. The sdist configuration in
   `pyproject.toml` excludes local caches and delivery metadata from artifacts.
+  The `Makefile` test target explicitly loads only pytest-bdd and coverage.
 - Fixture SHA-256: `68fec3c23e2c7e647a11c8e69f9baecd999b7aaff287158733b3f48664fdf096`.
 - Eval SHA-256: `c34840e44ee571d6a8232ebbb88fed7f5a12df77def6549759f2096b0df53976`.
 - No live AI, voice, or renderer provider is invoked. The eval request uses the
@@ -43,6 +44,7 @@ isolated copy's source path.
 | `pytest tests/evals/test_content_intelligence.py -v` | 10 passed. |
 | `PYDANTIC_DISABLE_PLUGINS=1 .venv/bin/python scripts/verify_content_mutation.py` | Expected mutation kill: 2 named evals failed, 8 passed; verifier exited 0. |
 | `make check` | 218 passed, 1 `live_provider` test deselected, 87.01% total coverage; Ruff and strict mypy passed. |
+| `make check` after explicit plugin-loading hardening | Host-blocked while importing `pytest-bdd`/Pygments from the iCloud-backed virtualenv; the exact process was interrupted after no test collection. |
 | `make build` | Passed: Hatchling built the source distribution and wheel. |
 | `make docs` | Blocked: `uv run pdoc poddown --output-directory docs/api` remained running without output files or completion status; stopped exact Task 7 processes. |
 | `git diff --check` | Passed after the Task 7 hardening changes. |
