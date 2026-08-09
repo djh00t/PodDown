@@ -29,6 +29,10 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _canonical_json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
 def _extract_frontmatter(source: str) -> dict:
     lines = source.splitlines()
     if not lines or lines[0].strip() != "---":
@@ -128,29 +132,22 @@ def _invoke_prepare_content(prepare_fn, context):
     proposal_value = context.values["proposal"]
 
     signature = inspect.signature(prepare_fn)
-    params = signature.parameters
-
-    source_arg = next((name for name in ["source", "source_text", "markdown", "source_markdown", "episode_source"] if name in params), "source")
-    profile_arg = next(
-        (name for name in ["profile", "profile_text", "profile_config", "profile_yaml", "poddown_profile"] if name in params),
-        "profile",
-    )
-    proposal_arg = next((name for name in ["proposal", "adaptation", "adaptation_proposal", "source_bound_proposal"] if name in params), "proposal")
-    boundary_arg = next(
-        (name for name in ["renderer", "provider_renderer", "renderer_boundary", "render_boundary", "render_fn", "renderer_fn", "provider_boundary"] if name in params),
-        None,
-    )
-
-    kwargs = {source_arg: source_value, profile_arg: profile_value, proposal_arg: proposal_value}
-    if boundary_arg is not None:
-        kwargs[boundary_arg] = context.values["renderer_probe"]
+    if "renderer" not in signature.parameters:
+        raise AssertionError(
+            "poddown.content.service.prepare_content must expose renderer boundary argument"
+        )
 
     try:
-        return prepare_fn(**kwargs)
+        return prepare_fn(
+            source=source_value,
+            profile=profile_value,
+            proposal=proposal_value,
+            renderer=context.values["renderer_probe"],
+        )
     except TypeError as error:
-        if "unexpected keyword argument" in str(error):
-            return prepare_fn(source_value, profile_value, proposal_value)
-        raise
+        raise AssertionError(
+            "poddown.content.service.prepare_content must accept the explicit renderer boundary argument"
+        ) from error
 
 
 def _expected_proposal(context):
@@ -166,9 +163,51 @@ def _expected_negation_occurrences():
     first = text.index("not")
     second = text.rindex("not")
     return [
-        {"occurrence_id": "neg-01", "span_start": first, "span_end": first + len("not")},
-        {"occurrence_id": "neg-02", "span_start": second, "span_end": second + len("not")},
+        {
+            "occurrence_id": "neg-01",
+            "source_span_start": first,
+            "source_span_end": first + len("not"),
+            "script_span_start": first,
+            "script_span_end": first + len("not"),
+        },
+        {
+            "occurrence_id": "neg-02",
+            "source_span_start": second,
+            "source_span_end": second + len("not"),
+            "script_span_start": second,
+            "script_span_end": second + len("not"),
+        },
     ]
+
+
+def _span_bounds(token, prefix: str, fallback: str) -> tuple[int, int]:
+    start = _attribute_or_key(token, f"{prefix}_span_start")
+    end = _attribute_or_key(token, f"{prefix}_span_end")
+    if start is None or end is None:
+        start = _attribute_or_key(token, f"{fallback}_start", start)
+        end = _attribute_or_key(token, f"{fallback}_end", end)
+    assert isinstance(start, int) and isinstance(end, int), f"{prefix} span fields are not integers"
+    assert start < end, f"{prefix} span end must be greater than start"
+    return (start, end)
+
+
+def _critical_token_identity(token: dict) -> str:
+    token_id = _attribute_or_key(token, "occurrence_id")
+    if token_id is not None:
+        return str(token_id)
+    token_id = _attribute_or_key(token, "surface")
+    if token_id is not None:
+        return str(token_id)
+    token_id = _attribute_or_key(token, "token")
+    if token_id is not None:
+        return str(token_id)
+    token_id = _attribute_or_key(token, "text")
+    if token_id is not None:
+        return str(token_id)
+    token_id = _attribute_or_key(token, "source_form")
+    if token_id is not None:
+        return str(token_id)
+    raise AssertionError("critical token entry requires a stable identity")
 
 
 given_given_source_profile = "the robotics mapping source and technical dialogue profile"
@@ -352,10 +391,8 @@ def source_frontmatter_and_hash_is_preserved(context):
     assert isinstance(frontmatter, dict)
 
     expected_frontmatter = context.values["source_frontmatter"]
-    for key in ["profile", "episode_id", "duration_minutes", "target_date"]:
-        assert _key_values_from(frontmatter, f"poddown.{key}") == _key_values_from(
-            expected_frontmatter, f"poddown.{key}"
-        )
+    assert frontmatter == expected_frontmatter
+    assert _sha256(_canonical_json(frontmatter)) == _sha256(_canonical_json(expected_frontmatter))
 
 
 @then("the script contains disagreement without unsupported claims")
@@ -380,21 +417,17 @@ def critical_tokens_have_spoken_forms(context):
     expected = _expected_critical_tokens(context)
 
     assert len(tokens) == len(expected)
-
-    observed = {
-        _attribute_or_key(token, "surface")
-        or _attribute_or_key(token, "token")
-        or _attribute_or_key(token, "text"): token
-        for token in tokens
-    }
+    observed = {_critical_token_identity(token): token for token in tokens}
+    expected_keys = [_critical_token_identity(item) for item in expected]
+    assert len(observed) == len(expected_keys)
+    assert set(observed.keys()) == set(expected_keys)
 
     for item in expected:
-        surface = item["surface"]
-        assert surface in observed
-        token = observed[surface]
+        token = observed[_critical_token_identity(item)]
         assert token["spoken_form"] == item["spoken_form"]
         assert token["source_form"] == item["source_form"]
         assert token["category"] == item["category"]
+        assert token["occurrence_id"] == item["occurrence_id"]
 
 
 @then("the segmentation manifest preserves turn order and source grouping")
@@ -404,12 +437,40 @@ def segmentation_manifest_preserves_structure(context):
     turn_ids = _attribute_or_key(manifest, "turn_ids", [])
     source_block_ids = _attribute_or_key(manifest, "source_block_ids", [])
     segments = _attribute_or_key(manifest, "segments", [])
+    expected_turn_order = _expected_proposal(context)["expected_turn_order"]
+    expected_source_blocks = _expected_proposal(context)["expected_source_blocks"]
 
     assert isinstance(turn_ids, list) and isinstance(source_block_ids, list)
-    assert turn_ids == _expected_proposal(context)["expected_turn_order"]
-    assert source_block_ids == _expected_proposal(context)["expected_source_blocks"]
-    if segments:
-        assert segments[0]["turn_id"] == _expected_proposal(context)["expected_turn_order"][0]
+    assert turn_ids == expected_turn_order
+    assert source_block_ids == expected_source_blocks
+    assert isinstance(segments, list) and segments
+
+    expected_turn_positions = {turn_id: index for index, turn_id in enumerate(expected_turn_order)}
+    expected_source_positions = {
+        block_id: index for index, block_id in enumerate(expected_source_blocks)
+    }
+    for segment in segments:
+        segment_turn_ids = _attribute_or_key(segment, "turn_ids", [])
+        segment_source_block_ids = _attribute_or_key(segment, "source_block_ids", [])
+        assert isinstance(segment_turn_ids, list) and segment_turn_ids
+        assert isinstance(segment_source_block_ids, list) and segment_source_block_ids
+        assert all(isinstance(turn_id, str) and turn_id.strip() for turn_id in segment_turn_ids)
+        assert all(isinstance(block_id, str) and block_id.strip() for block_id in segment_source_block_ids)
+        assert all(segment_turn_ids[index] in expected_turn_positions for index in range(len(segment_turn_ids)))
+        assert all(
+            expected_turn_positions[segment_turn_ids[index]]
+            < expected_turn_positions[segment_turn_ids[index + 1]]
+            for index in range(len(segment_turn_ids) - 1)
+        )
+        assert all(
+            segment_source_block_ids[index] in expected_source_positions
+            for index in range(len(segment_source_block_ids))
+        )
+        assert all(
+            expected_source_positions[segment_source_block_ids[index]]
+            < expected_source_positions[segment_source_block_ids[index + 1]]
+            for index in range(len(segment_source_block_ids) - 1)
+        )
 
 
 @then("adaptation fails with an unsupported claim error")
@@ -457,25 +518,27 @@ def negation_occurrences(context):
         and _attribute_or_key(token, "category") == "negation"
     ]
 
-    assert len(negations) == 2
-    assert all(_attribute_or_key(negations[0], "occurrence_id") != _attribute_or_key(negations[1], "occurrence_id"))
+    assert len(negations) == len(expected_negations) == 2
 
+    negations_in_order = sorted(negations, key=lambda token: _span_bounds(token, "script", "span")[0])
+    assert [_attribute_or_key(token, "occurrence_id") for token in negations_in_order] == [
+        expected["occurrence_id"] for expected in expected_negations
+    ]
+
+    observed_by_id = {_attribute_or_key(token, "occurrence_id"): token for token in negations}
     for expected in expected_negations:
-        matches = [
-            token
-            for token in negations
-            if _attribute_or_key(token, "span_start") == expected["span_start"]
-            and _attribute_or_key(token, "span_end") == expected["span_end"]
-            and _attribute_or_key(token, "occurrence_id") == expected["occurrence_id"]
-        ]
-        assert matches
+        token = observed_by_id[expected["occurrence_id"]]
+        source_span = _span_bounds(token, "source", "span")
+        script_span = _span_bounds(token, "script", "span")
+        assert source_span == (expected["source_span_start"], expected["source_span_end"])
+        assert script_span == (expected["script_span_start"], expected["script_span_end"])
 
 
 @then("the token manifest is deterministic")
 def deterministic_token_manifest(context):
     manifest = _attribute_or_key(context.values["result"], "manifest", {})
     assert _attribute_or_key(manifest, "deterministic") is True
-    assert _attribute_or_key(manifest, "occurrence_count") == 2
+    assert _attribute_or_key(manifest, "occurrence_count") == len(context.values["expected_negation_occurrences"])
 
 
 @then("segmentation fails with a capability error")
