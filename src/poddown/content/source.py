@@ -14,26 +14,32 @@ from poddown.content.models import (
     freeze_mapping,
 )
 
-_HEADING = re.compile(r"^#{1,6}\s")
-_LIST = re.compile(r"^\s*(?:[-+*]|\d+[.)])\s+")
-_FENCE = re.compile(r"^\s*(```|~~~)")
+_HEADING = re.compile(r"^ {0,3}#{1,6}(?:[ \t]+|$)")
+_LIST = re.compile(r"^ {0,3}(?:[-+*]|\d+[.)])[ \t]+")
+_BLOCKQUOTE = re.compile(r"^ {0,3}>")
+_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+_FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})[ \t]*$")
+_SETEXT = re.compile(r"^ {0,3}(?:=+|-+)[ \t]*$")
 
 
 def _frontmatter(source: str) -> tuple[Mapping[str, object], int]:
-    if not source.startswith("---\n"):
+    """Parse frontmatter with either LF or CRLF line endings."""
+    lines = source.splitlines(True)
+    if not lines or lines[0].rstrip("\r\n") != "---":
         return {}, 0
-    boundary = source.find("\n---\n", 4)
-    if boundary < 0:
-        raise ValueError("Markdown frontmatter is not terminated")
-    try:
-        parsed = yaml.safe_load(source[4:boundary])
-    except yaml.YAMLError as error:
-        raise ValueError(f"Invalid YAML frontmatter: {error}") from error
-    if not isinstance(parsed, dict):
-        raise ValueError("Markdown frontmatter must be an object")
-    if any(not isinstance(key, str) for key in parsed):
-        raise ValueError("Markdown frontmatter keys must be strings")
-    return parsed, boundary + len("\n---\n")
+    first_end = len(lines[0])
+    offset = first_end
+    for line in lines[1:]:
+        if line.rstrip("\r\n") == "---":
+            try:
+                parsed = yaml.safe_load(source[first_end:offset])
+            except yaml.YAMLError as error:
+                raise ValueError(f"Invalid YAML frontmatter: {error}") from error
+            if not isinstance(parsed, dict):
+                raise ValueError("Markdown frontmatter must be an object")
+            return parsed, offset + len(line)
+        offset += len(line)
+    raise ValueError("Markdown frontmatter is not terminated")
 
 
 def _line_offsets(source: str, start: int) -> list[tuple[int, str]]:
@@ -51,11 +57,31 @@ def _kind(line: str) -> SourceBlockKind | None:
         return None
     if _HEADING.match(stripped):
         return "heading"
-    if stripped.lstrip().startswith(">"):
+    if _BLOCKQUOTE.match(stripped):
         return "blockquote"
     if _LIST.match(stripped):
         return "list"
     return "paragraph"
+
+
+def _fence_open(line: str) -> tuple[str, int] | None:
+    match = _FENCE.match(line.rstrip("\r\n"))
+    if match is None:
+        return None
+    marker = match.group(1)
+    info = match.group(2)
+    if marker[0] == "`" and "`" in info:
+        return None
+    return marker[0], len(marker)
+
+
+def _fence_close(line: str, marker_char: str, marker_length: int) -> bool:
+    match = _FENCE_CLOSE.match(line.rstrip("\r\n"))
+    return bool(
+        match is not None
+        and match.group(1)[0] == marker_char
+        and len(match.group(1)) >= marker_length
+    )
 
 
 def _is_table_start(lines: list[tuple[int, str]], index: int) -> bool:
@@ -64,6 +90,10 @@ def _is_table_start(lines: list[tuple[int, str]], index: int) -> bool:
     current = lines[index][1].rstrip("\r\n")
     separator = lines[index + 1][1].rstrip("\r\n")
     return "|" in current and bool(re.match(r"^\s*\|?\s*:?-{3,}", separator))
+
+
+def _is_setext_underline(line: str) -> bool:
+    return _SETEXT.fullmatch(line.rstrip("\r\n")) is not None
 
 
 def _block(
@@ -80,8 +110,14 @@ def _block(
     )
 
 
+def _line_end(lines: list[tuple[int, str]], index: int) -> int:
+    return lines[index][0] + len(lines[index][1].rstrip("\r\n"))
+
+
 def snapshot_source(source: str) -> SourceSnapshot:
     """Preserve Markdown exactly while indexing its addressable content blocks."""
+    if not isinstance(source, str):
+        raise ValueError("source must be a string")
     frontmatter, body_start = _frontmatter(source)
     lines = _line_offsets(source, body_start)
     blocks: list[SourceBlock] = []
@@ -92,16 +128,16 @@ def snapshot_source(source: str) -> SourceSnapshot:
         if not stripped.strip():
             index += 1
             continue
-        fence = _FENCE.match(stripped)
+        fence = _fence_open(line)
         if fence:
-            marker = fence.group(1)
+            marker_char, marker_length = fence
             end_index = index + 1
             while end_index < len(lines):
-                if lines[end_index][1].lstrip().startswith(marker):
+                if _fence_close(lines[end_index][1], marker_char, marker_length):
                     end_index += 1
                     break
                 end_index += 1
-            end = lines[end_index - 1][0] + len(lines[end_index - 1][1].rstrip("\r\n"))
+            end = _line_end(lines, end_index - 1)
             blocks.append(_block(len(blocks), "code", source, start, end))
             index = end_index
             continue
@@ -109,12 +145,37 @@ def snapshot_source(source: str) -> SourceSnapshot:
             end_index = index + 2
             while end_index < len(lines) and "|" in lines[end_index][1].rstrip("\r\n"):
                 end_index += 1
-            end = lines[end_index - 1][0] + len(lines[end_index - 1][1].rstrip("\r\n"))
-            blocks.append(_block(len(blocks), "table", source, start, end))
+            blocks.append(
+                _block(
+                    len(blocks),
+                    "table",
+                    source,
+                    start,
+                    _line_end(lines, end_index - 1),
+                )
+            )
             index = end_index
             continue
         kind = _kind(line)
         assert kind is not None
+        is_setext = (
+            kind == "paragraph"
+            and index + 1 < len(lines)
+            and _is_setext_underline(lines[index + 1][1])
+        )
+        if is_setext:
+            end_index = index + 2
+            blocks.append(
+                _block(
+                    len(blocks),
+                    "heading",
+                    source,
+                    start,
+                    _line_end(lines, end_index - 1),
+                )
+            )
+            index = end_index
+            continue
         end_index = index + 1
         if kind in {"list", "blockquote"}:
             while end_index < len(lines) and _kind(lines[end_index][1]) == kind:
@@ -122,11 +183,17 @@ def snapshot_source(source: str) -> SourceSnapshot:
         elif kind == "paragraph":
             while end_index < len(lines):
                 next_line = lines[end_index][1]
-                if _kind(next_line) != "paragraph" or _is_table_start(lines, end_index):
+                if (
+                    _kind(next_line) != "paragraph"
+                    or _is_table_start(lines, end_index)
+                    or _fence_open(next_line)
+                    or _is_setext_underline(next_line)
+                ):
                     break
                 end_index += 1
-        end = lines[end_index - 1][0] + len(lines[end_index - 1][1].rstrip("\r\n"))
-        blocks.append(_block(len(blocks), kind, source, start, end))
+        blocks.append(
+            _block(len(blocks), kind, source, start, _line_end(lines, end_index - 1))
+        )
         index = end_index
     return SourceSnapshot(
         source=source,
