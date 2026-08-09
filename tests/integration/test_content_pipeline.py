@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import sys
+from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
+from subprocess import run
 
 import pytest
 
@@ -17,9 +21,25 @@ from poddown.content.models import ScriptTurn, SourceAnchor, VoiceAsset, VoiceCo
 from poddown.content.segmentation import SegmentationCapabilities
 from poddown.content.source import snapshot_source
 
-
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "content"
 SOURCE = (FIXTURES_DIR / "robotics-mapping.md").read_text(encoding="utf-8")
+LOCALIZATION = (
+    "During the test window, EKF localization reports 99.7% positional consistency."
+)
+DISAGREEMENT = (
+    "I disagree with the earlier simplification that this architecture can split the "
+    "render path"
+)
+OVERVIEW = (
+    "On 2026-07-31 at 09:00 UTC, the mobile platform maps a 12-minute field pass."
+)
+CONTROLS = "The controller is not silent and it is not stable in high-frequency tests."
+LEGACY_PROFILE = (FIXTURES_DIR / "technical-dialogue-profile.yaml").read_text(
+    encoding="utf-8"
+)
+LEGACY_PROPOSAL = json.loads(
+    (FIXTURES_DIR / "robotics-adaptation.json").read_text(encoding="utf-8")
+)
 PROFILE_YAML = """profile_id: technical-dialogue
 version: 1.0.0
 format_type: dialogue
@@ -57,20 +77,19 @@ def _request(*, changed_number: bool = False):
     snapshot = snapshot_source(SOURCE)
     overview = _anchor(
         snapshot,
-        "On 2026-07-31 at 09:00 UTC, the mobile platform maps a 12-minute field pass.",
+        OVERVIEW,
     )
     localization = _anchor(
         snapshot,
-        "During the test window, EKF localization reports 99.7% positional consistency.",
+        LOCALIZATION,
     )
     controls = _anchor(
         snapshot,
-        "The controller is not silent and it is not stable in high-frequency tests.",
+        CONTROLS,
     )
     disagreement = _anchor(
         snapshot,
-        "I disagree with the earlier simplification that this architecture can split the "
-        "render path",
+        DISAGREEMENT,
     )
     treatment = EpisodeTreatment(
         "robotics-mapping",
@@ -86,8 +105,7 @@ def _request(*, changed_number: bool = False):
         ScriptTurn(
             "t-001",
             "spk-archivist-1",
-            overview_text
-            := "On 2026-07-31 at 09:00 UTC, the mobile platform maps a 12-minute field pass.",
+            OVERVIEW,
             "factual",
             (overview,),
             (overview,),
@@ -95,8 +113,7 @@ def _request(*, changed_number: bool = False):
         ScriptTurn(
             "t-002",
             "spk-controls-2",
-            "During the test window, EKF localization reports "
-            f"{'98.7%' if changed_number else '99.7%'} positional consistency.",
+            LOCALIZATION.replace("99.7%", "98.7%") if changed_number else LOCALIZATION,
             "factual",
             (localization,),
             (localization,),
@@ -104,7 +121,7 @@ def _request(*, changed_number: bool = False):
         ScriptTurn(
             "t-003",
             "spk-controls-2",
-            "The controller is not silent and it is not stable in high-frequency tests.",
+            CONTROLS,
             "factual",
             (controls,),
             (controls,),
@@ -112,13 +129,12 @@ def _request(*, changed_number: bool = False):
         ScriptTurn(
             "t-004",
             "spk-archivist-1",
-            "I disagree with the earlier simplification that this architecture can split the render path",
+            DISAGREEMENT.replace("\n", " "),
             "factual",
             (disagreement,),
             (disagreement,),
         ),
     )
-    del overview_text
     proposal = AdaptationProposal(treatment, turns)
     reasoning = FixtureReasoningPort({snapshot.source_sha256: proposal}, {})
     return ContentPreparationRequest(
@@ -139,6 +155,86 @@ def _request(*, changed_number: bool = False):
             VoiceConsent("voice-controls", True),
         ),
     )
+
+
+def _legacy_result(proposal: dict[str, object]):
+    from poddown.content.service import prepare_content
+
+    return prepare_content(source=SOURCE, profile=LEGACY_PROFILE, proposal=proposal)
+
+
+def test_service_import_does_not_change_global_date_json_encoding():
+    """A local manifest serializer must not change unrelated JSON encoding."""
+    probe = run(
+        [
+            sys.executable,
+            "-c",
+            "import json; from datetime import date; import poddown.content.service; "
+            "json.dumps(date(2026, 8, 10))",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert probe.returncode != 0
+    assert "not JSON serializable" in probe.stderr
+
+
+def test_compatibility_aliases_project_typed_values_not_tampered_proposal_rows():
+    """Caller-controlled proposal text or spans must not become accepted output."""
+    proposal = deepcopy(LEGACY_PROPOSAL)
+    proposal["source_turns"][0]["text"] = "injected source turn"
+    proposal["expected_critical_tokens"][0]["source_span_start"] = 999_999
+    proposal["expected_critical_tokens"][0]["source_span_end"] = 1_000_000
+
+    result = _legacy_result(proposal)
+
+    assert result.accepted is True
+    assert (
+        result.canonical_script["turns"][0]["text"]
+        == result.result.script.turns[0].text
+    )
+    assert result.canonical_script["turns"][0]["text"] != "injected source turn"
+    assert result.critical_tokens[0]["source_span_start"] != 999_999
+    assert result.critical_tokens[0]["source_span_end"] != 1_000_000
+
+
+def test_manifest_and_compatibility_aliases_are_recursively_immutable():
+    """Nested writes must not desynchronize replay data from its checksum."""
+    from poddown.content.service import prepare_content
+
+    result = prepare_content(_request())
+    legacy = _legacy_result(deepcopy(LEGACY_PROPOSAL))
+
+    with pytest.raises(TypeError):
+        result.manifest["script"]["turns"][0]["id"] = "changed"
+    with pytest.raises(TypeError):
+        result.manifest["segments"].append({})
+    with pytest.raises(TypeError):
+        legacy.source_snapshot["frontmatter"]["poddown"]["profile"] = "changed"
+    with pytest.raises(TypeError):
+        legacy.canonical_script["turns"][0]["text"] = "changed"
+    with pytest.raises(TypeError):
+        legacy.critical_tokens[0]["source_span_start"] = 0
+    with pytest.raises(TypeError):
+        legacy.segmentation_manifest["segments"][0]["turn_ids"].append("changed")
+
+
+def test_compatibility_rejects_duplicate_ids_and_uses_typed_segmentation_order():
+    """Duplicate caller identifiers must not collapse into accepted aliases."""
+    duplicate = deepcopy(LEGACY_PROPOSAL)
+    duplicate["source_turns"][1]["turn_id"] = duplicate["source_turns"][0]["turn_id"]
+    duplicate["expected_critical_tokens"][1]["occurrence_id"] = duplicate[
+        "expected_critical_tokens"
+    ][0]["occurrence_id"]
+
+    rejected = _legacy_result(duplicate)
+    accepted = _legacy_result(deepcopy(LEGACY_PROPOSAL))
+
+    assert rejected.accepted is False
+    assert accepted.segmentation_manifest["turn_ids"] == [
+        turn.turn_id for turn in accepted.result.script.turns
+    ]
 
 
 def test_prepare_content_builds_an_immutable_replayable_robotics_manifest():
@@ -175,8 +271,8 @@ def test_prepare_content_builds_an_immutable_replayable_robotics_manifest():
 
 
 def test_prepare_content_validates_profile_before_source_snapshotting():
-    """Changing the order could leak malformed source failures before profile rejection."""
-    from poddown.content.service import ContentPreparationRequest, prepare_content
+    """Profile failure must occur before malformed source snapshotting."""
+    from poddown.content.service import prepare_content
 
     request = replace(
         _request(), markdown="---\nunterminated: true", profile_yaml="bad"

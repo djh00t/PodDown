@@ -12,13 +12,13 @@ from poddown.content.models import (
     VoiceConsent,
 )
 from poddown.content.profiles import load_profile, resolve_profile_metadata
-from poddown.content.source import anchor_text, snapshot_source
 from poddown.content.service import (
     ContentPreparationRequest,
     ContentPreparationResult,
     canonical_manifest,
     prepare_content,
 )
+from poddown.content.source import anchor_text, snapshot_source
 
 __all__ = [
     "Profile",

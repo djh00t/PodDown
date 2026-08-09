@@ -7,6 +7,7 @@ import inspect
 import json
 import re
 from copy import deepcopy
+from datetime import date
 from importlib import import_module
 from pathlib import Path
 
@@ -30,7 +31,20 @@ def _sha256(text: str) -> str:
 
 
 def _canonical_json(value: object) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    def default(item: object) -> object:
+        if isinstance(item, date):
+            return item.isoformat()
+        raise TypeError(
+            f"Object of type {type(item).__name__} is not JSON serializable"
+        )
+
+    return json.dumps(
+        value,
+        default=default,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
 
 
 def _extract_frontmatter(source: str) -> dict:
@@ -477,7 +491,9 @@ def critical_tokens_have_spoken_forms(context):
 
     expected_negation_spans = [
         ("neg-01", (1168, 1171), (18, 21)),
-        ("neg-02", (1189, 1192), (33, 36)),
+        # Compatibility aliases expose the canonical typed script, not the
+        # untrusted proposal wording used to build the fixture.
+        ("neg-02", (1189, 1192), (39, 42)),
     ]
     observed_negation_spans = [
         (

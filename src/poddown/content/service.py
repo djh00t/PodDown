@@ -8,7 +8,6 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date
 from types import MappingProxyType
-from typing import Any
 
 import yaml
 
@@ -20,7 +19,11 @@ from poddown.content.adaptation import (
     StructuredReasoningPort,
     adapt_source,
 )
-from poddown.content.lexicon import LexiconScope, PronunciationLexicon
+from poddown.content.lexicon import (
+    LexiconScope,
+    PronunciationEntry,
+    PronunciationLexicon,
+)
 from poddown.content.models import (
     Profile,
     ScriptTurn,
@@ -32,28 +35,24 @@ from poddown.content.models import (
 )
 from poddown.content.profiles import load_profile, resolve_profile_metadata
 from poddown.content.segmentation import (
-    SegmentationCapabilities,
     Segment,
+    SegmentationCapabilities,
     segment_script,
 )
 from poddown.content.source import anchor_text, snapshot_source
 from poddown.content.tokens import CriticalToken, extract_critical_tokens
 
 
-_JSON_DEFAULT = json.JSONEncoder.default
-
-
-def _json_default(self: json.JSONEncoder, value: object) -> object:
-    """Keep frozen compatibility frontmatter JSON-safe without source rewriting."""
+def _json_default(value: object) -> object:
+    """Serialize dates locally without modifying the process JSON encoder."""
     if isinstance(value, date):
         return value.isoformat()
-    return _JSON_DEFAULT(self, value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
-json.JSONEncoder.default = _json_default
-
-
-def _frozen_mapping(value: Mapping[str, object], name: str) -> Mapping[str, object]:
+def _frozen_mapping[MappingValue](
+    value: Mapping[str, MappingValue], name: str
+) -> Mapping[str, MappingValue]:
     if not isinstance(value, Mapping):
         raise TypeError(f"{name} must be a mapping")
     return MappingProxyType(dict(value))
@@ -76,13 +75,43 @@ class _ReadOnlyDict(dict[str, object]):
         raise TypeError("compatibility values are read-only")
 
     __delitem__ = _readonly
-    __ior__ = _readonly
+    __ior__ = _readonly  # type: ignore[assignment]
     __setitem__ = _readonly
     clear = _readonly
     pop = _readonly
-    popitem = _readonly
+    popitem = _readonly  # type: ignore[assignment]
     setdefault = _readonly
     update = _readonly
+
+
+class _ReadOnlyList(list[object]):
+    """A list-compatible compatibility value that rejects mutation."""
+
+    def _readonly(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise TypeError("compatibility values are read-only")
+
+    __delitem__ = _readonly
+    __iadd__ = _readonly  # type: ignore[assignment]
+    __imul__ = _readonly  # type: ignore[assignment]
+    __setitem__ = _readonly
+    append = _readonly
+    clear = _readonly
+    extend = _readonly
+    insert = _readonly
+    pop = _readonly
+    remove = _readonly
+    reverse = _readonly
+    sort = _readonly
+
+
+def _deep_freeze(value: object) -> object:
+    """Recursively preserve mapping/list read shapes while preventing writes."""
+    if isinstance(value, Mapping):
+        return _ReadOnlyDict({key: _deep_freeze(item) for key, item in value.items()})
+    if isinstance(value, list | tuple):
+        return _ReadOnlyList([_deep_freeze(item) for item in value])
+    return _plain_value(value)
 
 
 @dataclass(frozen=True)
@@ -105,7 +134,7 @@ class ContentPreparationRequest:
             raise TypeError("treatment must be an EpisodeTreatment")
         if not isinstance(self.capabilities, SegmentationCapabilities):
             raise TypeError("capabilities must be SegmentationCapabilities")
-        layers = _frozen_mapping(self.lexicon_layers, "lexicon_layers")
+        layers = MappingProxyType(dict(self.lexicon_layers))
         if any(
             not isinstance(scope, str) or not isinstance(lexicon, PronunciationLexicon)
             for scope, lexicon in layers.items()
@@ -233,7 +262,13 @@ def _manifest_payload(
 
 
 def _serialized(value: Mapping[str, object]) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return json.dumps(
+        value,
+        default=_json_default,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
 
 
 def _build_result(request: ContentPreparationRequest) -> ContentPreparationResult:
@@ -255,9 +290,10 @@ def _build_result(request: ContentPreparationRequest) -> ContentPreparationResul
     )
     serialized = _serialized(payload)
     checksum = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-    manifest = MappingProxyType(
+    manifest = _deep_freeze(
         {**payload, "checksum": checksum, "provider_calls": 0, "serialized": serialized}
     )
+    assert isinstance(manifest, Mapping)
     return ContentPreparationResult(
         snapshot, profile, script, tokens, segments, manifest, checksum
     )
@@ -301,8 +337,10 @@ def _source_bound_tokens(
     used_offsets: dict[tuple[str, str], int] = {}
     resolved: list[CriticalToken] = []
     for token in tokens:
-        turn = next(
-            turn
+        if token.script_span is None:
+            raise AdaptationError("unsupported_claim")
+        turn_start, _, turn = next(
+            (start, end, turn)
             for start, end, turn in turn_offsets
             if start <= token.script_span[0] < end
         )
@@ -324,7 +362,10 @@ def _source_bound_tokens(
                 token.category,
                 token.normalized,
                 (source_start, source_end),
-                token.script_span,
+                (
+                    token.script_span[0] - turn_start,
+                    token.script_span[1] - turn_start,
+                ),
                 token.expected_spoken_form,
                 token.pronunciation_source,
                 token.source_form,
@@ -384,12 +425,26 @@ def _legacy_request(
     ):
         raise ValueError("legacy content inputs are invalid")
     turns_data = proposal["source_turns"]
-    speaker_ids = tuple(
-        item.get("speaker_id") for item in turns_data if isinstance(item, Mapping)
-    )
-    if len(speaker_ids) != 4 or any(
-        not isinstance(value, str) for value in speaker_ids
+    if any(
+        not isinstance(item, Mapping)
+        or not isinstance(item.get("turn_id"), str)
+        or not item["turn_id"]
+        or not isinstance(item.get("speaker_id"), str)
+        or not item["speaker_id"]
+        or not isinstance(item.get("source_block_anchor"), str)
+        or not item["source_block_anchor"]
+        for item in turns_data
     ):
+        raise AdaptationError("unsupported_claim")
+    turn_ids = [
+        str(item["turn_id"]) for item in turns_data if isinstance(item, Mapping)
+    ]
+    if len(turn_ids) != len(set(turn_ids)):
+        raise AdaptationError("unsupported_claim")
+    speaker_ids = tuple(
+        str(item["speaker_id"]) for item in turns_data if isinstance(item, Mapping)
+    )
+    if len(speaker_ids) != 4:
         raise ValueError("legacy proposal speakers are invalid")
     speakers = tuple(dict.fromkeys(speaker_ids))
     profile_yaml = yaml.safe_dump(
@@ -416,12 +471,59 @@ def _legacy_request(
     snapshot = snapshot_source(source)
     anchors = _legacy_block_anchors(snapshot)
     claims = proposal.get("claims", [])
+    expected_tokens = proposal.get("expected_critical_tokens", [])
     if not isinstance(claims, list) or any(
         not isinstance(claim, Mapping)
+        or not isinstance(claim.get("turn_id"), str)
+        or not claim["turn_id"]
+        or not isinstance(claim.get("claim_anchor"), str)
+        or not claim["claim_anchor"]
         or claim.get("source_value") != claim.get("adapted_value")
         for claim in claims
     ):
         raise AdaptationError("unsupported_claim")
+    claim_ids = [
+        (str(claim["turn_id"]), str(claim["claim_anchor"]), str(claim["source_value"]))
+        for claim in claims
+        if isinstance(claim, Mapping)
+    ]
+    if len(claim_ids) != len(set(claim_ids)):
+        raise AdaptationError("unsupported_claim")
+    if not isinstance(expected_tokens, list) or any(
+        not isinstance(token, Mapping)
+        or not isinstance(token.get("occurrence_id"), str)
+        or not token["occurrence_id"]
+        or not isinstance(token.get("source_form"), str)
+        or not isinstance(token.get("spoken_form"), str)
+        for token in expected_tokens
+    ):
+        raise AdaptationError("unsupported_claim")
+    token_ids = [
+        str(token["occurrence_id"])
+        for token in expected_tokens
+        if isinstance(token, Mapping)
+    ]
+    if len(token_ids) != len(set(token_ids)):
+        raise AdaptationError("unsupported_claim")
+    legacy_lexicon = PronunciationLexicon(
+        "episode",
+        "legacy-v1",
+        tuple(
+            PronunciationEntry(
+                f"legacy-token-{index}",
+                str(token["source_form"]),
+                str(token["spoken_form"]),
+                "legacy-v1",
+            )
+            for index, token in enumerate(
+                {
+                    str(token["source_form"]): token
+                    for token in expected_tokens
+                    if isinstance(token, Mapping)
+                }.values()
+            )
+        ),
+    )
     treatment = EpisodeTreatment(
         str(proposal.get("proposal_id", "legacy-treatment")),
         "dialogue",
@@ -459,7 +561,7 @@ def _legacy_request(
             profile_yaml,
             treatment,
             fixture,
-            {},
+            {"episode": legacy_lexicon},
             SegmentationCapabilities(
                 int(metadata.get("renderer_text_limit", 240)), None, frozenset(speakers)
             ),
@@ -490,99 +592,136 @@ def _compatibility_result(
     anchors: Mapping[str, SourceAnchor],
 ) -> _CompatibilityResult:
     turns = proposal["source_turns"]
-    assert isinstance(turns, list)
-    canonical_script = {
-        "turns": [
-            {
-                **dict(turn),
-                "claim_anchor": turn["claim_anchor"],
-                "source_block_anchor": turn["source_block_anchor"],
-            }
-            for turn in turns
-            if isinstance(turn, Mapping)
-        ]
+    claims = proposal.get("claims")
+    expected = proposal.get("expected_critical_tokens")
+    if (
+        not isinstance(turns, list)
+        or not isinstance(claims, list)
+        or not isinstance(expected, list)
+    ):
+        raise AdaptationError("unsupported_claim")
+    claims_by_turn = {
+        str(claim.get("turn_id")): claim
+        for claim in claims
+        if isinstance(claim, Mapping)
     }
-    expected = proposal.get("expected_critical_tokens", [])
+    proposal_turns = {
+        str(turn.get("turn_id")): turn for turn in turns if isinstance(turn, Mapping)
+    }
+    canonical_turns: list[dict[str, object]] = []
+    for turn in result.script.turns:
+        proposal_turn = proposal_turns.get(turn.turn_id)
+        claim = claims_by_turn.get(turn.turn_id)
+        if (
+            proposal_turn is None
+            or claim is None
+            or proposal_turn.get("speaker_id") != turn.speaker_id
+            or proposal_turn.get("source_block_anchor") not in anchors
+            or claim.get("source_block_anchor")
+            != proposal_turn.get("source_block_anchor")
+            or claim.get("source_value") != claim.get("adapted_value")
+        ):
+            raise AdaptationError("unsupported_claim")
+        source_anchor = anchors[str(proposal_turn["source_block_anchor"])]
+        if (
+            source_anchor not in turn.source_anchors
+            or source_anchor not in turn.claim_anchors
+        ):
+            raise AdaptationError("unsupported_claim")
+        canonical_turns.append(
+            {
+                "claim_anchor": claim.get("claim_anchor"),
+                "claim_anchors": [
+                    _anchor_manifest(anchor) for anchor in turn.claim_anchors
+                ],
+                "kind": turn.kind,
+                "is_disagreement": "disagree" in turn.text.casefold(),
+                "source_anchors": [
+                    _anchor_manifest(anchor) for anchor in turn.source_anchors
+                ],
+                "source_block_anchor": proposal_turn["source_block_anchor"],
+                "speaker_id": turn.speaker_id,
+                "supported_by_source": True,
+                "text": turn.text,
+                "turn_id": turn.turn_id,
+            }
+        )
+    if set(proposal_turns) != {turn.turn_id for turn in result.script.turns}:
+        raise AdaptationError("unsupported_claim")
+    canonical_script = {"turns": canonical_turns}
     compatibility_tokens: list[Mapping[str, object]] = []
-    source_search_offsets: dict[str, int] = {}
-    script_search_offsets: dict[tuple[str, str], int] = {}
-    for token in expected if isinstance(expected, list) else []:
+    used_tokens: set[str] = set()
+    for token in expected:
         if not isinstance(token, Mapping):
-            continue
+            raise AdaptationError("unsupported_claim")
         source_form = str(token["source_form"])
-        source_bytes = result.snapshot.source.encode("utf-8")
-        source_start = source_bytes.find(
-            source_form.encode("utf-8"), source_search_offsets.get(source_form, 0)
-        )
-        if source_start < 0:
-            source_start = source_bytes.find(
-                source_form.replace(" ", "-").encode("utf-8")
-            )
-        source_search_offsets[source_form] = source_start + len(
-            source_form.encode("utf-8")
-        )
-        matching_turn = next(
+        typed_token = next(
             (
-                turn
-                for turn in turns
-                if isinstance(turn, Mapping) and source_form in str(turn["text"])
+                candidate
+                for candidate in result.tokens
+                if candidate.occurrence_id not in used_tokens
+                and (
+                    candidate.source_form == source_form
+                    or source_form.replace(" ", "-").startswith(candidate.source_form)
+                )
             ),
-            turns[0],
+            None,
         )
-        script_text = str(matching_turn["text"])
-        script_key = (str(matching_turn["turn_id"]), source_form)
-        script_start = script_text.encode("utf-8").find(
-            source_form.encode("utf-8"), script_search_offsets.get(script_key, 0)
-        )
-        if script_start < 0:
-            script_start = 0
-        script_search_offsets[script_key] = script_start + len(
-            source_form.encode("utf-8")
-        )
+        if typed_token is None:
+            raise AdaptationError("unsupported_claim")
+        used_tokens.add(typed_token.occurrence_id)
         compatibility_tokens.append(
-            _ReadOnlyDict(
-                {
-                    "category": token["category"],
-                    "occurrence_id": token["occurrence_id"],
-                    "normalized": source_form.casefold(),
-                    "script_span_end": script_start + len(source_form.encode("utf-8")),
-                    "script_span_start": script_start,
-                    "source_form": source_form,
-                    "source_span_end": source_start + len(source_form.encode("utf-8")),
-                    "source_span_start": source_start,
-                    "spoken_form": token["spoken_form"],
-                }
-            )
+            {
+                "category": token["category"],
+                "occurrence_id": token["occurrence_id"],
+                "normalized": typed_token.normalized,
+                "script_span_end": typed_token.script_span_end,
+                "script_span_start": typed_token.script_span_start,
+                "source_form": token["source_form"],
+                "source_span_end": typed_token.source_span_end,
+                "source_span_start": typed_token.source_span_start,
+                "spoken_form": token["spoken_form"],
+            }
         )
     source_blocks = [
-        str(turn["source_block_anchor"]) for turn in turns if isinstance(turn, Mapping)
+        next(
+            label
+            for label, anchor in anchors.items()
+            if anchor == turn.source_anchors[0]
+        )
+        for turn in result.script.turns
     ]
     segment_rows = [
         {
             "source_block_ids": source_blocks,
-            "turn_ids": [
-                str(turn["turn_id"]) for turn in turns if isinstance(turn, Mapping)
-            ],
+            "turn_ids": [turn.turn_id for turn in result.script.turns],
         }
     ]
-    del anchors
+    frozen_source_snapshot = _deep_freeze(
+        {
+            "frontmatter": _plain_value(result.snapshot.frontmatter),
+            "source_sha256": result.snapshot.source_sha256,
+        }
+    )
+    frozen_script = _deep_freeze(canonical_script)
+    frozen_tokens = _deep_freeze(compatibility_tokens)
+    frozen_segmentation = _deep_freeze(
+        {
+            "segments": segment_rows,
+            "source_block_ids": source_blocks,
+            "turn_ids": segment_rows[0]["turn_ids"],
+        }
+    )
+    assert isinstance(frozen_source_snapshot, Mapping)
+    assert isinstance(frozen_script, Mapping)
+    assert isinstance(frozen_tokens, list)
+    assert isinstance(frozen_segmentation, Mapping)
     return _CompatibilityResult(
         result,
-        _ReadOnlyDict(
-            {
-                "frontmatter": _plain_value(result.snapshot.frontmatter),
-                "source_sha256": result.snapshot.source_sha256,
-            }
-        ),
-        _ReadOnlyDict(canonical_script),
-        tuple(compatibility_tokens),
-        _ReadOnlyDict(
-            {
-                "segments": segment_rows,
-                "source_block_ids": source_blocks,
-                "turn_ids": segment_rows[0]["turn_ids"],
-            }
-        ),
+        frozen_source_snapshot,
+        frozen_script,
+        tuple(frozen_tokens),
+        frozen_segmentation,
         True,
         None,
     )

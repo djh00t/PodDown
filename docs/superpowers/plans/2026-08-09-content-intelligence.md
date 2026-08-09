@@ -285,6 +285,8 @@ git commit -m "feat(content): segment canonical scripts deterministically"
 - `prepare_content(request: ContentPreparationRequest) -> ContentPreparationResult` performs profile validation, source snapshotting, anchored adaptation, lexicon/token resolution, and segmentation in dependency order; it makes no renderer calls.
 - The canonical typed API remains authoritative, but `prepare_content` also exposes a narrow compatibility facade for the frozen Task 1 BDD bindings: keyword arguments `source`, `profile`, `proposal`, and `renderer` are accepted and translated into the typed pipeline. The facade returns the canonical result plus read-only aliases `source_snapshot`, `canonical_script`, `critical_tokens`, `segmentation_manifest`, `accepted`, `error`, and `provider_calls`; the renderer argument is a boundary probe and is never called.
 - `canonical_manifest(result: ContentPreparationResult) -> Mapping[str, object]` contains only canonical JSON-compatible values, sorted keys, stable ordering, source/profile/script/lexicon versions, anchors, tokens, segments, and capabilities.
+- The BDD canonical JSON helper serializes YAML date values through an explicit local default hook; the service must not mutate the process-wide `json.JSONEncoder`.
+- Compatibility aliases derive script text and token spans from the validated typed result; frozen BDD expectations must use those canonical spans rather than untrusted proposal wording.
 
 - [ ] **Step 1: Write the integration test for the robotics fixture.** Assert two speakers, target duration between 10 and 15 minutes, source hash, factual anchors, disagreement, token accuracy inputs, segment order, no provider calls, manifest checksum, and equivalent output from two identical requests.
 - [ ] **Step 2: Run the integration test and verify the expected red failure.**
@@ -293,7 +295,7 @@ Run: `uv run pytest tests/integration/test_content_pipeline.py -v`
 
 Expected: FAIL because the orchestration service is absent.
 
-- [ ] **Step 3: Implement the orchestration service and public exports.** Keep serialization deterministic with sorted keys and compact separators; never serialize credentials, raw provider IDs, or source text into error messages. Add the narrow Task 1 BDD compatibility facade without weakening the typed request/result contract or invoking its renderer boundary.
+- [ ] **Step 3: Implement the orchestration service and public exports.** Keep serialization deterministic with sorted keys and compact separators; never serialize credentials, raw provider IDs, or source text into error messages. Add the narrow Task 1 BDD compatibility facade without weakening the typed request/result contract or invoking its renderer boundary. Use local date serialization in both service and BDD test infrastructure; never install a process-wide JSON encoder hook.
 - [ ] **Step 4: Run the full M1 BDD/unit/integration surface, then `make check`.**
 
 Run: `uv run pytest tests/bdd/test_content_intelligence.py tests/unit/content tests/integration/test_content_pipeline.py -v && make check`
