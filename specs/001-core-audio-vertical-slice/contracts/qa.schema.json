@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poddown.dev/schemas/v1/qa-result.schema.json",
+  "title": "PodDown QA result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["subject_id", "stage", "passed", "critical_token_accuracy", "gates", "scores"],
+  "properties": {
+    "subject_id": {"type": "string", "minLength": 1},
+    "stage": {"enum": ["candidate", "master"]},
+    "passed": {"type": "boolean"},
+    "critical_token_accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "passed", "evidence"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "passed": {"type": "boolean"},
+          "evidence": {"type": "object"}
+        }
+      }
+    },
+    "scores": {
+      "type": "object",
+      "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1}
+    }
+  }
+}
