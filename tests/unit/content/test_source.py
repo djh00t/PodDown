@@ -60,6 +60,10 @@ MULTILINE_SETEXT_SOURCE = (
     "First line\ncontinued line\n----------------\n\nNext paragraph\n"
 )
 INDENTED_LIST_SOURCE = "- first item\n  continuation line\n- second item\n"
+TAB_LIST_SOURCE = "- first item\n\tcontinuation line\n- second item\n"
+BLANK_CONTINUATION_SOURCE = (
+    "- first item\n\n  continuation paragraph\n\nTop-level paragraph\n"
+)
 
 
 class _MutableKey(str):
@@ -283,3 +287,27 @@ def test_indented_list_continuation_stays_in_one_list_block():
     assert snapshot.blocks[0].start == 0
     assert snapshot.blocks[0].end == 46
     assert snapshot.blocks[0].text == "- first item\n  continuation line\n- second item"
+
+
+def test_tab_indented_list_continuation_stays_in_one_list_block():
+    """Tab indentation must remain part of the containing list block."""
+    snapshot = snapshot_source(TAB_LIST_SOURCE)
+
+    assert len(snapshot.blocks) == 1
+    assert snapshot.blocks[0].kind == "list"
+    assert snapshot.blocks[0].block_id == "block-0000-313ef15e7467"
+    assert snapshot.blocks[0].start == 0
+    assert snapshot.blocks[0].end == 45
+    assert snapshot.blocks[0].text == "- first item\n\tcontinuation line\n- second item"
+
+
+def test_blank_separated_list_continuation_does_not_swallow_top_level_content():
+    """A blank-separated indented paragraph stays in the list before a new block."""
+    snapshot = snapshot_source(BLANK_CONTINUATION_SOURCE)
+
+    assert [block.kind for block in snapshot.blocks] == ["list", "paragraph"]
+    assert snapshot.blocks[0].block_id == "block-0000-59f635782d68"
+    assert snapshot.blocks[0].start == 0
+    assert snapshot.blocks[0].end == 38
+    assert snapshot.blocks[0].text == "- first item\n\n  continuation paragraph"
+    assert snapshot.blocks[1].text == "Top-level paragraph"

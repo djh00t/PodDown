@@ -15,7 +15,7 @@ from poddown.content.profiles import _load_yaml
 
 _HEADING = re.compile(r"^ {0,3}#{1,6}(?:[ \t]+|$)")
 _LIST = re.compile(r"^ {0,3}(?:[-+*]|\d+[.)])[ \t]+")
-_LIST_CONTINUATION = re.compile(r"^ {2,}\S")
+_LIST_CONTINUATION = re.compile(r"^(?: {2,}|\t| {1,3}\t)\S")
 _BLOCKQUOTE = re.compile(r"^ {0,3}>")
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})[ \t]*$")
@@ -93,6 +93,14 @@ def _is_setext_underline(line: str) -> bool:
     return _SETEXT.fullmatch(line.rstrip("\r\n")) is not None
 
 
+def _is_list_continuation(line: str) -> bool:
+    return _LIST_CONTINUATION.match(line.rstrip("\r\n")) is not None
+
+
+def _is_blank_line(line: str) -> bool:
+    return not line.rstrip("\r\n").strip()
+
+
 def _block(
     block_index: int, kind: SourceBlockKind, source: str, start: int, end: int
 ) -> SourceBlock:
@@ -157,14 +165,24 @@ def snapshot_source(source: str) -> SourceSnapshot:
         assert kind is not None
         end_index = index + 1
         if kind == "list":
-            while end_index < len(lines) and _kind(lines[end_index][1]) == kind:
-                end_index += 1
-            while end_index < len(lines) and _LIST_CONTINUATION.match(
-                lines[end_index][1].rstrip("\r\n")
-            ):
-                end_index += 1
-                while end_index < len(lines) and _kind(lines[end_index][1]) == kind:
+            while end_index < len(lines):
+                next_line = lines[end_index][1]
+                if _kind(next_line) == kind or _is_list_continuation(next_line):
                     end_index += 1
+                    continue
+                if _is_blank_line(next_line):
+                    lookahead = end_index
+                    while lookahead < len(lines) and _is_blank_line(
+                        lines[lookahead][1]
+                    ):
+                        lookahead += 1
+                    if lookahead < len(lines) and (
+                        _kind(lines[lookahead][1]) == kind
+                        or _is_list_continuation(lines[lookahead][1])
+                    ):
+                        end_index += 1
+                        continue
+                break
         elif kind == "blockquote":
             while end_index < len(lines) and _kind(lines[end_index][1]) == kind:
                 end_index += 1
