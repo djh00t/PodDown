@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poddown.dev/schemas/v1/markdown-frontmatter.schema.json",
+  "title": "PodDown Markdown frontmatter",
+  "type": "object",
+  "properties": {
+    "poddown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile"],
+      "properties": {
+        "profile": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"},
+        "format": {"enum": ["narration", "dialogue"]},
+        "target_minutes": {"type": "integer", "minimum": 1, "maximum": 180},
+        "pronunciation_overrides": {
+          "type": "object",
+          "propertyNames": {"minLength": 1},
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

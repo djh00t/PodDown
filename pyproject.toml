@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "poddown-studio"
+version = "0.0.0"
+description = "Production-quality podcasts from Markdown documents."
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.11,<3",
+  "pyyaml>=6.0.2,<7",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/poddown"]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.17,<2",
+  "pdoc>=15,<16",
+  "pytest>=8.4,<9",
+  "pytest-bdd>=8.1,<9",
+  "pytest-cov>=6.2,<7",
+  "ruff>=0.12,<1",
+  "types-pyyaml>=6.0.12,<7",
+]
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib --strict-config --strict-markers"
+testpaths = ["tests"]
+markers = [
+  "live_provider: opt-in tests that consume external provider APIs and budget",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["poddown"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["poddown"]
