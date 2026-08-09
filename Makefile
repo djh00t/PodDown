@@ -8,6 +8,7 @@ install:
 	uv sync --locked --all-groups
 
 build:
+	rm -rf dist
 	uv build
 
 test:
