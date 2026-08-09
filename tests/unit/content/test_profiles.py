@@ -35,6 +35,17 @@ document_overridable:
   - target_minutes
 """
 
+
+class _MutableScalar(str):
+    def __new__(cls, value: str):
+        instance = str.__new__(cls, value)
+        instance.state = ["original"]
+        return instance
+
+    def mutate(self) -> None:
+        self.state.append("changed")
+
+
 SPEAKERS = """speakers:
   - speaker_id: host
     display_name: Host
@@ -120,6 +131,27 @@ def test_profile_rejects_unsupported_mutable_metadata_values():
             {},
             frozenset(),
         )
+
+
+def test_mutable_allowed_scalar_subclass_is_converted_in_profile_metadata():
+    """A frozen profile must not retain mutable state on a scalar subclass."""
+    scalar = _MutableScalar("precise")
+    profile = Profile(
+        "profile-1",
+        "1.0.0",
+        "narration",
+        12,
+        (SpeakerProfile("speaker-1", "Speaker", "voice-1"),),
+        {"tone": scalar},
+        {},
+        {},
+        frozenset(),
+    )
+
+    scalar.mutate()
+
+    assert type(profile.style["tone"]) is str
+    assert profile.style["tone"] == "precise"
 
 
 @pytest.mark.parametrize(

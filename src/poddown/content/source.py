@@ -15,6 +15,7 @@ from poddown.content.profiles import _load_yaml
 
 _HEADING = re.compile(r"^ {0,3}#{1,6}(?:[ \t]+|$)")
 _LIST = re.compile(r"^ {0,3}(?:[-+*]|\d+[.)])[ \t]+")
+_LIST_CONTINUATION = re.compile(r"^ {2,}\S")
 _BLOCKQUOTE = re.compile(r"^ {0,3}>")
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})[ \t]*$")
@@ -155,7 +156,16 @@ def snapshot_source(source: str) -> SourceSnapshot:
         kind = _kind(line)
         assert kind is not None
         end_index = index + 1
-        if kind in {"list", "blockquote"}:
+        if kind == "list":
+            while end_index < len(lines) and _kind(lines[end_index][1]) == kind:
+                end_index += 1
+            while end_index < len(lines) and _LIST_CONTINUATION.match(
+                lines[end_index][1].rstrip("\r\n")
+            ):
+                end_index += 1
+                while end_index < len(lines) and _kind(lines[end_index][1]) == kind:
+                    end_index += 1
+        elif kind == "blockquote":
             while end_index < len(lines) and _kind(lines[end_index][1]) == kind:
                 end_index += 1
         elif kind == "paragraph":

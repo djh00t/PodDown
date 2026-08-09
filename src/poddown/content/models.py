@@ -46,14 +46,25 @@ def freeze_value(value: object) -> object:
         for key, item in value.items():
             if not isinstance(key, str):
                 raise ValueError("metadata mapping keys must be strings")
-            frozen[key] = freeze_value(item)
+            frozen_key = key if type(key) is str else str(key)
+            if frozen_key in frozen:
+                raise ValueError(f"duplicate metadata key after freezing: {frozen_key}")
+            frozen[frozen_key] = freeze_value(item)
         return MappingProxyType(frozen)
     if isinstance(value, list | tuple):
         return tuple(freeze_value(item) for item in value)
     if isinstance(value, set | frozenset):
         return frozenset(freeze_value(item) for item in value)
-    if isinstance(value, _IMMUTABLE_METADATA_TYPES):
+    if type(value) in _IMMUTABLE_METADATA_TYPES:
         return value
+    if isinstance(value, str):
+        return str(value)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    if isinstance(value, bytes):
+        return bytes(value)
     raise TypeError(f"unsupported mutable metadata value: {type(value).__name__}")
 
 

@@ -59,6 +59,17 @@ CRLF_COMMONMARK_SOURCE = (
 MULTILINE_SETEXT_SOURCE = (
     "First line\ncontinued line\n----------------\n\nNext paragraph\n"
 )
+INDENTED_LIST_SOURCE = "- first item\n  continuation line\n- second item\n"
+
+
+class _MutableKey(str):
+    def __new__(cls, value: str):
+        instance = str.__new__(cls, value)
+        instance.state = ["original"]
+        return instance
+
+    def mutate(self) -> None:
+        self.state.append("changed")
 
 
 def test_snapshot_preserves_original_utf8_source_and_indexes_blocks():
@@ -192,6 +203,18 @@ def test_nested_source_metadata_and_block_collections_are_copied_and_frozen():
         snapshot.frontmatter["nested"]["values"] += ("changed",)
 
 
+def test_mutable_scalar_subclass_keys_are_copied_in_source_metadata():
+    """A frozen snapshot must not retain mutable state on a supported key subclass."""
+    key = _MutableKey("custom")
+    snapshot = SourceSnapshot("x", hashlib.sha256(b"x").hexdigest(), {key: "value"}, ())
+
+    key.mutate()
+
+    frozen_key = next(iter(snapshot.frontmatter))
+    assert type(frozen_key) is str
+    assert frozen_key == "custom"
+
+
 def test_frontmatter_preserves_string_keys_and_rejects_non_string_collisions():
     """Complete metadata must not be rewritten by stringifying nested keys."""
     snapshot = snapshot_source('---\ncustom:\n  "01": leading\n---\n# Heading\n')
@@ -248,3 +271,15 @@ def test_crlf_frontmatter_and_commonmark_block_boundaries_are_preserved():
         "Setext title\r\n===",
         "````python\r\ninside\r\n```\r\nstill fenced\r\n````",
     ]
+
+
+def test_indented_list_continuation_stays_in_one_list_block():
+    """CommonMark list continuation lines belong to their containing list block."""
+    snapshot = snapshot_source(INDENTED_LIST_SOURCE)
+
+    assert len(snapshot.blocks) == 1
+    assert snapshot.blocks[0].kind == "list"
+    assert snapshot.blocks[0].block_id == "block-0000-9ced5ae254ce"
+    assert snapshot.blocks[0].start == 0
+    assert snapshot.blocks[0].end == 46
+    assert snapshot.blocks[0].text == "- first item\n  continuation line\n- second item"
