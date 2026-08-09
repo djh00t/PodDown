@@ -70,7 +70,7 @@
 - The bindings call the future public `poddown.content.service.prepare_content(...)`, `poddown.content.lexicon.resolve_pronunciation(...)`, `poddown.content.tokens.extract_critical_tokens(...)`, and `poddown.content.segmentation.segment_script(...)` ports by name only.
 - The fixture-backed proposal contains explicit stable turn IDs, two speaker IDs, source block anchors, claim anchors, and a deterministic disagreement turn.
 
-- [ ] **Step 1: Write the failing feature scenarios.** Include these scenarios and observable assertions:
+- [x] **Step 1: Write the failing feature scenarios.** Include these scenarios and observable assertions:
 
 ```gherkin
 Feature: Prepare source-bound technical content
@@ -112,14 +112,14 @@ Feature: Prepare source-bound technical content
     Then segmentation fails with a capability error
 ```
 
-- [ ] **Step 2: Bind each scenario to real public ports.** Store source, profile, proposal, layer fixtures, and result in the existing `ScenarioContext`. Do not duplicate validation logic in steps. Keep imports inside `when` steps only where the missing module needs to produce a clean expected red failure.
-- [ ] **Step 3: Run the focused BDD file.**
+- [x] **Step 2: Bind each scenario to real public ports.** Store source, profile, proposal, layer fixtures, and result in the existing `ScenarioContext`. Do not duplicate validation logic in steps. Keep imports inside `when` steps only where the missing module needs to produce a clean expected red failure.
+- [x] **Step 3: Run the focused BDD file.**
 
 Run: `uv run pytest tests/bdd/test_content_intelligence.py -v`
 
 Expected: FAIL because the M1 public modules do not exist yet; the failure must identify a missing `poddown.content` behavior rather than a malformed Gherkin fixture or step setup error.
 
-- [ ] **Step 4: Commit the acceptance contract.**
+- [x] **Step 4: Commit the acceptance contract.**
 
 ```bash
 git add tests/features/content_intelligence.feature tests/bdd/test_content_intelligence.py tests/fixtures/content
@@ -145,22 +145,22 @@ git commit -m "test(content): define M1 intelligence acceptance behavior"
 - `resolve_profile_metadata(profile: Profile, frontmatter: Mapping[str, object]) -> Profile` applies only explicitly document-overridable fields and returns a new value.
 - `ScriptTurn(turn_id: str, speaker_id: str, text: str, kind: Literal["factual", "editorial"], source_anchors: tuple[SourceAnchor, ...], claim_anchors: tuple[SourceAnchor, ...])` and `ScriptVersion(script_id: str, source_sha256: str, profile_id: str, turns: tuple[ScriptTurn, ...], canonical_hash: str)` are immutable.
 
-- [ ] **Step 1: Write unit tests for exact source preservation, deterministic block IDs, valid/invalid anchors, profile constraints, consent rejection, override allowlists, and frozen script values.** Expected values must be hand-derived literals.
-- [ ] **Step 2: Run the unit tests and verify the expected red failures.**
+- [x] **Step 1: Write unit tests for exact source preservation, deterministic block IDs, valid/invalid anchors, profile constraints, consent rejection, override allowlists, and frozen script values.** Expected values must be hand-derived literals.
+- [x] **Step 2: Run the unit tests and verify the expected red failures.**
 
 Run: `uv run pytest tests/unit/content/test_source.py tests/unit/content/test_profiles.py -v`
 
 Expected: FAIL with missing `poddown.content` models/source/profile behavior, not with test collection or fixture errors.
 
-- [ ] **Step 3: Implement the minimum immutable models and source index.** Use `hashlib.sha256(source.encode("utf-8"))`, preserve complete YAML frontmatter separately from the PodDown object, and index headings, paragraphs, lists, block quotes, tables, and fenced code without rewriting source text. Use deterministic block IDs derived from block order and content hash.
-- [ ] **Step 4: Implement strict profile loading.** Use Pydantic validation at the YAML boundary, keep provider IDs out of profile content, and require active voice assets with current consent without making a provider call.
-- [ ] **Step 5: Run focused tests, then the existing M0 suite.**
+- [x] **Step 3: Implement the minimum immutable models and source index.** Use `hashlib.sha256(source.encode("utf-8"))`, preserve complete YAML frontmatter separately from the PodDown object, and index headings, paragraphs, lists, block quotes, tables, and fenced code without rewriting source text. Use deterministic block IDs derived from block order and content hash.
+- [x] **Step 4: Implement strict profile loading.** Use Pydantic validation at the YAML boundary, keep provider IDs out of profile content, and require active voice assets with current consent without making a provider call.
+- [x] **Step 5: Run focused tests, then the existing M0 suite.**
 
 Run: `uv run pytest tests/unit/content/test_source.py tests/unit/content/test_profiles.py -v && uv run pytest -m "not live_provider" --ignore=tests/bdd/test_content_intelligence.py -q && make lint`
 
 Expected: focused tests pass and the pre-existing 68 non-live tests remain green.
 
-- [ ] **Step 6: Commit the source/profile foundation.**
+- [x] **Step 6: Commit the source/profile foundation.**
 
 ```bash
 git add src/poddown/content tests/unit/content/test_source.py tests/unit/content/test_profiles.py
@@ -186,22 +186,22 @@ git commit -m "feat(content): add immutable source and profile contracts"
 - `LexiconTokenCategory` is the shared literal category-hint vocabulary for `name`, `organization`, `product`, and `technical_term`; structural categories always win over lexicon hints. Canonical token spans are half-open UTF-8 byte offsets. For the frozen Task 1 bindings, `resolve_pronunciation` additionally accepts the legacy list-of-entry dictionaries and returns a compatibility result with the legacy selected/accepted/error aliases, while the canonical mapping form remains strict and raises `LexiconConflictError`. The token sequence remains a tuple and exposes read-only `tokens` and deterministic `manifest` aliases for that binding.
 - Numeric, date, currency, percentage, and unit tokens use one deterministic verbalizer shared with the M0 fidelity vocabulary; digit-preserving forms are not accepted as the canonical expected speech when a spoken form is required.
 
-- [ ] **Step 1: Write unit tests for Unicode/case normalization, layer precedence, same-layer conflicts, all required token categories, repeated numbers and negations, punctuation, spans, and deterministic occurrence IDs.** Include literals such as `SLAM`, `LiDAR`, `C1`, `1.6 Tbit/s`, `21.5 kg`, `12.5%`, `2026-08-09`, `$4.2M`, and `not` twice.
-- [ ] **Step 2: Run the focused tests and verify the expected red failures.**
+- [x] **Step 1: Write unit tests for Unicode/case normalization, layer precedence, same-layer conflicts, all required token categories, repeated numbers and negations, punctuation, spans, and deterministic occurrence IDs.** Include literals such as `SLAM`, `LiDAR`, `C1`, `1.6 Tbit/s`, `21.5 kg`, `12.5%`, `2026-08-09`, `$4.2M`, and `not` twice.
+- [x] **Step 2: Run the focused tests and verify the expected red failures.**
 
 Run: `uv run pytest tests/unit/content/test_lexicon.py tests/unit/content/test_tokens.py -v`
 
 Expected: FAIL because lexicon and token extraction behavior is absent.
 
-- [ ] **Step 3: Implement exact normalized lexicon resolution.** Do not learn, mutate, or silently select between conflicting entries. Return version and entry provenance for every selected pronunciation.
-- [ ] **Step 4: Implement deterministic token extraction.** Apply specific patterns before generic patterns so dates, percentages, currencies, numbers with units, acronyms, and ticker-like symbols receive one category each. Use lexicon entries to identify configured names, organizations, products, and technical terms; use explicit `negation` occurrences for every normalized negation token.
-- [ ] **Step 5: Run focused lexicon/token tests, the green M0 suite, and lint.** The full M1 BDD file remains intentionally red until Task 6 wires the integrated service.
+- [x] **Step 3: Implement exact normalized lexicon resolution.** Do not learn, mutate, or silently select between conflicting entries. Return version and entry provenance for every selected pronunciation.
+- [x] **Step 4: Implement deterministic token extraction.** Apply specific patterns before generic patterns so dates, percentages, currencies, numbers with units, acronyms, and ticker-like symbols receive one category each. Use lexicon entries to identify configured names, organizations, products, and technical terms; use explicit `negation` occurrences for every normalized negation token.
+- [x] **Step 5: Run focused lexicon/token tests, the green M0 suite, and lint.** The full M1 BDD file remains intentionally red until Task 6 wires the integrated service.
 
 Run: `uv run pytest tests/unit/content/test_lexicon.py tests/unit/content/test_tokens.py -v && uv run pytest -m "not live_provider" --ignore=tests/bdd/test_content_intelligence.py -q && make lint`
 
 Expected: focused lexicon/token tests pass and the pre-existing 68 non-live tests remain green; the full M1 BDD file is intentionally deferred to Task 6 rather than skipped from the final gate.
 
-- [ ] **Step 6: Commit the lexicon and token slice.**
+- [x] **Step 6: Commit the lexicon and token slice.**
 
 ```bash
 git add src/poddown/content/lexicon.py src/poddown/content/tokens.py tests/unit/content/test_lexicon.py tests/unit/content/test_tokens.py
@@ -222,20 +222,20 @@ git commit -m "feat(content): resolve pronunciations and critical tokens"
 - `repair_turn(script: ScriptVersion, turn_id: str, replacement: ScriptTurn, source: SourceSnapshot, profile: Profile) -> ScriptVersion` replaces only the failing turn, preserves all accepted turn IDs and order, and re-validates the replacement.
 - `AdaptationError` carries a stable `code` (`unsupported_claim`, `missing_anchor`, `invalid_speaker`, `dialogue_quality`, or `duration`) and safe detail without source leakage.
 
-- [ ] **Step 1: Add unit tests for valid anchored proposals, changed numbers, changed negation, unsupported comparisons, missing anchors, invalid speakers, stable IDs, two-speaker disagreement, bounded repair, and zero renderer calls.** Use real fixture proposals and assert structured error codes.
-- [ ] **Step 2: Run the focused tests and verify the expected red failures.**
+- [x] **Step 1: Add unit tests for valid anchored proposals, changed numbers, changed negation, unsupported comparisons, missing anchors, invalid speakers, stable IDs, two-speaker disagreement, bounded repair, and zero renderer calls.** Use real fixture proposals and assert structured error codes.
+- [x] **Step 2: Run the focused tests and verify the expected red failures.**
 
 Run: `uv run pytest tests/unit/content/test_adaptation.py -v`
 
 Expected: FAIL because adaptation and repair ports are absent.
 
-- [ ] **Step 3: Implement the structured reasoning port and fixture adapter.** Keep provider/model payloads out of the public domain models; the fixture adapter is the only default implementation in M1.
-- [ ] **Step 4: Implement source-bound validation.** Every factual turn must point to an anchor. Extract critical literals from each claim and its anchored source text; reject changed numbers, units, dates, percentages, names, and negation before any rendering path can be called. Editorial turns must not introduce factual claims.
-- [ ] **Step 5: Implement bounded repair.** Replace only the named failing turn, retain accepted turn IDs and canonical ordering, and fail if the repair changes a protected anchor or introduces a new unsupported claim.
-- [ ] **Step 6: Run focused adaptation tests, the green M0 suite, and lint.** The full M1 BDD file remains intentionally red until Task 6 wires the integrated service.
+- [x] **Step 3: Implement the structured reasoning port and fixture adapter.** Keep provider/model payloads out of the public domain models; the fixture adapter is the only default implementation in M1.
+- [x] **Step 4: Implement source-bound validation.** Every factual turn must point to an anchor. Extract critical literals from each claim and its anchored source text; reject changed numbers, units, dates, percentages, names, and negation before any rendering path can be called. Editorial turns must not introduce factual claims.
+- [x] **Step 5: Implement bounded repair.** Replace only the named failing turn, retain accepted turn IDs and canonical ordering, and fail if the repair changes a protected anchor or introduces a new unsupported claim.
+- [x] **Step 6: Run focused adaptation tests, the green M0 suite, and lint.** The full M1 BDD file remains intentionally red until Task 6 wires the integrated service.
 
 Run: `uv run pytest tests/unit/content/test_adaptation.py -v && uv run pytest -m "not live_provider" --ignore=tests/bdd/test_content_intelligence.py -q && make lint`
-- [ ] **Step 7: Commit the adaptation slice.**
+- [x] **Step 7: Commit the adaptation slice.**
 
 ```bash
 git add src/poddown/content/adaptation.py tests/unit/content/test_adaptation.py
@@ -254,18 +254,18 @@ git commit -m "feat(content): enforce anchored script adaptation"
 - `SegmentationError` carries stable `code` (`turn_too_large`, `unsupported_speaker`, or `invalid_script`).
 - `segment_script(script: ScriptVersion, source: SourceSnapshot, capabilities: SegmentationCapabilities, tokens: tuple[CriticalToken, ...]) -> tuple[Segment, ...]` groups contiguous complete turns, preserves source groupings, never splits a token or turn, and derives stable IDs from canonical turn IDs and boundaries.
 
-- [ ] **Step 1: Write unit tests for contiguous grouping, turn order, source grouping, leading/trailing unspoken continuity, capability boundaries, oversized-turn failure, stable IDs, and replay parity.**
-- [ ] **Step 2: Run the focused tests and verify the expected red failures.**
+- [x] **Step 1: Write unit tests for contiguous grouping, turn order, source grouping, leading/trailing unspoken continuity, capability boundaries, oversized-turn failure, stable IDs, and replay parity.**
+- [x] **Step 2: Run the focused tests and verify the expected red failures.**
 
 Run: `uv run pytest tests/unit/content/test_segmentation.py -v`
 
 Expected: FAIL because segmentation behavior is absent.
 
-- [ ] **Step 3: Implement the smallest deterministic grouping algorithm.** Add turns until the next complete turn would exceed a declared capability, then start a new segment. If one complete turn exceeds the limit, fail rather than split or truncate it. Continuity context is stored but never included in spoken segment text.
-- [ ] **Step 4: Run focused segmentation tests, the green M0 suite, and lint.** The full M1 BDD file remains intentionally red until Task 6 wires the integrated service.
+- [x] **Step 3: Implement the smallest deterministic grouping algorithm.** Add turns until the next complete turn would exceed a declared capability, then start a new segment. If one complete turn exceeds the limit, fail rather than split or truncate it. Continuity context is stored but never included in spoken segment text.
+- [x] **Step 4: Run focused segmentation tests, the green M0 suite, and lint.** The full M1 BDD file remains intentionally red until Task 6 wires the integrated service.
 
 Run: `uv run pytest tests/unit/content/test_segmentation.py -v && uv run pytest -m "not live_provider" --ignore=tests/bdd/test_content_intelligence.py -q && make lint`
-- [ ] **Step 5: Commit the segmentation slice.**
+- [x] **Step 5: Commit the segmentation slice.**
 
 ```bash
 git add src/poddown/content/segmentation.py tests/unit/content/test_segmentation.py
@@ -289,21 +289,21 @@ git commit -m "feat(content): segment canonical scripts deterministically"
 - Compatibility aliases derive script text and token spans from the validated typed result; frozen BDD expectations must use those canonical spans rather than untrusted proposal wording.
 - Compatibility token rows use the typed occurrence ID, category, source form, and spoken form; legacy proposal token rows are selectors only and cannot supply output values.
 
-- [ ] **Step 1: Write the integration test for the robotics fixture.** Assert two speakers, target duration between 10 and 15 minutes, source hash, factual anchors, disagreement, token accuracy inputs, segment order, no provider calls, manifest checksum, and equivalent output from two identical requests.
-- [ ] **Step 2: Run the integration test and verify the expected red failure.**
+- [x] **Step 1: Write the integration test for the robotics fixture.** Assert two speakers, target duration between 10 and 15 minutes, source hash, factual anchors, disagreement, token accuracy inputs, segment order, no provider calls, manifest checksum, and equivalent output from two identical requests.
+- [x] **Step 2: Run the integration test and verify the expected red failure.**
 
 Run: `uv run pytest tests/integration/test_content_pipeline.py -v`
 
 Expected: FAIL because the orchestration service is absent.
 
-- [ ] **Step 3: Implement the orchestration service and public exports.** Keep serialization deterministic with sorted keys and compact separators; never serialize credentials, raw provider IDs, or source text into error messages. Add the narrow Task 1 BDD compatibility facade without weakening the typed request/result contract or invoking its renderer boundary. Use local date serialization in both service and BDD test infrastructure; never install a process-wide JSON encoder hook.
-- [ ] **Step 4: Run the full M1 BDD/unit/integration surface, then `make check`.**
+- [x] **Step 3: Implement the orchestration service and public exports.** Keep serialization deterministic with sorted keys and compact separators; never serialize credentials, raw provider IDs, or source text into error messages. Add the narrow Task 1 BDD compatibility facade without weakening the typed request/result contract or invoking its renderer boundary. Use local date serialization in both service and BDD test infrastructure; never install a process-wide JSON encoder hook.
+- [x] **Step 4: Run the full M1 BDD/unit/integration surface, then `make check`.**
 
 Run: `uv run pytest tests/bdd/test_content_intelligence.py tests/unit/content tests/integration/test_content_pipeline.py -v && make check`
 
 Expected: all M0 and M1 non-live tests pass with coverage at or above the repository threshold.
 
-- [ ] **Step 5: Commit the integrated content-preparation slice.**
+- [x] **Step 5: Commit the integrated content-preparation slice.**
 
 ```bash
 git add src/poddown/content tests/integration/test_content_pipeline.py
@@ -325,12 +325,12 @@ git commit -m "feat(content): assemble deterministic preparation manifest"
 - The evals consume only public M1 ports and deterministic fixtures; they do not call live AI or voice providers.
 - The verification report records exact commit SHA, commands, test counts, coverage, fixture hashes, and any intentionally deferred risks.
 
-- [ ] **Step 1: Write adversarial evals before any documentation claims.** Cover absent-but-plausible claims, contradictions, changed numbers, changed units, changed dates, inserted/removed negation, repeated tokens, code/table blocks, homographs, and source-anchor tampering.
-- [ ] **Step 2: Run evals and confirm they fail if the corresponding validation is weakened.** Run `PYDANTIC_DISABLE_PLUGINS=1 .venv/bin/python scripts/verify_content_mutation.py`; the isolated copy bypasses the adaptation token-count and orchestration source-token binding gates and must report the changed-number and changed-date evals failing. The implementation branch remains unchanged.
-- [ ] **Step 3: Implement only missing test fixtures or test utilities needed by the evals.** Do not weaken a gate to make an adversarial case pass.
-- [ ] **Step 4: Run `make check`, `make build`, and `make docs`; record fresh output and fixture/version IDs in `docs/verification/content-intelligence.md`.**
-- [ ] **Step 5: Update traceability only for evidence that is actually present.** Mark M1 content-intelligence requirements implemented when BDD, unit, integration, and eval evidence exists; keep audio rendering, Temporal, API, CLI, publishing, MCP, Signal & Supply, and production-readiness rows explicitly pending.
-- [ ] **Step 6: Commit the M1 evidence.**
+- [x] **Step 1: Write adversarial evals before any documentation claims.** Cover absent-but-plausible claims, contradictions, changed numbers, changed units, changed dates, inserted/removed negation, repeated tokens, code/table blocks, homographs, and source-anchor tampering.
+- [x] **Step 2: Run evals and confirm they fail if the corresponding validation is weakened.** Run `PYDANTIC_DISABLE_PLUGINS=1 .venv/bin/python scripts/verify_content_mutation.py`; the isolated copy bypasses the adaptation token-count and orchestration source-token binding gates and must report the changed-number and changed-date evals failing. The implementation branch remains unchanged.
+- [x] **Step 3: Implement only missing test fixtures or test utilities needed by the evals.** Do not weaken a gate to make an adversarial case pass.
+- [x] **Step 4: Run `make check`, `make build`, and `make docs`; record fresh output and fixture/version IDs in `docs/verification/content-intelligence.md`.**
+- [x] **Step 5: Update traceability only for evidence that is actually present.** Mark M1 content-intelligence requirements implemented when BDD, unit, integration, and eval evidence exists; keep audio rendering, Temporal, API, CLI, publishing, MCP, Signal & Supply, and production-readiness rows explicitly pending.
+- [x] **Step 6: Commit the M1 evidence.**
 
 ```bash
 git add tests/evals/test_content_intelligence.py tests/fixtures/content/adversarial-adaptation.json scripts/verify_content_mutation.py docs/verification/content-intelligence.md docs/planning-traceability.md docs/product-delivery-plan.md
