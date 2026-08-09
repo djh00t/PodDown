@@ -15,7 +15,8 @@ from poddown.content.profiles import _load_yaml
 
 _HEADING = re.compile(r"^ {0,3}#{1,6}(?:[ \t]+|$)")
 _LIST = re.compile(
-    r"^(?P<indent> {0,3})(?P<marker>[-+*]|\d+[.)])(?P<whitespace>[ \t]+)"
+    r"^(?P<indent> {0,3})(?P<marker>[-+*]|\d{1,9}[.)])"
+    r"(?:(?P<whitespace>[ \t]+)(?P<content>\S.*)|(?P<empty>[ \t]*))$"
 )
 _BLOCKQUOTE = re.compile(r"^ {0,3}>")
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
@@ -112,7 +113,13 @@ def _list_continuation_columns(line: str) -> int | None:
     if match is None:
         return None
     marker_end = _expanded_columns(match.group("indent")) + len(match.group("marker"))
-    return _expanded_columns(match.group("whitespace"), marker_end)
+    whitespace = match.group("whitespace")
+    if whitespace is None:
+        return marker_end + 1
+    whitespace_columns = _expanded_columns(whitespace, marker_end) - marker_end
+    if whitespace_columns > 4:
+        return marker_end + 1
+    return marker_end + whitespace_columns
 
 
 def _is_list_continuation(line: str, minimum_columns: int) -> bool:

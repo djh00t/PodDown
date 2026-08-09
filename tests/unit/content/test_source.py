@@ -78,6 +78,17 @@ LIST_TOP_LEVEL_BOUNDARIES_SOURCE = (
     "  ```\n\n"
     "  Paragraph\n"
 )
+TEN_DIGIT_ORDERED_SOURCE = "1234567890. not a list\n"
+EMPTY_LIST_MARKERS_SOURCE = "*\n1.\n"
+FOUR_SPACE_LIST_SOURCE = (
+    "1.    item\n\n      continuation paragraph\n\nTop-level paragraph\n"
+)
+FIVE_SPACE_LIST_SOURCE = (
+    "1.     indented code\n\n"
+    "   continuation paragraph\n\n"
+    "       more indented code\n\n"
+    "Top-level paragraph\n"
+)
 
 
 class _MutableKey(str):
@@ -397,4 +408,67 @@ def test_list_stops_at_new_top_level_heading_quote_fence_and_paragraph():
             "block-0003-2ea4345a62c0",
         ),
         ("paragraph", "  Paragraph", 67, 78, "block-0004-fa160fd9fd3a"),
+    ]
+
+
+def test_ten_digit_ordered_marker_is_a_paragraph():
+    """CommonMark limits ordered list markers to one through nine digits."""
+    snapshot = snapshot_source(TEN_DIGIT_ORDERED_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        ("paragraph", "1234567890. not a list", 0, 22, "block-0000-a58361c6ccd5"),
+    ]
+
+
+def test_empty_bullet_and_ordered_markers_are_one_list_block():
+    """Bullet and ordered markers may be empty at the end of a line."""
+    snapshot = snapshot_source(EMPTY_LIST_MARKERS_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        ("list", "*\n1.", 0, 4, "block-0000-93441db85a42"),
+    ]
+
+
+def test_four_post_marker_spaces_set_the_continuation_threshold():
+    """One through four post-marker spaces determine the continuation column."""
+    snapshot = snapshot_source(FOUR_SPACE_LIST_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        (
+            "list",
+            "1.    item\n\n      continuation paragraph",
+            0,
+            40,
+            "block-0000-b0887ee7c530",
+        ),
+        ("paragraph", "Top-level paragraph", 42, 61, "block-0001-c7459c67e1a4"),
+    ]
+
+
+def test_five_post_marker_spaces_keep_indented_code_and_continuations_in_list():
+    """Five-plus post-marker spaces use the one-space item threshold."""
+    snapshot = snapshot_source(FIVE_SPACE_LIST_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        (
+            "list",
+            "1.     indented code\n\n   continuation paragraph\n\n"
+            "       more indented code",
+            0,
+            74,
+            "block-0000-0dc07dbd8e72",
+        ),
+        ("paragraph", "Top-level paragraph", 76, 95, "block-0001-c7459c67e1a4"),
     ]
