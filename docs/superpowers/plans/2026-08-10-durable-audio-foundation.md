@@ -143,7 +143,7 @@ class FilesystemArtifactStore:
     def __init__(self, root: Path) -> None: ...
 
 class FilesystemRenderRecordStore:
-    def __init__(self, root: Path) -> None: ...
+    def __init__(self, root: Path, artifacts: ArtifactStore | None = None) -> None: ...
 
 # poddown.audio.render
 class DurableRenderService:
@@ -264,7 +264,7 @@ git commit -m "feat(audio): add immutable render and rights contracts"
 - [ ] **Step 1: Write artifact-store tests.** Assert `put(b"audio", media_type="audio/wav")` returns the SHA-256 digest, byte size, and a path under the configured root; putting the same bytes returns the same reference without creating another object; `read` returns bytes; missing, path-escaping, digest-mismatch, and size-mismatch references raise `ArtifactIntegrityError`; writing a corrupted object never silently repairs or overwrites it.
 - [ ] **Step 2: Write render-record tests.** Save an outcome and load it from a new `FilesystemRenderRecordStore` instance; assert all nested metadata and the cost event round-trip; saving the exact same outcome is idempotent; saving a different outcome under one idempotency key raises `IdempotencyConflictError`; a missing or malformed JSON record raises `ArtifactIntegrityError`.
 - [ ] **Step 3: Implement atomic no-overwrite artifact writes.** Use a SHA-256-derived relative path under `root/artifacts/`, create parent directories, write to a same-directory temporary file, link into the final path without replacement, and compare existing bytes before returning an existing reference.
-- [ ] **Step 4: Implement strict reference validation and JSON record serialization.** Keep records under `root/records/{idempotency_key}.json`; validate relative paths stay within the root, verify artifact bytes during render replay, serialize Decimal values as strings, and reconstruct frozen values with explicit field parsing rather than `eval` or pickle.
+- [ ] **Step 4: Implement strict reference validation and JSON record serialization.** Keep records under `root/records/{idempotency_key}.json`; require record keys to be one canonical SHA-256-like path component, derive artifact references only from `artifacts/<digest-prefix>/<digest>.<extension>`, verify artifact bytes during render replay through the injected `ArtifactStore` (defaulting to the sibling `artifacts` store used by the demo fixture), serialize Decimal values as strings, and reconstruct frozen values with explicit field parsing rather than `eval` or pickle.
 - [ ] **Step 5: Run focused storage tests.**
 
 Run: `PYDANTIC_DISABLE_PLUGINS=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src uv run pytest tests/unit/audio/test_artifacts.py -q`
