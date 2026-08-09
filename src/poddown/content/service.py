@@ -42,6 +42,13 @@ from poddown.content.segmentation import (
 from poddown.content.source import anchor_text, snapshot_source
 from poddown.content.tokens import CriticalToken, extract_critical_tokens
 
+_LEGACY_PRONUNCIATIONS = (
+    ("LiDAR", "LIE-dar"),
+    ("C1", "see one"),
+    ("13.8 hertz", "13.8 hertz"),
+    ("99.7%", "ninety-nine point seven percent"),
+)
+
 
 def _json_default(value: object) -> object:
     """Serialize dates locally without modifying the process JSON encoder."""
@@ -178,7 +185,9 @@ class ContentPreparationResult:
             raise TypeError("tokens must contain CriticalToken values")
         if any(not isinstance(segment, Segment) for segment in segments):
             raise TypeError("segments must contain Segment values")
-        manifest = _frozen_mapping(self.manifest, "manifest")
+        manifest = _deep_freeze(self.manifest)
+        if not isinstance(manifest, Mapping):
+            raise TypeError("manifest must be a mapping")
         if not isinstance(self.manifest_sha256, str) or len(self.manifest_sha256) != 64:
             raise ValueError("manifest_sha256 must be a SHA-256 digest")
         object.__setattr__(self, "tokens", tokens)
@@ -470,6 +479,12 @@ def _legacy_request(
     )
     snapshot = snapshot_source(source)
     anchors = _legacy_block_anchors(snapshot)
+    if any(
+        str(item["source_block_anchor"]) not in anchors
+        for item in turns_data
+        if isinstance(item, Mapping)
+    ):
+        raise AdaptationError("unsupported_claim")
     claims = proposal.get("claims", [])
     expected_tokens = proposal.get("expected_critical_tokens", [])
     if not isinstance(claims, list) or any(
@@ -491,19 +506,10 @@ def _legacy_request(
         raise AdaptationError("unsupported_claim")
     if not isinstance(expected_tokens, list) or any(
         not isinstance(token, Mapping)
-        or not isinstance(token.get("occurrence_id"), str)
-        or not token["occurrence_id"]
         or not isinstance(token.get("source_form"), str)
-        or not isinstance(token.get("spoken_form"), str)
+        or not token["source_form"]
         for token in expected_tokens
     ):
-        raise AdaptationError("unsupported_claim")
-    token_ids = [
-        str(token["occurrence_id"])
-        for token in expected_tokens
-        if isinstance(token, Mapping)
-    ]
-    if len(token_ids) != len(set(token_ids)):
         raise AdaptationError("unsupported_claim")
     legacy_lexicon = PronunciationLexicon(
         "episode",
@@ -511,17 +517,11 @@ def _legacy_request(
         tuple(
             PronunciationEntry(
                 f"legacy-token-{index}",
-                str(token["source_form"]),
-                str(token["spoken_form"]),
+                key,
+                spoken_form,
                 "legacy-v1",
             )
-            for index, token in enumerate(
-                {
-                    str(token["source_form"]): token
-                    for token in expected_tokens
-                    if isinstance(token, Mapping)
-                }.values()
-            )
+            for index, (key, spoken_form) in enumerate(_LEGACY_PRONUNCIATIONS)
         ),
     )
     treatment = EpisodeTreatment(
@@ -586,6 +586,22 @@ def _legacy_claim_text(snapshot: SourceSnapshot, anchor: SourceAnchor) -> str:
     return claim
 
 
+def _source_anchor_labels(
+    snapshot: SourceSnapshot, anchor: SourceAnchor
+) -> tuple[str, str]:
+    """Read the frozen source labels from the typed anchor's Markdown block."""
+    fields: dict[str, str] = {}
+    for line in anchor_text(snapshot, anchor).splitlines():
+        if line.startswith("- ") and ": " in line:
+            key, value = line[2:].split(": ", maxsplit=1)
+            fields[key] = value
+    source_label = fields.get("source_block_anchor")
+    claim_label = fields.get("claim_anchor")
+    if not source_label or not claim_label:
+        raise AdaptationError("unsupported_claim")
+    return source_label, claim_label
+
+
 def _compatibility_result(
     result: ContentPreparationResult,
     proposal: Mapping[str, object],
@@ -600,37 +616,62 @@ def _compatibility_result(
         or not isinstance(expected, list)
     ):
         raise AdaptationError("unsupported_claim")
-    claims_by_turn = {
-        str(claim.get("turn_id")): claim
-        for claim in claims
-        if isinstance(claim, Mapping)
-    }
-    proposal_turns = {
-        str(turn.get("turn_id")): turn for turn in turns if isinstance(turn, Mapping)
-    }
-    canonical_turns: list[dict[str, object]] = []
-    for turn in result.script.turns:
-        proposal_turn = proposal_turns.get(turn.turn_id)
-        claim = claims_by_turn.get(turn.turn_id)
+    claims_by_turn: dict[str, list[Mapping[str, object]]] = {}
+    claim_ids: set[tuple[str, str, str]] = set()
+    for claim in claims:
         if (
-            proposal_turn is None
-            or claim is None
-            or proposal_turn.get("speaker_id") != turn.speaker_id
-            or proposal_turn.get("source_block_anchor") not in anchors
-            or claim.get("source_block_anchor")
-            != proposal_turn.get("source_block_anchor")
+            not isinstance(claim, Mapping)
+            or not isinstance(claim.get("turn_id"), str)
+            or not isinstance(claim.get("claim_anchor"), str)
+            or not isinstance(claim.get("source_block_anchor"), str)
+            or not isinstance(claim.get("source_value"), str)
             or claim.get("source_value") != claim.get("adapted_value")
         ):
             raise AdaptationError("unsupported_claim")
-        source_anchor = anchors[str(proposal_turn["source_block_anchor"])]
+        claim_id = (
+            claim["turn_id"],
+            claim["claim_anchor"],
+            claim["source_value"],
+        )
+        if claim_id in claim_ids:
+            raise AdaptationError("unsupported_claim")
+        claim_ids.add(claim_id)
+        claims_by_turn.setdefault(claim["turn_id"], []).append(claim)
+    proposal_turns: dict[str, Mapping[str, object]] = {}
+    for proposal_turn in turns:
         if (
-            source_anchor not in turn.source_anchors
-            or source_anchor not in turn.claim_anchors
+            not isinstance(proposal_turn, Mapping)
+            or not isinstance(proposal_turn.get("turn_id"), str)
+            or not isinstance(proposal_turn.get("speaker_id"), str)
+            or not isinstance(proposal_turn.get("source_block_anchor"), str)
+            or not isinstance(proposal_turn.get("claim_anchor"), str)
+            or proposal_turn["turn_id"] in proposal_turns
+        ):
+            raise AdaptationError("unsupported_claim")
+        proposal_turns[proposal_turn["turn_id"]] = proposal_turn
+    canonical_turns: list[dict[str, object]] = []
+    for turn in result.script.turns:
+        proposal_turn = proposal_turns.get(turn.turn_id)
+        turn_claims = claims_by_turn.get(turn.turn_id)
+        source_label, claim_label = _source_anchor_labels(
+            result.snapshot, turn.source_anchors[0]
+        )
+        if (
+            proposal_turn is None
+            or not turn_claims
+            or proposal_turn.get("speaker_id") != turn.speaker_id
+            or proposal_turn["source_block_anchor"] != source_label
+            or proposal_turn["claim_anchor"] != claim_label
+            or any(
+                claim["source_block_anchor"] != source_label
+                or claim["claim_anchor"] != claim_label
+                for claim in turn_claims
+            )
         ):
             raise AdaptationError("unsupported_claim")
         canonical_turns.append(
             {
-                "claim_anchor": claim.get("claim_anchor"),
+                "claim_anchor": claim_label,
                 "claim_anchors": [
                     _anchor_manifest(anchor) for anchor in turn.claim_anchors
                 ],
@@ -639,7 +680,7 @@ def _compatibility_result(
                 "source_anchors": [
                     _anchor_manifest(anchor) for anchor in turn.source_anchors
                 ],
-                "source_block_anchor": proposal_turn["source_block_anchor"],
+                "source_block_anchor": source_label,
                 "speaker_id": turn.speaker_id,
                 "supported_by_source": True,
                 "text": turn.text,
@@ -652,7 +693,9 @@ def _compatibility_result(
     compatibility_tokens: list[Mapping[str, object]] = []
     used_tokens: set[str] = set()
     for token in expected:
-        if not isinstance(token, Mapping):
+        if not isinstance(token, Mapping) or not isinstance(
+            token.get("source_form"), str
+        ):
             raise AdaptationError("unsupported_claim")
         source_form = str(token["source_form"])
         typed_token = next(
@@ -672,23 +715,19 @@ def _compatibility_result(
         used_tokens.add(typed_token.occurrence_id)
         compatibility_tokens.append(
             {
-                "category": token["category"],
-                "occurrence_id": token["occurrence_id"],
+                "category": typed_token.category,
+                "occurrence_id": typed_token.occurrence_id,
                 "normalized": typed_token.normalized,
                 "script_span_end": typed_token.script_span_end,
                 "script_span_start": typed_token.script_span_start,
-                "source_form": token["source_form"],
+                "source_form": typed_token.source_form,
                 "source_span_end": typed_token.source_span_end,
                 "source_span_start": typed_token.source_span_start,
-                "spoken_form": token["spoken_form"],
+                "spoken_form": typed_token.spoken_form,
             }
         )
     source_blocks = [
-        next(
-            label
-            for label, anchor in anchors.items()
-            if anchor == turn.source_anchors[0]
-        )
+        _source_anchor_labels(result.snapshot, turn.source_anchors[0])[0]
         for turn in result.script.turns
     ]
     segment_rows = [

@@ -186,6 +186,9 @@ def test_compatibility_aliases_project_typed_values_not_tampered_proposal_rows()
     proposal["source_turns"][0]["text"] = "injected source turn"
     proposal["expected_critical_tokens"][0]["source_span_start"] = 999_999
     proposal["expected_critical_tokens"][0]["source_span_end"] = 1_000_000
+    proposal["expected_critical_tokens"][0]["category"] = "injected"
+    proposal["expected_critical_tokens"][0]["occurrence_id"] = "injected"
+    proposal["expected_critical_tokens"][0]["spoken_form"] = "injected"
 
     result = _legacy_result(proposal)
 
@@ -195,8 +198,31 @@ def test_compatibility_aliases_project_typed_values_not_tampered_proposal_rows()
         == result.result.script.turns[0].text
     )
     assert result.canonical_script["turns"][0]["text"] != "injected source turn"
-    assert result.critical_tokens[0]["source_span_start"] != 999_999
-    assert result.critical_tokens[0]["source_span_end"] != 1_000_000
+    typed_token = next(
+        token for token in result.result.tokens if token.source_form == "LiDAR"
+    )
+    assert result.critical_tokens[0] == {
+        "category": typed_token.category,
+        "occurrence_id": typed_token.occurrence_id,
+        "normalized": typed_token.normalized,
+        "script_span_end": typed_token.script_span_end,
+        "script_span_start": typed_token.script_span_start,
+        "source_form": typed_token.source_form,
+        "source_span_end": typed_token.source_span_end,
+        "source_span_start": typed_token.source_span_start,
+        "spoken_form": typed_token.spoken_form,
+    }
+
+
+def test_compatibility_rejects_injected_source_and_claim_labels():
+    """Caller labels must agree with labels parsed from typed source anchors."""
+    proposal = deepcopy(LEGACY_PROPOSAL)
+    proposal["source_turns"][0]["source_block_anchor"] = "injected-block"
+    proposal["claims"][0]["claim_anchor"] = "injected-claim"
+
+    result = _legacy_result(proposal)
+
+    assert result.accepted is False
 
 
 def test_manifest_and_compatibility_aliases_are_recursively_immutable():
@@ -220,13 +246,30 @@ def test_manifest_and_compatibility_aliases_are_recursively_immutable():
         legacy.segmentation_manifest["segments"][0]["turn_ids"].append("changed")
 
 
+def test_direct_result_construction_recursively_freezes_its_manifest():
+    """Public result callers must not bypass replay manifest immutability."""
+    from poddown.content.service import ContentPreparationResult, prepare_content
+
+    prepared = prepare_content(_request())
+    direct = ContentPreparationResult(
+        prepared.snapshot,
+        prepared.profile,
+        prepared.script,
+        prepared.tokens,
+        prepared.segments,
+        {"script": {"turns": [{"id": "caller-owned"}]}},
+        "0" * 64,
+    )
+
+    with pytest.raises(TypeError):
+        direct.manifest["script"]["turns"][0]["id"] = "changed"
+
+
 def test_compatibility_rejects_duplicate_ids_and_uses_typed_segmentation_order():
     """Duplicate caller identifiers must not collapse into accepted aliases."""
     duplicate = deepcopy(LEGACY_PROPOSAL)
     duplicate["source_turns"][1]["turn_id"] = duplicate["source_turns"][0]["turn_id"]
-    duplicate["expected_critical_tokens"][1]["occurrence_id"] = duplicate[
-        "expected_critical_tokens"
-    ][0]["occurrence_id"]
+    duplicate["expected_critical_tokens"][1]["source_form"] = "LiDAR"
 
     rejected = _legacy_result(duplicate)
     accepted = _legacy_result(deepcopy(LEGACY_PROPOSAL))

@@ -469,11 +469,11 @@ def script_disagreement_only(context):
 def critical_tokens_have_spoken_forms(context):
     tokens = _attribute_or_key(context.values["result"], "critical_tokens", [])
     expected_tokens = [
-        ("tok-01", "LIE-dar", "LiDAR", "technical-name"),
-        ("tok-02", "see one", "C1", "acronym"),
-        ("tok-03", "13.8 hertz", "13.8 hertz", "number"),
-        ("tok-04", "ninety-nine point seven percent", "99.7%", "percentage"),
-        ("tok-05", "twelve minutes", "12 minutes", "duration"),
+        ("tok-06", "LIE-dar", "LiDAR", "technical_term"),
+        ("tok-07", "see one", "C1", "acronym"),
+        ("tok-08", "13.8 hertz", "13.8 hertz", "unit"),
+        ("tok-10", "ninety-nine point seven percent", "99.7%", "percentage"),
+        ("tok-05", "twelve", "12", "number"),
         ("neg-01", "not", "not", "negation"),
         ("neg-02", "not", "not", "negation"),
     ]

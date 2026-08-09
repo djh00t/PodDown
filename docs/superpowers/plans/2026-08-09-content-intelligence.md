@@ -287,6 +287,7 @@ git commit -m "feat(content): segment canonical scripts deterministically"
 - `canonical_manifest(result: ContentPreparationResult) -> Mapping[str, object]` contains only canonical JSON-compatible values, sorted keys, stable ordering, source/profile/script/lexicon versions, anchors, tokens, segments, and capabilities.
 - The BDD canonical JSON helper serializes YAML date values through an explicit local default hook; the service must not mutate the process-wide `json.JSONEncoder`.
 - Compatibility aliases derive script text and token spans from the validated typed result; frozen BDD expectations must use those canonical spans rather than untrusted proposal wording.
+- Compatibility token rows use the typed occurrence ID, category, source form, and spoken form; legacy proposal token rows are selectors only and cannot supply output values.
 
 - [ ] **Step 1: Write the integration test for the robotics fixture.** Assert two speakers, target duration between 10 and 15 minutes, source hash, factual anchors, disagreement, token accuracy inputs, segment order, no provider calls, manifest checksum, and equivalent output from two identical requests.
 - [ ] **Step 2: Run the integration test and verify the expected red failure.**
