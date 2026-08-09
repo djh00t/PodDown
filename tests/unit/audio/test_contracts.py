@@ -1,0 +1,116 @@
+"""Tests for immutable durable-audio value contracts."""
+
+from dataclasses import FrozenInstanceError
+from decimal import Decimal
+
+import pytest
+
+from poddown.audio.contracts import RenderedAudio, RenderRequest
+from poddown.domain import ProviderUsage
+
+
+def _request(**overrides: object) -> RenderRequest:
+    values: dict[str, object] = {
+        "episode_id": "episode-001",
+        "episode_version": "v1",
+        "segment_id": "segment-001",
+        "speaker_id": "host",
+        "expected_spoken_text": "The rate is 13.9 hertz.",
+        "voice_asset_id": "voice-host-v1",
+        "provider": "local",
+        "model": "local-deterministic-v1",
+    }
+    values.update(overrides)
+    return RenderRequest(**values)  # type: ignore[arg-type]
+
+
+def _rendered_audio(**overrides: object) -> RenderedAudio:
+    values: dict[str, object] = {
+        "audio_bytes": b"RIFFfixture",
+        "provider": "local",
+        "model": "local-deterministic-v1",
+        "request_id": "local-request-001",
+        "usage": ProviderUsage(input_units=26, output_units=11),
+        "cost": Decimal("0"),
+        "output_format": "wav",
+        "sample_rate_hz": 44_100,
+    }
+    values.update(overrides)
+    return RenderedAudio(**values)  # type: ignore[arg-type]
+
+
+def test_equal_requests_have_stable_identities_and_are_frozen():
+    """Identity must remain replay-safe for equivalent immutable input."""
+    first = _request()
+    second = _request()
+
+    assert first == second
+    assert first.idempotency_key == second.idempotency_key
+    assert first.candidate_id == second.candidate_id
+    assert first.candidate_id.startswith("candidate-")
+    with pytest.raises(FrozenInstanceError):
+        first.attempt = 2  # type: ignore[misc]
+
+
+@pytest.mark.parametrize("field", ["attempt", "take_index"])
+def test_identity_changes_for_a_distinct_render_take(field: str):
+    """Attempt and take indexes must keep billed render takes distinct."""
+    request = _request()
+    changed = _request(**{field: getattr(request, field) + 1})
+
+    assert changed.idempotency_key != request.idempotency_key
+    assert changed.candidate_id != request.candidate_id
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("episode_id", ""),
+        ("episode_version", ""),
+        ("segment_id", ""),
+        ("speaker_id", ""),
+        ("expected_spoken_text", ""),
+        ("voice_asset_id", ""),
+        ("provider", ""),
+        ("model", ""),
+        ("attempt", 0),
+        ("attempt", True),
+        ("take_index", -1),
+        ("take_index", True),
+        ("output_format", "mp3"),
+        ("sample_rate_hz", 0),
+        ("sample_rate_hz", True),
+    ],
+)
+def test_request_rejects_invalid_stable_input(field: str, value: object):
+    """Malformed request input must fail before identity or dispatch is possible."""
+    with pytest.raises(ValueError):
+        _request(**{field: value})
+
+
+@pytest.mark.parametrize(
+    ("usage", "cost"),
+    [
+        (ProviderUsage(input_units=0, output_units=1), Decimal("0")),
+        (ProviderUsage(input_units=1, output_units=0), Decimal("0")),
+        (ProviderUsage(input_units=True, output_units=1), Decimal("0")),
+        (ProviderUsage(input_units=1, output_units=True), Decimal("0")),
+        (ProviderUsage(input_units=1, output_units=1), Decimal("-0.01")),
+        (ProviderUsage(input_units=1, output_units=1), Decimal("NaN")),
+    ],
+)
+def test_rendered_audio_rejects_invalid_metering(usage: ProviderUsage, cost: Decimal):
+    """Accepted audio needs positive integer usage and a finite non-negative cost."""
+    with pytest.raises(ValueError):
+        _rendered_audio(usage=usage, cost=cost)
+
+
+def test_rendered_audio_rejects_empty_bytes_but_not_service_metadata_mismatch():
+    """Byte validity belongs here; metadata comparison belongs in the service."""
+    with pytest.raises(ValueError):
+        _rendered_audio(audio_bytes=b"")
+
+    rendered = _rendered_audio(provider="another-provider", model="another-model")
+
+    assert rendered.provider == "another-provider"
+    assert rendered.model == "another-model"
