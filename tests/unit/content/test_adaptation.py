@@ -269,6 +269,61 @@ def test_adapt_source_rejects_invalid_source_anchor():
     assert error.value.code == "missing_anchor"
 
 
+def test_adapt_source_rejects_unanchored_editorial_external_fact():
+    """Editorial turns cannot smuggle declarative facts past source binding."""
+    from poddown.content.adaptation import AdaptationError
+    from poddown.content.models import ScriptTurn
+
+    snapshot = snapshot_source(SOURCE)
+    treatment = _treatment(snapshot)
+    proposal = _proposal(snapshot, treatment)
+    editorial_fact = ScriptTurn(
+        proposal.turns[0].turn_id,
+        proposal.turns[0].speaker_id,
+        "Clouds contain water.",
+        "editorial",
+        (),
+        (),
+    )
+
+    with pytest.raises(AdaptationError) as error:
+        _adapt(
+            snapshot,
+            replace(proposal, turns=(editorial_fact, *proposal.turns[1:])),
+            treatment,
+        )
+
+    assert error.value.code == "unsupported_claim"
+    assert error.value.detail == "claim is not supported by its claim anchors"
+    assert "Clouds contain water." not in error.value.detail
+    assert SOURCE not in str(error.value)
+
+
+def test_adapt_source_preserves_defined_non_factual_editorial_dialogue():
+    """Defined prompts remain valid editorial turns without factual anchors."""
+    from poddown.content.models import ScriptTurn
+
+    snapshot = snapshot_source(SOURCE)
+    treatment = _treatment(snapshot)
+    proposal = _proposal(snapshot, treatment)
+    editorial_prompt = ScriptTurn(
+        proposal.turns[0].turn_id,
+        proposal.turns[0].speaker_id,
+        "Could you explain that?",
+        "editorial",
+        (),
+        (),
+    )
+
+    script = _adapt(
+        snapshot,
+        replace(proposal, turns=(editorial_prompt, *proposal.turns[1:])),
+        treatment,
+    )
+
+    assert script.turns[0] == editorial_prompt
+
+
 def test_adapt_source_requires_canonical_turn_ids_two_speakers_and_disagreement():
     """Duplicate IDs, single-speaker dialogue, and filler-only dialogue are invalid."""
     from poddown.content.adaptation import AdaptationError

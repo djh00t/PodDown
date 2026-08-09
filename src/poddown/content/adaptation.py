@@ -31,6 +31,39 @@ AdaptationErrorCode = Literal[
 _COMPARISONS = re.compile(
     r"\b(?:more|less|higher|lower|better|worse|faster|slower)\b", re.IGNORECASE
 )
+_EDITORIAL_QUESTION = re.compile(
+    r"^(?:who|what|when|where|why|how|can|could|would|should|do|does|did|is|are)\b.*\?$",
+    re.IGNORECASE,
+)
+_EDITORIAL_DIRECTIVE = re.compile(
+    r"^(?:let's|let us|please|tell me|walk me through|explain|consider|imagine|"
+    r"moving on|before we (?:continue|begin))\b.*[.!]?$",
+    re.IGNORECASE,
+)
+_EDITORIAL_EXACT = frozenset(
+    {
+        "agreed",
+        "exactly",
+        "good question",
+        "interesting",
+        "okay",
+        "right",
+        "understood",
+        "yes",
+        "no",
+        "thanks",
+        "thank you",
+        "welcome",
+        "i agree",
+        "i disagree",
+        "that makes sense",
+        "that's a fair point",
+        "that's useful",
+        "that's an important distinction",
+        "thanks for joining us",
+        "welcome to the show",
+    }
+)
 _WORD = re.compile(r"[A-Za-z][A-Za-z'-]{2,}")
 _UNSUPPORTED_WORDS = frozenset(
     {
@@ -229,6 +262,16 @@ def _token_counts(text: str) -> Counter[tuple[str, str]]:
     )
 
 
+def _is_allowed_editorial_utterance(text: str) -> bool:
+    normalized = " ".join(text.casefold().split())
+    bare = normalized.rstrip(".!?")
+    return (
+        bare in _EDITORIAL_EXACT
+        or bool(_EDITORIAL_QUESTION.fullmatch(normalized))
+        or bool(_EDITORIAL_DIRECTIVE.fullmatch(normalized))
+    )
+
+
 def _assert_source_bound(turn: ScriptTurn, source: SourceSnapshot) -> None:
     if turn.kind == "editorial":
         if turn.claim_anchors:
@@ -239,6 +282,11 @@ def _assert_source_bound(turn: ScriptTurn, source: SourceSnapshot) -> None:
             raise AdaptationError(
                 "unsupported_claim",
                 f"editorial turn {turn.turn_id} contains factual literals",
+            )
+        if not _is_allowed_editorial_utterance(turn.text):
+            raise AdaptationError(
+                "unsupported_claim",
+                f"editorial turn {turn.turn_id} is not a defined non-factual utterance",
             )
         return
     if not turn.source_anchors or not turn.claim_anchors:
