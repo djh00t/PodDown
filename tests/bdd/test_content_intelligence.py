@@ -180,12 +180,9 @@ def _expected_negation_occurrences():
     ]
 
 
-def _span_bounds(token, prefix: str, fallback: str) -> tuple[int, int]:
+def _span_bounds(token, prefix: str) -> tuple[int, int]:
     start = _attribute_or_key(token, f"{prefix}_span_start")
     end = _attribute_or_key(token, f"{prefix}_span_end")
-    if start is None or end is None:
-        start = _attribute_or_key(token, f"{fallback}_start", start)
-        end = _attribute_or_key(token, f"{fallback}_end", end)
     assert isinstance(start, int) and isinstance(end, int), f"{prefix} span fields are not integers"
     assert start < end, f"{prefix} span end must be greater than start"
     return (start, end)
@@ -417,17 +414,11 @@ def critical_tokens_have_spoken_forms(context):
     expected = _expected_critical_tokens(context)
 
     assert len(tokens) == len(expected)
-    observed = {_critical_token_identity(token): token for token in tokens}
-    expected_keys = [_critical_token_identity(item) for item in expected]
-    assert len(observed) == len(expected_keys)
-    assert set(observed.keys()) == set(expected_keys)
-
-    for item in expected:
-        token = observed[_critical_token_identity(item)]
-        assert token["spoken_form"] == item["spoken_form"]
-        assert token["source_form"] == item["source_form"]
-        assert token["category"] == item["category"]
-        assert token["occurrence_id"] == item["occurrence_id"]
+    for observed_token, expected_token in zip(tokens, expected):
+        assert observed_token["occurrence_id"] == expected_token["occurrence_id"]
+        assert observed_token["spoken_form"] == expected_token["spoken_form"]
+        assert observed_token["source_form"] == expected_token["source_form"]
+        assert observed_token["category"] == expected_token["category"]
 
 
 @then("the segmentation manifest preserves turn order and source grouping")
@@ -520,18 +511,15 @@ def negation_occurrences(context):
 
     assert len(negations) == len(expected_negations) == 2
 
-    negations_in_order = sorted(negations, key=lambda token: _span_bounds(token, "script", "span")[0])
-    assert [_attribute_or_key(token, "occurrence_id") for token in negations_in_order] == [
+    assert [_attribute_or_key(token, "occurrence_id") for token in negations] == [
         expected["occurrence_id"] for expected in expected_negations
     ]
-
-    observed_by_id = {_attribute_or_key(token, "occurrence_id"): token for token in negations}
-    for expected in expected_negations:
-        token = observed_by_id[expected["occurrence_id"]]
-        source_span = _span_bounds(token, "source", "span")
-        script_span = _span_bounds(token, "script", "span")
-        assert source_span == (expected["source_span_start"], expected["source_span_end"])
-        assert script_span == (expected["script_span_start"], expected["script_span_end"])
+    assert [tuple(_span_bounds(token, "source")) for token in negations] == [
+        (expected["source_span_start"], expected["source_span_end"]) for expected in expected_negations
+    ]
+    assert [tuple(_span_bounds(token, "script")) for token in negations] == [
+        (expected["script_span_start"], expected["script_span_end"]) for expected in expected_negations
+    ]
 
 
 @then("the token manifest is deterministic")
