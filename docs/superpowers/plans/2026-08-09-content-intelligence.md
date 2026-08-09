@@ -156,7 +156,7 @@ Expected: FAIL with missing `poddown.content` models/source/profile behavior, no
 - [ ] **Step 4: Implement strict profile loading.** Use Pydantic validation at the YAML boundary, keep provider IDs out of profile content, and require active voice assets with current consent without making a provider call.
 - [ ] **Step 5: Run focused tests, then the existing M0 suite.**
 
-Run: `uv run pytest tests/unit/content/test_source.py tests/unit/content/test_profiles.py -v && make check`
+Run: `uv run pytest tests/unit/content/test_source.py tests/unit/content/test_profiles.py -v && uv run pytest -m "not live_provider" --ignore=tests/bdd/test_content_intelligence.py -q && make lint`
 
 Expected: focused tests pass and the pre-existing 68 non-live tests remain green.
 
@@ -193,11 +193,11 @@ Expected: FAIL because lexicon and token extraction behavior is absent.
 
 - [ ] **Step 3: Implement exact normalized lexicon resolution.** Do not learn, mutate, or silently select between conflicting entries. Return version and entry provenance for every selected pronunciation.
 - [ ] **Step 4: Implement deterministic token extraction.** Apply specific patterns before generic patterns so dates, percentages, currencies, numbers with units, acronyms, and ticker-like symbols receive one category each. Use lexicon entries to identify configured names, organizations, products, and technical terms; use explicit `negation` occurrences for every normalized negation token.
-- [ ] **Step 5: Run focused tests, content BDD, and the M0 suite.**
+- [ ] **Step 5: Run focused lexicon/token tests, the green M0 suite, and lint.** The full M1 BDD file remains intentionally red until Task 6 wires the integrated service.
 
-Run: `uv run pytest tests/unit/content/test_lexicon.py tests/unit/content/test_tokens.py tests/bdd/test_content_intelligence.py -v && make check`
+Run: `uv run pytest tests/unit/content/test_lexicon.py tests/unit/content/test_tokens.py -v && uv run pytest -m "not live_provider" --ignore=tests/bdd/test_content_intelligence.py -q && make lint`
 
-Expected: the relevant lexicon/token BDD scenarios pass, while any scenarios for not-yet-implemented adaptation or segmentation remain expected red and are recorded as pending task work rather than skipped.
+Expected: focused lexicon/token tests pass and the pre-existing 68 non-live tests remain green; the full M1 BDD file is intentionally deferred to Task 6 rather than skipped from the final gate.
 
 - [ ] **Step 6: Commit the lexicon and token slice.**
 
@@ -230,7 +230,9 @@ Expected: FAIL because adaptation and repair ports are absent.
 - [ ] **Step 3: Implement the structured reasoning port and fixture adapter.** Keep provider/model payloads out of the public domain models; the fixture adapter is the only default implementation in M1.
 - [ ] **Step 4: Implement source-bound validation.** Every factual turn must point to an anchor. Extract critical literals from each claim and its anchored source text; reject changed numbers, units, dates, percentages, names, and negation before any rendering path can be called. Editorial turns must not introduce factual claims.
 - [ ] **Step 5: Implement bounded repair.** Replace only the named failing turn, retain accepted turn IDs and canonical ordering, and fail if the repair changes a protected anchor or introduces a new unsupported claim.
-- [ ] **Step 6: Run focused adaptation tests, all M1 BDD scenarios now covered, and `make check`.**
+- [ ] **Step 6: Run focused adaptation tests, the green M0 suite, and lint.** The full M1 BDD file remains intentionally red until Task 6 wires the integrated service.
+
+Run: `uv run pytest tests/unit/content/test_adaptation.py -v && uv run pytest -m "not live_provider" --ignore=tests/bdd/test_content_intelligence.py -q && make lint`
 - [ ] **Step 7: Commit the adaptation slice.**
 
 ```bash
@@ -258,7 +260,9 @@ Run: `uv run pytest tests/unit/content/test_segmentation.py -v`
 Expected: FAIL because segmentation behavior is absent.
 
 - [ ] **Step 3: Implement the smallest deterministic grouping algorithm.** Add turns until the next complete turn would exceed a declared capability, then start a new segment. If one complete turn exceeds the limit, fail rather than split or truncate it. Continuity context is stored but never included in spoken segment text.
-- [ ] **Step 4: Run focused segmentation tests, BDD tests, and `make check`.**
+- [ ] **Step 4: Run focused segmentation tests, the green M0 suite, and lint.** The full M1 BDD file remains intentionally red until Task 6 wires the integrated service.
+
+Run: `uv run pytest tests/unit/content/test_segmentation.py -v && uv run pytest -m "not live_provider" --ignore=tests/bdd/test_content_intelligence.py -q && make lint`
 - [ ] **Step 5: Commit the segmentation slice.**
 
 ```bash
