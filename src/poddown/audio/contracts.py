@@ -235,5 +235,5 @@ class AudioRenderer(Protocol):
 
     capabilities: ProviderCapabilities
 
-    def render(self, request: RenderRequest) -> RenderedAudio:
+    async def render(self, request: RenderRequest) -> RenderedAudio:
         """Render one immutable request into normalized audio bytes."""
