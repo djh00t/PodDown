@@ -627,6 +627,7 @@ def _compatibility_result(
             or not isinstance(claim.get("source_block_anchor"), str)
             or not isinstance(claim.get("source_value"), str)
             or not isinstance(claim.get("speaker_id"), str)
+            or not normalize_lexicon_key(str(claim["source_value"]))
             or claim.get("source_value") != claim.get("adapted_value")
         ):
             raise AdaptationError("unsupported_claim")

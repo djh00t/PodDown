@@ -236,6 +236,18 @@ def test_compatibility_rejects_claim_value_not_present_in_typed_source():
     assert result.accepted is False
 
 
+@pytest.mark.parametrize("value", ("", "   "))
+def test_compatibility_rejects_empty_normalized_claim_values(value: str):
+    """Empty caller values cannot satisfy source-grounding substring checks."""
+    proposal = deepcopy(LEGACY_PROPOSAL)
+    proposal["claims"][0]["source_value"] = value
+    proposal["claims"][0]["adapted_value"] = value
+
+    result = _legacy_result(proposal)
+
+    assert result.accepted is False
+
+
 def test_compatibility_rejects_claim_for_unknown_typed_turn():
     """Unbound claim groups cannot be silently omitted from aliases."""
     proposal = deepcopy(LEGACY_PROPOSAL)
