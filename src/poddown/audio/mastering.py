@@ -37,6 +37,8 @@ class MasteringProfile:
     crossfade_ms: int = 0
     min_duration_seconds: float = 0.01
     max_duration_seconds: float = 10_800.0
+    min_segment_duration_seconds: float = 0.01
+    max_segment_duration_seconds: float = 10_800.0
     max_peak_amplitude: float = 0.99
     max_clipping_ratio: float = 0.0
     version: str = "spoken-word-v1"
@@ -63,6 +65,17 @@ class MasteringProfile:
             or not math.isfinite(self.max_duration_seconds)
         ):
             raise MasteringError("master duration bounds are invalid")
+        if (
+            not isinstance(self.min_segment_duration_seconds, (int, float))
+            or isinstance(self.min_segment_duration_seconds, bool)
+            or self.min_segment_duration_seconds <= 0
+            or not math.isfinite(self.min_segment_duration_seconds)
+            or not isinstance(self.max_segment_duration_seconds, (int, float))
+            or isinstance(self.max_segment_duration_seconds, bool)
+            or self.max_segment_duration_seconds < self.min_segment_duration_seconds
+            or not math.isfinite(self.max_segment_duration_seconds)
+        ):
+            raise MasteringError("segment duration bounds are invalid")
         if (
             not isinstance(self.max_peak_amplitude, (int, float))
             or isinstance(self.max_peak_amplitude, bool)
@@ -483,8 +496,8 @@ def _diagnose_segment(
             audio_bytes,
             expected_sample_rate_hz=profile.sample_rate_hz,
             expected_channels=profile.channels,
-            min_duration_seconds=profile.min_duration_seconds,
-            max_duration_seconds=profile.max_duration_seconds,
+            min_duration_seconds=profile.min_segment_duration_seconds,
+            max_duration_seconds=profile.max_segment_duration_seconds,
         )
     except AudioDiagnosticsError as error:
         raise MasteringError("input segment failed media inspection") from error

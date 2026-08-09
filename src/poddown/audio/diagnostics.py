@@ -77,9 +77,36 @@ def diagnose_wav(
             if sample_width not in (1, 2, 3, 4):
                 raise AudioDiagnosticsError("invalid WAV sample width")
             expected_size = frame_count * channels * sample_width
+            if (
+                expected_sample_rate_hz is not None
+                and sample_rate_hz != expected_sample_rate_hz
+            ):
+                raise AudioDiagnosticsError(
+                    "WAV sample rate does not match expectation"
+                )
+            if expected_channels is not None and channels != expected_channels:
+                raise AudioDiagnosticsError(
+                    "WAV channel count does not match expectation"
+                )
+
+            duration_seconds = frame_count / sample_rate_hz
+            if (
+                min_duration_seconds is not None
+                and duration_seconds < min_duration_seconds
+            ):
+                raise AudioDiagnosticsError("WAV duration is below the minimum")
+            if (
+                max_duration_seconds is not None
+                and duration_seconds > max_duration_seconds
+            ):
+                raise AudioDiagnosticsError("WAV duration exceeds the maximum")
+
             maximum = (1 << (sample_width * 8 - 1)) - 1
-            peak = clipping_samples = silent_samples = read_size = 0
+            peak = 0
+            clipping_samples = 0
+            silent_samples = 0
             remaining_frames = frame_count
+            read_size = 0
             while remaining_frames:
                 chunk_frames = min(remaining_frames, _PCM_CHUNK_FRAMES)
                 payload = audio.readframes(chunk_frames)
@@ -99,20 +126,6 @@ def diagnose_wav(
 
     if read_size != expected_size:
         raise AudioDiagnosticsError("truncated WAV frame payload")
-    if (
-        expected_sample_rate_hz is not None
-        and sample_rate_hz != expected_sample_rate_hz
-    ):
-        raise AudioDiagnosticsError("WAV sample rate does not match expectation")
-    if expected_channels is not None and channels != expected_channels:
-        raise AudioDiagnosticsError("WAV channel count does not match expectation")
-
-    duration_seconds = frame_count / sample_rate_hz
-    if min_duration_seconds is not None and duration_seconds < min_duration_seconds:
-        raise AudioDiagnosticsError("WAV duration is below the minimum")
-    if max_duration_seconds is not None and duration_seconds > max_duration_seconds:
-        raise AudioDiagnosticsError("WAV duration exceeds the maximum")
-
     sample_count = frame_count * channels
     peak_amplitude = min(peak / maximum, 1.0)
     clipping_ratio = clipping_samples / sample_count

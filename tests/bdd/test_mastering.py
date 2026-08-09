@@ -58,6 +58,7 @@ class FakeRunner:
     result: FakeFfmpegResult
     error: Exception | None = None
     calls: list[tuple[MasteringSegment, ...]] = field(default_factory=list)
+    expected_profile: MasteringProfile | None = None
 
     def run(
         self,
@@ -66,7 +67,8 @@ class FakeRunner:
         profile: MasteringProfile,
     ) -> FakeFfmpegResult:
         """Return the configured ffmpeg-like result or raise the configured error."""
-        assert profile == PROFILE
+        if self.expected_profile is not None:
+            assert profile == self.expected_profile
         self.calls.append(segments)
         if self.error is not None:
             raise self.error
@@ -81,6 +83,17 @@ def _wav_bytes(*, sample: int) -> bytes:
         output.setsampwidth(2)
         output.setframerate(44100)
         output.writeframes(sample.to_bytes(2, "little", signed=True) * 882)
+    return stream.getvalue()
+
+
+def _wav_bytes_for_frames(*, sample: int, frames: int) -> bytes:
+    """Build a PCM fixture with the requested deterministic frame count."""
+    stream = BytesIO()
+    with wave.open(stream, "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(44100)
+        output.writeframes(sample.to_bytes(2, "little", signed=True) * frames)
     return stream.getvalue()
 
 
@@ -151,6 +164,36 @@ def equivalent_mastering_requests(context):
     context.values["runner"] = FakeRunner(RUNNER_RESULT)
     context.values["first_request"] = _request(*segments)
     context.values["second_request"] = _request(*segments)
+
+
+@given("a short segment and a longer master duration requirement")
+def short_segment_and_longer_master_duration_requirement(context):
+    short_segment = _wav_bytes(sample=1200)
+    completed_master = _wav_bytes_for_frames(sample=600, frames=4_410)
+    profile = MasteringProfile(
+        min_duration_seconds=0.1,
+        max_duration_seconds=1.0,
+        min_segment_duration_seconds=0.01,
+        max_segment_duration_seconds=0.05,
+    )
+    context.values["runner"] = FakeRunner(
+        FakeFfmpegResult(
+            completed_master,
+            MASTERED_MP3,
+            mp3_metadata={
+                "codec_name": "mp3",
+                "sample_rate": "44100",
+                "channels": "1",
+                "duration": "0.1",
+            },
+        )
+    )
+    context.values["request"] = MasteringRequest(
+        "episode-001",
+        "v1",
+        (MasteringSegment(10, "segment-010", short_segment),),
+        profile,
+    )
 
 
 @when("the episode is mastered")
@@ -224,3 +267,10 @@ def equivalent_inputs_have_equal_output_checksums(context):
     assert first.provenance.mp3_checksum == second.provenance.mp3_checksum
     assert first.provenance.wav_checksum == sha256(first.wav_bytes).hexdigest()
     assert first.provenance.mp3_checksum == sha256(first.mp3_bytes).hexdigest()
+
+
+@then("the short segment is dispatched and the longer master is returned")
+def short_segment_is_dispatched_and_longer_master_is_returned(context):
+    (dispatched_segments,) = context.values["runner"].calls
+    assert dispatched_segments[0].segment_id == "segment-010"
+    assert context.values["result"].diagnostics.duration_seconds == 0.1

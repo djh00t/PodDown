@@ -203,7 +203,10 @@ def test_mastering_rejects_output_that_fails_peak_or_clipping_gates(
         (wav_bytes(samples=(1_000,) * 10), PROFILE, "media inspection"),
         (
             wav_bytes(samples=(1_000,) * 1_000),
-            MasteringProfile(max_duration_seconds=0.02),
+            MasteringProfile(
+                max_duration_seconds=0.02,
+                max_segment_duration_seconds=0.02,
+            ),
             "media inspection",
         ),
     ],
@@ -244,6 +247,41 @@ def test_mastering_rejects_invalid_input_before_runner_dispatch(
         )
 
     assert runner.calls == []
+
+
+def test_mastering_uses_segment_duration_bounds_before_output_duration_bounds():
+    short_segment = wav_bytes(samples=(1_000,) * 882)
+    completed_master = wav_bytes(samples=(1_000,) * 4_410)
+    profile = MasteringProfile(
+        min_duration_seconds=0.1,
+        max_duration_seconds=1.0,
+        min_segment_duration_seconds=0.01,
+        max_segment_duration_seconds=0.05,
+    )
+    runner = FakeRunner(
+        FfmpegResult(
+            wav_bytes=completed_master,
+            mp3_bytes=MASTERED_MP3,
+            executable="fake-ffmpeg",
+            version="fake-1.0",
+            command=("fake-ffmpeg", "-i", "input.wav"),
+            filters=("volume=1.0",),
+            commands=(("fake-ffmpeg", "-i", "input.wav"),),
+            mp3_metadata={
+                "codec_name": "mp3",
+                "sample_rate": "44100",
+                "channels": "1",
+                "duration": "0.1",
+            },
+        )
+    )
+
+    mastered = MasteringService(runner).master(
+        request(segment(audio_bytes=short_segment), profile=profile)
+    )
+
+    assert mastered.diagnostics.duration_seconds == 0.1
+    assert runner.calls == [(segment(audio_bytes=short_segment),)]
 
 
 def test_mastering_rejects_missing_mp3_metadata():

@@ -26,3 +26,8 @@ Feature: Deterministic episode mastering
     Given two equivalent mastering requests
     When both episodes are mastered
     Then their WAV and MP3 output checksums are equal
+
+  Scenario: Accept short segments for a longer episode master
+    Given a short segment and a longer master duration requirement
+    When the episode is mastered
+    Then the short segment is dispatched and the longer master is returned
