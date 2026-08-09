@@ -20,6 +20,16 @@ class AudioDiagnostics:
     clipping_ratio: float
     silence_ratio: float
 
+    @property
+    def passes_hard_gates(self) -> bool:
+        """Return whether objective audio metrics meet this slice's hard gates."""
+        return (
+            self.sample_rate_hz > 0
+            and self.channels == 1
+            and self.duration_seconds > 0
+            and self.clipping_ratio == 0.0
+        )
+
     def to_dict(self) -> dict[str, float | int]:
         """Return metrics in a stable, JSON-serializable field order."""
         return {
@@ -36,12 +46,16 @@ def diagnose_wav(
     audio_bytes: bytes,
     *,
     expected_sample_rate_hz: int | None = None,
+    expected_channels: int | None = None,
     min_duration_seconds: float | None = None,
     max_duration_seconds: float | None = None,
 ) -> AudioDiagnostics:
     """Decode PCM WAV bytes and enforce requested metadata and duration bounds."""
     _validate_bounds(
-        expected_sample_rate_hz, min_duration_seconds, max_duration_seconds
+        expected_sample_rate_hz,
+        expected_channels,
+        min_duration_seconds,
+        max_duration_seconds,
     )
     if not isinstance(audio_bytes, bytes) or not audio_bytes:
         raise AudioDiagnosticsError("invalid WAV audio bytes")
@@ -73,6 +87,8 @@ def diagnose_wav(
         and sample_rate_hz != expected_sample_rate_hz
     ):
         raise AudioDiagnosticsError("WAV sample rate does not match expectation")
+    if expected_channels is not None and channels != expected_channels:
+        raise AudioDiagnosticsError("WAV channel count does not match expectation")
 
     duration_seconds = frame_count / sample_rate_hz
     if min_duration_seconds is not None and duration_seconds < min_duration_seconds:
@@ -97,6 +113,7 @@ def diagnose_wav(
 
 def _validate_bounds(
     expected_sample_rate_hz: int | None,
+    expected_channels: int | None,
     min_duration_seconds: float | None,
     max_duration_seconds: float | None,
 ) -> None:
@@ -104,6 +121,10 @@ def _validate_bounds(
         type(expected_sample_rate_hz) is not int or expected_sample_rate_hz <= 0
     ):
         raise AudioDiagnosticsError("expected sample rate must be a positive integer")
+    if expected_channels is not None and (
+        type(expected_channels) is not int or expected_channels <= 0
+    ):
+        raise AudioDiagnosticsError("expected channels must be a positive integer")
     for name, value in (
         ("minimum duration", min_duration_seconds),
         ("maximum duration", max_duration_seconds),

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
 from poddown.audio.diagnostics import AudioDiagnostics
 from poddown.domain import FidelityResult
@@ -36,7 +37,56 @@ class CandidateQuality:
     @property
     def passes_hard_gates(self) -> bool:
         """Return whether required fidelity and pronunciation gates both passed."""
-        return self.fidelity.passed and self.pronunciation_passed
+        return (
+            self.fidelity.passed
+            and self.pronunciation_passed
+            and self.diagnostics.passes_hard_gates
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return JSON-compatible quality evidence for Temporal activities."""
+        return {
+            "candidate_id": self.candidate_id,
+            "diagnostics": self.diagnostics.to_dict(),
+            "fidelity": {
+                "accuracy": self.fidelity.accuracy,
+                "passed": self.fidelity.passed,
+                "rerender_scope": self.fidelity.rerender_scope,
+            },
+            "pronunciation_passed": self.pronunciation_passed,
+            "soft_score": str(self.soft_score),
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "CandidateQuality":
+        """Reconstruct quality evidence returned by a Temporal activity."""
+        if not isinstance(value, dict):
+            raise CandidateSelectionError("quality evidence is malformed")
+        fidelity = value.get("fidelity")
+        diagnostics = value.get("diagnostics")
+        if not isinstance(fidelity, dict) or not isinstance(diagnostics, dict):
+            raise CandidateSelectionError("quality evidence is malformed")
+        try:
+            return cls(
+                candidate_id=value["candidate_id"],
+                fidelity=FidelityResult(
+                    passed=fidelity["passed"],
+                    accuracy=fidelity["accuracy"],
+                    rerender_scope=fidelity["rerender_scope"],
+                ),
+                diagnostics=AudioDiagnostics(
+                    sample_rate_hz=diagnostics["sample_rate_hz"],
+                    channels=diagnostics["channels"],
+                    duration_seconds=diagnostics["duration_seconds"],
+                    peak_amplitude=diagnostics["peak_amplitude"],
+                    clipping_ratio=diagnostics["clipping_ratio"],
+                    silence_ratio=diagnostics["silence_ratio"],
+                ),
+                pronunciation_passed=value["pronunciation_passed"],
+                soft_score=Decimal(str(value["soft_score"])),
+            )
+        except (ArithmeticError, KeyError, TypeError, ValueError) as error:
+            raise CandidateSelectionError("quality evidence is malformed") from error
 
 
 def rank_candidates(
@@ -65,3 +115,11 @@ def _validate_candidates(candidates: tuple[CandidateQuality, ...]) -> None:
         raise CandidateSelectionError("candidates must be a tuple")
     if not all(isinstance(candidate, CandidateQuality) for candidate in candidates):
         raise CandidateSelectionError("candidates must contain CandidateQuality values")
+
+
+__all__ = [
+    "CandidateQuality",
+    "CandidateSelectionError",
+    "rank_candidates",
+    "select_candidate",
+]

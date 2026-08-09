@@ -13,11 +13,11 @@
 | 7 | Voice rights/consent | 001/004 | M0/M3 |
 | 8 | Pronunciation engine | 002 | M1 complete locally; deterministic token evidence verified |
 | 9 | Segmentation engine | 002 | M1 complete locally; capability-safe segmentation verified |
-| 10 | Render orchestration | 003 | M2 foundation locally verified: [BDD](../tests/features/durable_audio.feature), [unit](../tests/unit/audio/test_render.py), [integration](../tests/integration/test_durable_render.py), and [verification evidence](verification/durable-audio-foundation.md) |
-| 11 | Candidate-take scoring | 003 | M2 |
+| 10 | Render orchestration | 003 | M2 foundation plus bounded Temporal orchestration locally verified: [durable BDD](../tests/features/durable_audio.feature), [Temporal BDD](../tests/features/temporal_orchestration.feature), [durable integration](../tests/integration/test_durable_render.py), [Temporal integration](../tests/integration/test_temporal_orchestration.py), and [verification evidence](verification/temporal-orchestration-qa.md) |
+| 11 | Candidate-take scoring | 003 | M2 locally verified for deterministic hard-gate selection and stable ranking: [selection tests](../tests/unit/audio/test_selection.py) and [Temporal verification](verification/temporal-orchestration-qa.md); provider-backed scoring remains pending |
 | 12 | Transcription/fidelity QA | 001/003 | M0/M2 |
 | 13 | Critical-token verification | 001/002/003 | M0–M2 |
-| 14 | Audio quality gates | 003 | M2 |
+| 14 | Audio quality gates | 003 | M2 locally verified for WAV diagnostics and hard gates: [diagnostic tests](../tests/unit/audio/test_diagnostics.py) and [Temporal verification](verification/temporal-orchestration-qa.md); final-master and listening gates remain pending |
 | 15 | Mastering | 003 | M2 |
 | 16 | Package/provenance | 001/003 | M0/M2 |
 | 17 | Publishing adapters | 007 | M5 |
@@ -46,6 +46,10 @@ not expand the MVP feature set; they make the approved service operable.
 - M2 durable audio foundation: locally verified only for rights/capability
   preflight, deterministic local takes, immutable artifacts, usage/cost records,
   and replay across fresh service instances; later M2 work remains pending.
+- M2 Temporal orchestration and audio QA boundary: locally verified for bounded
+  retry, three-take selection, hard-gate precedence, failed-segment repair,
+  structured failure, and completed-workflow replay; provider-bound activity
+  wiring, mastering, packaging, and publication remain pending.
 - Task-level implementation plan: intentionally produced just-in-time per
   milestone so measured interfaces and audio quality inform the next plan.
 - Audio rendering, Temporal, API, CLI, publishing, MCP, Signal & Supply, and

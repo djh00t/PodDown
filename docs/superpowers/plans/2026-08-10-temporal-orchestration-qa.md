@@ -12,7 +12,7 @@
 
 - Workflow inputs, activity inputs, decisions, failures, and results are immutable typed values with stable JSON-compatible identities.
 - Workflow code is deterministic: no wall-clock reads, randomness, environment reads, network calls, filesystem writes, provider SDK objects, or mutable global state.
-- Activity idempotency keys derive from episode version, stage, segment, attempt, take, and provider inputs. Temporal retrying an activity must reuse the same key and must not create a second accepted candidate or cost event.
+- Activity idempotency keys derive from episode version, stage, segment, attempt, take, and provider inputs. Temporal retries and completed-workflow replay reuse stable workflow/activity identities; provider-side exactly-once dispatch and durable cost-ledger integration are the next M2 activity-boundary task.
 - Rights and capability checks remain before every renderer dispatch. Invalid or truncated audio fails before transcription or downstream quality work.
 - Candidate selection evaluates every hard gate first. A hard-gate failure can never be rescued by a higher soft score; soft scoring runs only over candidates that pass all hard gates.
 - Each attempt produces at most three takes. Accepted segments are never dispatched again during repair; only failed segments receive a new attempt.
@@ -66,10 +66,12 @@ class EpisodeWorkflowResult:
 ```
 
 The Temporal workflow is `EpisodeRenderWorkflow`. Its activities receive only
-these serializable contracts and use the existing `DurableRenderService` and
-artifact/cost boundaries. The workflow ID is derived from the immutable episode
-and version snapshot; an existing completed workflow is returned rather than
-rerun.
+these serializable contracts. The default activity registration fails closed
+until a provider-bound worker supplies the existing `DurableRenderService` and
+artifact/cost integration; this slice proves the workflow contract with an
+explicit deterministic local activity. The workflow ID is derived from the
+immutable episode and version snapshot; an existing completed workflow is
+returned rather than rerun.
 
 ## File ownership
 
@@ -85,12 +87,12 @@ rerun.
 
 ## Execution checklist
 
-- [ ] Task 1: write and observe the BDD acceptance scenarios RED.
-- [ ] Task 2: write diagnostics, selection, and workflow contract tests RED.
-- [ ] Task 3: add the Temporal dependency and immutable orchestration contracts.
-- [ ] Task 4: implement diagnostics and hard-gate candidate selection.
-- [ ] Task 5: implement Temporal retry, fan-out, repair, and terminal failure semantics.
-- [ ] Task 6: prove local Temporal integration, restart recovery, and completed-workflow replay.
+- [x] Task 1: write and observe the BDD acceptance scenarios RED.
+- [x] Task 2: write diagnostics, selection, and workflow contract tests RED.
+- [x] Task 3: add the Temporal dependency and immutable orchestration contracts.
+- [x] Task 4: implement diagnostics and hard-gate candidate selection.
+- [x] Task 5: implement Temporal retry, fan-out, repair, and terminal failure semantics.
+- [x] Task 6: prove local Temporal integration, restart recovery, and completed-workflow replay.
 - [ ] Task 7: verify, independently review, document, commit, push, and open a ready PR.
 
 ## Tasks
@@ -142,5 +144,6 @@ rerun.
 ## Explicit deferrals
 
 - Live ElevenLabs/OpenAI rendering, transcription API calls, provider billing reconciliation, ffmpeg mastering, final-master QA, package manifests, chapters, show notes, publication, and blinded listening are later M2 tasks.
+- Provider-bound Temporal activity registration, `DurableRenderService` wiring, provider idempotency, and durable artifact/cost persistence are the next M2 integration task. The default activity intentionally fails closed; deterministic local activities must not be presented as live-provider evidence.
 - The local Temporal test environment is deterministic integration evidence, not proof of hosted Temporal deployment capacity.
 - Database persistence, tenant isolation, FastAPI job/status endpoints, object storage, outbox, and Compose belong to M3.

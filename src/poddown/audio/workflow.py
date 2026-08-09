@@ -1,18 +1,22 @@
-"""Immutable, replay-safe contracts for future Temporal audio workflows."""
+"""Immutable, replay-safe contracts for Temporal audio workflows."""
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import timedelta
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
+from temporalio import activity, workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ActivityError, ApplicationError
 
 from poddown.audio.contracts import RenderRequest
 from poddown.audio.rights import VoiceConsent
+from poddown.audio.selection import CandidateQuality, select_candidate
 
 
 class WorkflowContractError(ValueError):
@@ -63,7 +67,9 @@ def _require_positive(name: str, value: object) -> None:
 def _json_value(value: Any) -> Any:
     """Convert supported immutable values to canonical JSON-compatible data."""
     if is_dataclass(value):
-        return {key: _json_value(item) for key, item in asdict(value).items()}
+        return {
+            key: _json_value(item) for key, item in asdict(cast(Any, value)).items()
+        }
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, (set, frozenset)):
@@ -106,7 +112,36 @@ class SegmentWorkflowInput:
             raise WorkflowContractError("critical_tokens must be a tuple of strings")
 
     def to_dict(self) -> dict[str, Any]:
-        return _json_value(self)  # type: ignore[return-value]
+        return cast(dict[str, Any], _json_value(self))
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> SegmentWorkflowInput:
+        """Reconstruct a segment snapshot from the JSON activity boundary."""
+        if not isinstance(value, dict):
+            raise WorkflowContractError("segment snapshot is malformed")
+        request_data = value.get("render_request")
+        consent_data = value.get("consent")
+        critical_tokens = value.get("critical_tokens")
+        if (
+            not isinstance(request_data, dict)
+            or not isinstance(consent_data, dict)
+            or not isinstance(critical_tokens, list)
+        ):
+            raise WorkflowContractError("segment snapshot is malformed")
+        try:
+            return cls(
+                segment_id=value["segment_id"],
+                render_request=RenderRequest(**request_data),
+                consent=VoiceConsent(
+                    voice_asset_id=consent_data["voice_asset_id"],
+                    evidence_id=consent_data["evidence_id"],
+                    allowed_providers=frozenset(consent_data["allowed_providers"]),
+                    valid=consent_data.get("valid", True),
+                ),
+                critical_tokens=tuple(critical_tokens),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise WorkflowContractError("segment snapshot is malformed") from error
 
 
 @dataclass(frozen=True)
@@ -130,7 +165,35 @@ class EpisodeWorkflowInput:
         _require_positive("max_attempts", self.max_attempts)
 
     def to_dict(self) -> dict[str, Any]:
-        return _json_value(self)  # type: ignore[return-value]
+        return cast(dict[str, Any], _json_value(self))
+
+    def to_json(self) -> str:
+        """Serialize the immutable snapshot for a Temporal payload."""
+        return _canonical(self)
+
+    @classmethod
+    def from_json(cls, value: str) -> EpisodeWorkflowInput:
+        """Reconstruct a snapshot from a Temporal JSON payload."""
+        try:
+            decoded = json.loads(value)
+        except (TypeError, json.JSONDecodeError) as error:
+            raise WorkflowContractError("episode snapshot is malformed") from error
+        if not isinstance(decoded, dict) or not isinstance(
+            decoded.get("segments"), list
+        ):
+            raise WorkflowContractError("episode snapshot is malformed")
+        try:
+            return cls(
+                episode_id=decoded["episode_id"],
+                episode_version=decoded["episode_version"],
+                segments=tuple(
+                    SegmentWorkflowInput.from_dict(segment)
+                    for segment in decoded["segments"]
+                ),
+                max_attempts=decoded.get("max_attempts", 2),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise WorkflowContractError("episode snapshot is malformed") from error
 
 
 @dataclass(frozen=True)
@@ -152,18 +215,25 @@ class WorkflowFailure:
             raise WorkflowContractError("failed_gates must be a tuple of strings")
 
     def to_dict(self) -> dict[str, Any]:
-        return _json_value(self)  # type: ignore[return-value]
+        return cast(dict[str, Any], _json_value(self))
 
-
-@dataclass(frozen=True)
-class CandidateQuality:
-    """Serializable quality summary; concrete metric types are future boundaries."""
-
-    candidate_id: str
-    fidelity: Any
-    diagnostics: Any
-    pronunciation_passed: bool
-    soft_score: Decimal
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> WorkflowFailure:
+        """Reconstruct terminal failure evidence from a JSON result."""
+        if not isinstance(value, dict):
+            raise WorkflowContractError("workflow failure is malformed")
+        failed_gates = value.get("failed_gates")
+        if not isinstance(failed_gates, list):
+            raise WorkflowContractError("workflow failure is malformed")
+        try:
+            return cls(
+                segment_id=value["segment_id"],
+                attempt_count=value["attempt_count"],
+                failed_gates=tuple(failed_gates),
+                last_error_code=value["last_error_code"],
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise WorkflowContractError("workflow failure is malformed") from error
 
 
 @dataclass(frozen=True)
@@ -176,15 +246,113 @@ class SegmentDecision:
     candidates: tuple[CandidateQuality, ...]
     failure_code: str | None
 
+    def __post_init__(self) -> None:
+        _require_non_empty("segment_id", self.segment_id)
+        _require_positive("attempt", self.attempt)
+        if self.accepted_candidate_id is not None:
+            _require_non_empty("accepted_candidate_id", self.accepted_candidate_id)
+        if not isinstance(self.candidates, tuple) or any(
+            not isinstance(candidate, CandidateQuality) for candidate in self.candidates
+        ):
+            raise WorkflowContractError(
+                "candidates must be a tuple of CandidateQuality values"
+            )
+        if self.failure_code is not None:
+            _require_non_empty("failure_code", self.failure_code)
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> SegmentDecision:
+        """Reconstruct one deterministic segment decision from JSON."""
+        if not isinstance(value, dict):
+            raise WorkflowContractError("segment decision is malformed")
+        candidates = value.get("candidates")
+        if not isinstance(candidates, list):
+            raise WorkflowContractError("segment decision is malformed")
+        try:
+            return cls(
+                segment_id=value["segment_id"],
+                attempt=value["attempt"],
+                accepted_candidate_id=value.get("accepted_candidate_id"),
+                candidates=tuple(
+                    CandidateQuality.from_dict(candidate) for candidate in candidates
+                ),
+                failure_code=value.get("failure_code"),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise WorkflowContractError("segment decision is malformed") from error
+
 
 @dataclass(frozen=True)
 class EpisodeWorkflowResult:
-    """Serializable terminal result returned by a future episode workflow."""
+    """Serializable terminal result returned by an episode workflow."""
 
     workflow_id: str
     status: Literal["completed", "failed"]
     decisions: tuple[SegmentDecision, ...]
     terminal_failure: WorkflowFailure | None
+
+    def __post_init__(self) -> None:
+        _require_non_empty("workflow_id", self.workflow_id)
+        if self.status not in ("completed", "failed"):
+            raise WorkflowContractError("status must be completed or failed")
+        if not isinstance(self.decisions, tuple) or any(
+            not isinstance(decision, SegmentDecision) for decision in self.decisions
+        ):
+            raise WorkflowContractError(
+                "decisions must be a tuple of SegmentDecision values"
+            )
+        if self.terminal_failure is not None and not isinstance(
+            self.terminal_failure, WorkflowFailure
+        ):
+            raise WorkflowContractError(
+                "terminal_failure must be WorkflowFailure or None"
+            )
+        if self.status == "completed" and self.terminal_failure is not None:
+            raise WorkflowContractError("completed result cannot have terminal failure")
+        if self.status == "failed" and self.terminal_failure is None:
+            raise WorkflowContractError("failed result must have terminal failure")
+
+    def to_json(self) -> str:
+        """Serialize the terminal result for a Temporal workflow payload."""
+        return _canonical(self)
+
+    @classmethod
+    def from_json(cls, value: str) -> EpisodeWorkflowResult:
+        """Reconstruct the typed terminal result from a Temporal payload."""
+        try:
+            decoded = json.loads(value)
+        except (TypeError, json.JSONDecodeError) as error:
+            raise WorkflowContractError(
+                "episode workflow result is malformed"
+            ) from error
+        if not isinstance(decoded, dict):
+            raise WorkflowContractError("episode workflow result is malformed")
+        decisions = decoded.get("decisions")
+        terminal_failure = decoded.get("terminal_failure")
+        status = decoded.get("status")
+        if (
+            not isinstance(decisions, list)
+            or status not in ("completed", "failed")
+            or (terminal_failure is not None and not isinstance(terminal_failure, dict))
+        ):
+            raise WorkflowContractError("episode workflow result is malformed")
+        try:
+            return cls(
+                workflow_id=decoded["workflow_id"],
+                status=cast(Literal["completed", "failed"], status),
+                decisions=tuple(
+                    SegmentDecision.from_dict(decision) for decision in decisions
+                ),
+                terminal_failure=(
+                    WorkflowFailure.from_dict(terminal_failure)
+                    if terminal_failure is not None
+                    else None
+                ),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise WorkflowContractError(
+                "episode workflow result is malformed"
+            ) from error
 
 
 def workflow_id_for(workflow_input: EpisodeWorkflowInput) -> str:
@@ -220,14 +388,122 @@ def activity_key_for(
     return f"activity-{_digest(payload)}"
 
 
+RENDER_SEGMENT_ACTIVITY_NAME = "poddown.audio.render_segment"
+
+
+@activity.defn(name=RENDER_SEGMENT_ACTIVITY_NAME)
+async def render_segment_activity(payload: dict[str, Any]) -> dict[str, Any]:
+    """Fail closed until a worker supplies the provider-bound activity handler."""
+    del payload
+    raise ApplicationError(
+        "render segment activity handler is not configured",
+        type="ActivityNotConfigured",
+        non_retryable=True,
+    )
+
+
+@workflow.defn(name="EpisodeRenderWorkflow")
+class EpisodeRenderWorkflow:
+    """Temporal workflow for bounded segment fan-out and deterministic repair."""
+
+    @workflow.run
+    async def run(self, episode_input_json: str) -> str:
+        """Render, select, and repair segments from an immutable JSON snapshot."""
+        episode_input = EpisodeWorkflowInput.from_json(episode_input_json)
+        decisions: list[SegmentDecision] = []
+        terminal_failure: WorkflowFailure | None = None
+        for segment in episode_input.segments:
+            decision = await self._run_segment(episode_input, segment)
+            decisions.append(decision)
+            if decision.accepted_candidate_id is None:
+                terminal_failure = WorkflowFailure(
+                    segment_id=segment.segment_id,
+                    attempt_count=decision.attempt,
+                    failed_gates=("fidelity", "pronunciation", "audio"),
+                    last_error_code=decision.failure_code or "QUALITY_GATES_EXHAUSTED",
+                )
+                break
+        result = EpisodeWorkflowResult(
+            workflow_id=workflow_id_for(episode_input),
+            status="failed" if terminal_failure else "completed",
+            decisions=tuple(decisions),
+            terminal_failure=terminal_failure,
+        )
+        return result.to_json()
+
+    async def _run_segment(
+        self, episode_input: EpisodeWorkflowInput, segment: SegmentWorkflowInput
+    ) -> SegmentDecision:
+        last_candidates: tuple[CandidateQuality, ...] = ()
+        last_error = "QUALITY_GATES_EXHAUSTED"
+        for attempt in range(1, episode_input.max_attempts + 1):
+            activity_calls = [
+                workflow.execute_activity(
+                    RENDER_SEGMENT_ACTIVITY_NAME,
+                    args=[
+                        {
+                            "segment": segment.to_dict(),
+                            "attempt": attempt,
+                            "take": take,
+                            "activity_key": activity_key_for(
+                                episode_input,
+                                "render",
+                                segment.segment_id,
+                                attempt=attempt,
+                                take=take,
+                            ),
+                        }
+                    ],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=WORKFLOW_ACTIVITY_RETRY_POLICY,
+                    activity_id=activity_key_for(
+                        episode_input,
+                        "render",
+                        segment.segment_id,
+                        attempt=attempt,
+                        take=take,
+                    ),
+                )
+                for take in range(3)
+            ]
+            results = await asyncio.gather(*activity_calls, return_exceptions=True)
+            if any(isinstance(result, ActivityError) for result in results):
+                last_error = "ACTIVITY_RETRY_EXHAUSTED"
+                continue
+            last_candidates = tuple(
+                CandidateQuality.from_dict(result)
+                for result in results
+                if isinstance(result, dict)
+            )
+            selected = select_candidate(last_candidates)
+            if selected is not None:
+                return SegmentDecision(
+                    segment_id=segment.segment_id,
+                    attempt=attempt,
+                    accepted_candidate_id=selected.candidate_id,
+                    candidates=last_candidates,
+                    failure_code=None,
+                )
+            last_error = "QUALITY_GATES_EXHAUSTED"
+        return SegmentDecision(
+            segment_id=segment.segment_id,
+            attempt=episode_input.max_attempts,
+            accepted_candidate_id=None,
+            candidates=last_candidates,
+            failure_code=last_error,
+        )
+
+
 __all__ = [
     "CandidateQuality",
     "DEFAULT_ACTIVITY_RETRY_POLICY",
     "EpisodeWorkflowInput",
     "EpisodeWorkflowResult",
+    "EpisodeRenderWorkflow",
     "MalformedAudioError",
     "NON_RETRYABLE_ERROR_TYPES",
     "RightsFailureError",
+    "RENDER_SEGMENT_ACTIVITY_NAME",
     "SegmentDecision",
     "SegmentWorkflowInput",
     "TransientActivityError",
@@ -235,5 +511,6 @@ __all__ = [
     "WorkflowContractError",
     "WorkflowFailure",
     "activity_key_for",
+    "render_segment_activity",
     "workflow_id_for",
 ]
