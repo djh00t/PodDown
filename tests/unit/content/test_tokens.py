@@ -336,6 +336,36 @@ def test_critical_token_rejects_invalid_values():
         CriticalToken("tok-1", "number", "1", (0, 1), (0, 1), "", None)
 
 
+class _StringLike:
+    def __str__(self) -> str:
+        return "lexicon:v1:opaque"
+
+
+class _StringSubclass(str):
+    pass
+
+
+def test_critical_token_accepts_none_or_nonblank_builtin_string_provenance():
+    """Optional provenance remains valid while a real string is preserved exactly."""
+    without_source = CriticalToken("tok-1", "number", "1", (0, 1), (0, 1), "one", None)
+    with_source = CriticalToken(
+        "tok-2", "number", "1", (0, 1), (0, 1), "one", " lexicon:v1:id "
+    )
+
+    assert without_source.pronunciation_source is None
+    assert with_source.pronunciation_source == " lexicon:v1:id "
+
+
+@pytest.mark.parametrize(
+    "provenance",
+    [1, b"lexicon:v1:id", _StringLike(), _StringSubclass("lexicon:v1:id")],
+)
+def test_critical_token_rejects_non_string_provenance(provenance):
+    """Provenance must not admit values that only look or behave like strings."""
+    with pytest.raises(ValueError, match="pronunciation_source"):
+        CriticalToken("tok-1", "number", "1", (0, 1), (0, 1), "one", provenance)
+
+
 def test_nested_lexicon_matches_fail_closed_instead_of_dropping_an_occurrence():
     """Keeping only the longer or shorter configured name loses declared evidence."""
     lexicons = {

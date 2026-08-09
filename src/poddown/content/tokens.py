@@ -267,11 +267,13 @@ class CriticalToken:
             or not self.expected_spoken_form.strip()
         ):
             raise ValueError("expected_spoken_form must be a non-empty string")
-        if (
-            self.pronunciation_source is not None
-            and not self.pronunciation_source.strip()
+        if self.pronunciation_source is not None and (
+            type(self.pronunciation_source) is not str
+            or not self.pronunciation_source.strip()
         ):
-            raise ValueError("pronunciation_source must be non-empty when present")
+            raise ValueError(
+                "pronunciation_source must be None or a non-empty built-in string"
+            )
         if not isinstance(self._source_form, str):
             raise ValueError("source form must be a string")
 
