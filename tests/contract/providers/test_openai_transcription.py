@@ -1,10 +1,17 @@
 """Contract tests for the OpenAI transcription adapter."""
 
 import asyncio
+from decimal import Decimal
 
 import pytest
 
+from poddown.domain import ProviderUsage
 from poddown.providers.http import HttpResponse, ProviderSettings
+from poddown.providers.contracts import (
+    TranscriptWord,
+    Transcriber,
+    TranscriptionResult,
+)
 from poddown.providers.openai_transcription import OpenAITranscriber
 from tests.contract.providers.helpers import settings
 
@@ -17,6 +24,32 @@ class RecordingTransport:
     async def request(self, request):
         self.requests.append(request)
         return self.response
+
+
+def test_provider_neutral_transcriber_accepts_audio_bytes_and_normalized_result():
+    class ByteTranscriber:
+        async def transcribe(self, audio: bytes) -> TranscriptionResult:
+            assert audio == b"RIFF-audio"
+            return TranscriptionResult(
+                provider="openai",
+                text="hello",
+                words=(TranscriptWord("hello", 0.0, 0.2),),
+                usage=ProviderUsage(7, 5),
+                request_id="tx-request",
+                checksum="a" * 64,
+                cost=Decimal("0.0012"),
+            )
+
+    transcriber: Transcriber = ByteTranscriber()
+    result = asyncio.run(transcriber.transcribe(b"RIFF-audio"))
+
+    assert result.provider == "openai"
+    assert result.text == "hello"
+    assert result.words == (TranscriptWord("hello", 0.0, 0.2),)
+    assert result.usage == ProviderUsage(7, 5)
+    assert result.request_id == "tx-request"
+    assert result.checksum == "a" * 64
+    assert result.cost == Decimal("0.0012")
 
 
 def test_normalizes_text_words_usage_and_checksum():

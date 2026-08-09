@@ -12,7 +12,8 @@ from poddown.audio.selection import (
     rank_candidates,
     select_candidate,
 )
-from poddown.domain import FidelityResult
+from poddown.domain import FidelityResult, ProviderUsage
+from poddown.providers.contracts import TranscriptWord, TranscriptionResult
 
 
 def quality(
@@ -112,6 +113,23 @@ def test_candidate_quality_round_trips_through_activity_payload():
     assert CandidateQuality.from_dict(candidate.to_dict()) == candidate
 
 
+def test_candidate_quality_round_trips_transcription_evidence():
+    candidate = replace(
+        quality("candidate-1", soft_score="0.73"),
+        transcription=TranscriptionResult(
+            provider="openai",
+            text="one point six terabit",
+            words=(TranscriptWord("one", 0.0, 0.2),),
+            usage=ProviderUsage(7, 5),
+            request_id="tx-request",
+            checksum="a" * 64,
+            cost=Decimal("0.0012"),
+        ),
+    )
+
+    assert CandidateQuality.from_dict(candidate.to_dict()) == candidate
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -123,6 +141,18 @@ def test_candidate_quality_round_trips_through_activity_payload():
 def test_malformed_activity_quality_is_rejected(payload):
     with pytest.raises(CandidateSelectionError):
         CandidateQuality.from_dict(payload)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "transcription",
+    [None, {}, {"provider": "openai", "text": "hello"}],
+)
+def test_malformed_transcription_evidence_is_rejected(transcription):
+    payload = quality("candidate-1").to_dict()
+    payload["transcription"] = transcription
+
+    with pytest.raises(CandidateSelectionError):
+        CandidateQuality.from_dict(payload)
 
 
 def test_audio_diagnostic_failure_is_a_hard_gate():
