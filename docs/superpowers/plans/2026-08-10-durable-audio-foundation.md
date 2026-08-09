@@ -168,7 +168,7 @@ class DurableRenderService:
 - Consumes: the public names in the interface block above; step definitions may import them before they exist.
 - Produces: executable failing acceptance coverage for later tasks.
 
-- [ ] **Step 1: Write the Gherkin scenarios before production code.** Include exactly these behaviors:
+- [x] **Step 1: Write the Gherkin scenarios before production code.** Include exactly these behaviors:
 
 ```gherkin
 Feature: Durable single-segment rendering
@@ -207,14 +207,14 @@ Feature: Durable single-segment rendering
     And the two artifacts have different content digests
 ```
 
-- [ ] **Step 2: Add step definitions with a per-scenario temporary store.** The fixture must construct `RenderRequest(episode_id="demo-episode", episode_version="v1", segment_id="segment-001", speaker_id="host", expected_spoken_text="The rate is 13.9 hertz, not 14 hertz.", voice_asset_id="voice-host-v1", provider="local", model="local-deterministic-v1")`, `VoiceConsent("voice-host-v1", "consent-demo-001", frozenset({"local"}))`, `FilesystemArtifactStore(tmp_path / "artifacts")`, `FilesystemRenderRecordStore(tmp_path / "records")`, `DurableRenderService(...)`, and `DeterministicLocalRenderer()`.
-- [ ] **Step 3: Run the BDD file and confirm it fails for the expected missing-module reason.**
+- [x] **Step 2: Add step definitions with a per-scenario temporary store.** The fixture must construct `RenderRequest(episode_id="demo-episode", episode_version="v1", segment_id="segment-001", speaker_id="host", expected_spoken_text="The rate is 13.9 hertz, not 14 hertz.", voice_asset_id="voice-host-v1", provider="local", model="local-deterministic-v1")`, `VoiceConsent("voice-host-v1", "consent-demo-001", frozenset({"local"}))`, `FilesystemArtifactStore(tmp_path / "artifacts")`, `FilesystemRenderRecordStore(tmp_path / "records")`, `DurableRenderService(...)`, and `DeterministicLocalRenderer()`.
+- [x] **Step 3: Run the BDD file and confirm it fails for the expected missing-module reason.**
 
 Run: `PYDANTIC_DISABLE_PLUGINS=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src uv run pytest tests/bdd/test_durable_audio.py -q`
 
 Expected: collection fails because `poddown.audio` does not exist yet; do not add production stubs solely to make collection pass.
 
-- [ ] **Step 4: Commit the red acceptance tests.**
+- [x] **Step 4: Commit the red acceptance tests.**
 
 ```bash
 git add tests/features/durable_audio.feature tests/bdd/test_durable_audio.py
@@ -234,17 +234,17 @@ git commit -m "test(audio): define durable render acceptance"
 - Consumes: existing `poddown.domain.ProviderUsage` and `poddown.providers.contracts.ProviderCapabilities`.
 - Produces: all values and `require_render_rights` in the interface block; later storage and rendering tasks import them.
 
-- [ ] **Step 1: Write unit tests for canonical identity and validation.** Assert that two equal frozen requests have equal keys and candidate IDs; changing `attempt` or `take_index` changes both; empty IDs/text, non-positive attempt, negative take, unsupported output format, invalid sample rate, and non-positive/boolean usage are rejected with `ValueError`; `RenderedAudio` rejects empty bytes, provider/model mismatches only in service validation, invalid cost, and invalid usage.
-- [ ] **Step 2: Write rights tests before implementation.** Assert `require_render_rights` raises `RightsDeniedError` for `None`, invalid consent, missing evidence, mismatched asset, and provider absent from `allowed_providers`; assert a complete matching consent returns `None`.
-- [ ] **Step 3: Implement frozen dataclasses and canonical JSON hashing.** Serialize only stable request fields with sorted keys and compact separators; hash with SHA-256; use `candidate-{full_digest}` and never UUID/random values for identity.
-- [ ] **Step 4: Implement the rights policy with a specific error per fail-closed reason.** Check consent presence, `valid is True`, non-empty evidence, matching asset, and explicit provider allow-list in that order; do not call or inspect a renderer in this module.
-- [ ] **Step 5: Run focused unit tests and then the existing rendering tests.**
+- [x] **Step 1: Write unit tests for canonical identity and validation.** Assert that two equal frozen requests have equal keys and candidate IDs; changing `attempt` or `take_index` changes both; empty IDs/text, non-positive attempt, negative take, unsupported output format, invalid sample rate, and non-positive/boolean usage are rejected with `ValueError`; `RenderedAudio` rejects empty bytes, provider/model mismatches only in service validation, invalid cost, and invalid usage.
+- [x] **Step 2: Write rights tests before implementation.** Assert `require_render_rights` raises `RightsDeniedError` for `None`, invalid consent, missing evidence, mismatched asset, and provider absent from `allowed_providers`; assert a complete matching consent returns `None`.
+- [x] **Step 3: Implement frozen dataclasses and canonical JSON hashing.** Serialize only stable request fields with sorted keys and compact separators; hash with SHA-256; use `candidate-{full_digest}` and never UUID/random values for identity.
+- [x] **Step 4: Implement the rights policy with a specific error per fail-closed reason.** Check consent presence, `valid is True`, non-empty evidence, matching asset, and explicit provider allow-list in that order; do not call or inspect a renderer in this module.
+- [x] **Step 5: Run focused unit tests and then the existing rendering tests.**
 
 Run: `PYDANTIC_DISABLE_PLUGINS=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src uv run pytest tests/unit/audio/test_contracts.py tests/unit/audio/test_rights.py tests/unit/test_rendering.py -q`
 
 Expected: new contract/rights tests pass; the existing M1 compatibility rendering tests remain green.
 
-- [ ] **Step 6: Commit the contract and policy slice.**
+- [x] **Step 6: Commit the contract and policy slice.**
 
 ```bash
 git add src/poddown/audio tests/unit/audio/test_contracts.py tests/unit/audio/test_rights.py
@@ -261,17 +261,17 @@ git commit -m "feat(audio): add immutable render and rights contracts"
 - Consumes: `ArtifactRef`, `RenderOutcome`, `RenderCandidate`, and `ProviderCostEvent` from `poddown.audio.contracts`.
 - Produces: `FilesystemArtifactStore` and `FilesystemRenderRecordStore` implementing the protocols used by `DurableRenderService`.
 
-- [ ] **Step 1: Write artifact-store tests.** Assert `put(b"audio", media_type="audio/wav")` returns the SHA-256 digest, byte size, and a path under the configured root; putting the same bytes returns the same reference without creating another object; `read` returns bytes; missing, path-escaping, digest-mismatch, and size-mismatch references raise `ArtifactIntegrityError`; writing a corrupted object never silently repairs or overwrites it.
-- [ ] **Step 2: Write render-record tests.** Save an outcome and load it from a new `FilesystemRenderRecordStore` instance; assert all nested metadata and the cost event round-trip; saving the exact same outcome is idempotent; saving a different outcome under one idempotency key raises `IdempotencyConflictError`; a missing or malformed JSON record raises `ArtifactIntegrityError`.
-- [ ] **Step 3: Implement atomic no-overwrite artifact writes.** Use a SHA-256-derived relative path under `root/artifacts/`, create parent directories, write to a same-directory temporary file, link into the final path without replacement, and compare existing bytes before returning an existing reference.
-- [ ] **Step 4: Implement strict reference validation and JSON record serialization.** Keep records under `root/records/{idempotency_key}.json`; require record keys to be one canonical SHA-256-like path component, derive artifact references only from `artifacts/<digest-prefix>/<digest>.<extension>`, verify artifact bytes during render replay through the injected `ArtifactStore` (defaulting to the sibling `artifacts` store used by the demo fixture), serialize Decimal values as strings, and reconstruct frozen values with explicit field parsing rather than `eval` or pickle.
-- [ ] **Step 5: Run focused storage tests.**
+- [x] **Step 1: Write artifact-store tests.** Assert `put(b"audio", media_type="audio/wav")` returns the SHA-256 digest, byte size, and a path under the configured root; putting the same bytes returns the same reference without creating another object; `read` returns bytes; missing, path-escaping, digest-mismatch, and size-mismatch references raise `ArtifactIntegrityError`; writing a corrupted object never silently repairs or overwrites it.
+- [x] **Step 2: Write render-record tests.** Save an outcome and load it from a new `FilesystemRenderRecordStore` instance; assert all nested metadata and the cost event round-trip; saving the exact same outcome is idempotent; saving a different outcome under one idempotency key raises `IdempotencyConflictError`; a missing or malformed JSON record raises `ArtifactIntegrityError`.
+- [x] **Step 3: Implement atomic no-overwrite artifact writes.** Use a SHA-256-derived relative path under `root/artifacts/`, create parent directories, write to a same-directory temporary file, link into the final path without replacement, and compare existing bytes before returning an existing reference.
+- [x] **Step 4: Implement strict reference validation and JSON record serialization.** Keep records under `root/records/{idempotency_key}.json`; require record keys to be one canonical SHA-256-like path component, derive artifact references only from `artifacts/<digest-prefix>/<digest>.<extension>`, verify artifact bytes during render replay through the injected `ArtifactStore` (defaulting to the sibling `artifacts` store used by the demo fixture), serialize Decimal values as strings, and reconstruct frozen values with explicit field parsing rather than `eval` or pickle.
+- [x] **Step 5: Run focused storage tests.**
 
 Run: `PYDANTIC_DISABLE_PLUGINS=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src uv run pytest tests/unit/audio/test_artifacts.py -q`
 
 Expected: all filesystem immutability, integrity, and persistence tests pass.
 
-- [ ] **Step 6: Commit the storage slice.**
+- [x] **Step 6: Commit the storage slice.**
 
 ```bash
 git add src/poddown/audio/storage.py tests/unit/audio/test_artifacts.py
@@ -290,18 +290,18 @@ git commit -m "feat(audio): persist immutable render artifacts"
 - Consumes: contracts, rights policy, `FilesystemArtifactStore`/`FilesystemRenderRecordStore` protocols, and existing provider capabilities.
 - Produces: `DeterministicLocalRenderer` and `DurableRenderService.render_takes(...)` used by BDD and integration tests.
 
-- [ ] **Step 1: Write renderer and service tests before implementation.** Cover three takes, rights rejection before `renderer.calls` changes, capability rejection before dispatch, empty bytes rejection, provider/model/format/sample-rate/usage/cost mismatch rejection, replay from the same filesystem stores without a second renderer call, partial replay where only a missing take dispatches, and distinct attempt/take identities.
-- [ ] **Step 2: Implement `DeterministicLocalRenderer`.** Expose WAV/44.1 kHz, model and voice pinning, a high text limit, timestamps disabled, and provider idempotency; implement `async def render(request)` and generate a deterministic valid PCM WAV using `wave` from a digest-derived frame count; return `local-{key-prefix}` request IDs, exact request provider/model/format/rate, character/byte usage, and `Decimal("0")` cost; append each request key to `calls`.
-- [ ] **Step 3: Implement service preflight and take expansion.** Validate `1 <= take_count <= 3`; require rights; require requested format/sample rate/text length/model pinning/voice pinning/provider idempotency; create `replace(request, take_index=request.take_index + offset)` for each take; look up and verify existing records/artifacts before any renderer call.
-- [ ] **Step 4: Implement the new-render path.** Await the injected renderer exactly once per missing take, validate non-empty bytes and exact normalized metadata, persist bytes through `ArtifactStore`, construct one candidate and one cost event whose `event_id` equals `cost-{candidate_id}`, save the immutable outcome, and return `replayed=False`.
-- [ ] **Step 5: Implement replay and integrity behavior.** Return `RenderOutcome(replayed=True, cost_event=None)` for an intact record; verify the stored artifact digest/size before returning; propagate an integrity error for missing/corrupt artifacts without dispatching a replacement or creating a duplicate cost event.
-- [ ] **Step 6: Run focused render and BDD tests.** The synchronous BDD steps must invoke the async service with `asyncio.run` so the executable feature remains compatible with the repository's current pytest-bdd setup.
+- [x] **Step 1: Write renderer and service tests before implementation.** Cover three takes, rights rejection before `renderer.calls` changes, capability rejection before dispatch, empty bytes rejection, provider/model/format/sample-rate/usage/cost mismatch rejection, replay from the same filesystem stores without a second renderer call, partial replay where only a missing take dispatches, and distinct attempt/take identities.
+- [x] **Step 2: Implement `DeterministicLocalRenderer`.** Expose WAV/44.1 kHz, model and voice pinning, a high text limit, timestamps disabled, and provider idempotency; implement `async def render(request)` and generate a deterministic valid PCM WAV using `wave` from a digest-derived frame count; return `local-{key-prefix}` request IDs, exact request provider/model/format/rate, character/byte usage, and `Decimal("0")` cost; append each request key to `calls`.
+- [x] **Step 3: Implement service preflight and take expansion.** Validate `1 <= take_count <= 3`; require rights; require requested format/sample rate/text length/model pinning/voice pinning/provider idempotency; create `replace(request, take_index=request.take_index + offset)` for each take; look up and verify existing records/artifacts before any renderer call.
+- [x] **Step 4: Implement the new-render path.** Await the injected renderer exactly once per missing take, validate non-empty bytes and exact normalized metadata, persist bytes through `ArtifactStore`, construct one candidate and one cost event whose `event_id` equals `cost-{candidate_id}`, save the immutable outcome, and return `replayed=False`.
+- [x] **Step 5: Implement replay and integrity behavior.** Return `RenderOutcome(replayed=True, cost_event=None)` for an intact record; verify the stored artifact digest/size before returning; propagate an integrity error for missing/corrupt artifacts without dispatching a replacement or creating a duplicate cost event.
+- [x] **Step 6: Run focused render and BDD tests.** The synchronous BDD steps must invoke the async service with `asyncio.run` so the executable feature remains compatible with the repository's current pytest-bdd setup.
 
 Run: `PYDANTIC_DISABLE_PLUGINS=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src uv run pytest tests/unit/audio/test_render.py tests/bdd/test_durable_audio.py -q`
 
 Expected: all new durable audio scenarios and unit tests pass, with the existing provider-rendering scenarios still passing.
 
-- [ ] **Step 7: Commit the orchestration slice.**
+- [x] **Step 7: Commit the orchestration slice.**
 
 ```bash
 git add src/poddown/audio/__init__.py src/poddown/audio/local.py src/poddown/audio/render.py tests/unit/audio/test_render.py
@@ -320,28 +320,28 @@ git commit -m "feat(audio): add replay-safe local segment rendering"
 - Consumes: the complete public audio foundation and the local fixture; does not add new production behavior.
 - Produces: repeatable verification evidence and traceability for only the implemented M2 requirements.
 
-- [ ] **Step 1: Write the integration test.** Render a rights-cleared request with three takes into a temporary filesystem, record artifact/cost/call counts, construct a fresh service and renderer over the same store, replay all three takes, and assert candidates, SHA-256s, cost events, and artifact bytes are identical while the fresh renderer has zero calls; then render `attempt=2` and assert a new identity and artifact.
-- [ ] **Step 2: Run the integration test red/green with the full changed-scope test selection.**
+- [x] **Step 1: Write the integration test.** Render a rights-cleared request with three takes into a temporary filesystem, record artifact/cost/call counts, construct a fresh service and renderer over the same store, replay all three takes, and assert candidates, SHA-256s, cost events, and artifact bytes are identical while the fresh renderer has zero calls; then render `attempt=2` and assert a new identity and artifact.
+- [x] **Step 2: Run the integration test red/green with the full changed-scope test selection.**
 
 Run: `PYDANTIC_DISABLE_PLUGINS=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src uv run pytest tests/integration/test_durable_render.py tests/bdd/test_durable_audio.py tests/unit/audio tests/unit/test_rendering.py -q --cov=poddown.audio --cov-branch --cov-report=term-missing`
 
 Expected: all selected tests pass and the new audio modules have branch coverage for preflight rejection, new render, replay, and integrity failure paths.
 
-- [ ] **Step 3: Run repository changed-scope checks.**
+- [x] **Step 3: Run repository changed-scope checks.**
 
 Run: `PYDANTIC_DISABLE_PLUGINS=1 PYTHONPATH=src make check`
 
 Expected: Ruff, strict mypy, BDD/unit/integration tests, and branch coverage pass; if the host stalls in the known iCloud-backed environment, record the exact command and state rather than claiming success.
 
-- [ ] **Step 4: Run build, formatting, diff, and focused mutation checks.**
+- [x] **Step 4: Run build, formatting, diff, and focused mutation checks.**
 
 Run: `PYDANTIC_DISABLE_PLUGINS=1 PYTHONPATH=src make build`, `uv run ruff format --check src tests`, `uv run ruff check src tests`, and `git diff --check`.
 
 Expected: build and static checks pass; no generated artifact or credential enters the diff.
 
-- [ ] **Step 5: Write the verification document with actual evidence.** State that this slice proves rights/capability preflight, deterministic local multi-take rendering, content-addressed immutable artifacts, provider usage/cost recording, and replay idempotency; state that live providers, Temporal, transcription, diagnostics, mastering, packaging, CLI/API/MCP, and publishing are deferred to later plans.
-- [ ] **Step 6: Update traceability only for evidence that is present.** Link the M2 foundation rows to the feature, unit/integration tests, and verification document; leave the remaining M2 and all later roadmap rows pending.
-- [ ] **Step 7: Commit the evidence slice.**
+- [x] **Step 5: Write the verification document with actual evidence.** State that this slice proves rights/capability preflight, deterministic local multi-take rendering, content-addressed immutable artifacts, provider usage/cost recording, and replay idempotency; state that live providers, Temporal, transcription, diagnostics, mastering, packaging, CLI/API/MCP, and publishing are deferred to later plans.
+- [x] **Step 6: Update traceability only for evidence that is present.** Link the M2 foundation rows to the feature, unit/integration tests, and verification document; leave the remaining M2 and all later roadmap rows pending.
+- [x] **Step 7: Commit the evidence slice.**
 
 ```bash
 git add tests/integration/test_durable_render.py docs/verification/durable-audio-foundation.md docs/planning-traceability.md docs/product-delivery-plan.md
@@ -353,10 +353,10 @@ git commit -m "docs(audio): record durable foundation evidence"
 **Files:**
 - Modify only files identified by an actionable review finding; do not mix unrelated cleanup.
 
-- [ ] **Step 1: Run an independent Terra/Luna review against the M2 spec and this plan.** Require findings to cite file/line, severity, violated contract, and a concrete test or fix; use a Sol review only if a security, persistence-integrity, or architectural ambiguity cannot be resolved by the existing contracts.
-- [ ] **Step 2: For every valid Important/Critical or acceptance-blocking finding, add a failing regression test first, implement the smallest fix, and rerun focused tests.** Do not weaken gates or hide review output.
-- [ ] **Step 3: Run `PYDANTIC_DISABLE_PLUGINS=1 PYTHONPATH=src make check`, `make build`, `git diff --check`, and the focused BDD/integration selection again before publication.**
-- [ ] **Step 4: Update the hidden delivery ledger and plan checkboxes with commit SHAs, test output, review rounds, and any host-only verification limitation.**
+- [x] **Step 1: Run an independent Terra/Luna review against the M2 spec and this plan.** Require findings to cite file/line, severity, violated contract, and a concrete test or fix; use a Sol review only if a security, persistence-integrity, or architectural ambiguity cannot be resolved by the existing contracts.
+- [x] **Step 2: For every valid Important/Critical or acceptance-blocking finding, add a failing regression test first, implement the smallest fix, and rerun focused tests.** Do not weaken gates or hide review output.
+- [x] **Step 3: Run `PYDANTIC_DISABLE_PLUGINS=1 PYTHONPATH=src make check`, `make build`, `git diff --check`, and the focused BDD/integration selection again before publication.**
+- [x] **Step 4: Update the hidden delivery ledger and plan checkboxes with commit SHAs, test output, review rounds, and any host-only verification limitation.**
 - [ ] **Step 5: Read `/Users/djh/.codex/AGENTS-DELIVERY.md`, commit/push the branch, and create a normal ready PR stacked on `codex/m1-content-intelligence`; include specs, acceptance behaviors, verification evidence, demo instructions, deferred work, and the parent PR link.**
 
 ## Plan self-review
