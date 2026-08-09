@@ -203,6 +203,72 @@ def test_adapt_source_rejects_missing_anchors_and_unknown_speakers():
     assert speaker_error.value.code == "invalid_speaker"
 
 
+def test_adapt_source_rejects_words_supported_only_by_broad_source_anchor():
+    """Factual wording must be supported by claim anchors, not broad context."""
+    from poddown.content.adaptation import AdaptationError
+
+    snapshot = snapshot_source(SOURCE)
+    treatment = _treatment(snapshot)
+    proposal = _proposal(snapshot, treatment)
+    localization_claim = proposal.turns[1].claim_anchors[0]
+    localization_block = next(
+        block
+        for block in snapshot.blocks
+        if block.block_id == localization_claim.block_id
+    )
+    broad_source_anchor = SourceAnchor(
+        localization_block.block_id, localization_block.start, localization_block.end
+    )
+    unsupported_turn = replace(
+        proposal.turns[1],
+        text="The same pass samples vibration response.",
+        source_anchors=(broad_source_anchor,),
+        claim_anchors=(localization_claim,),
+    )
+
+    with pytest.raises(AdaptationError) as error:
+        _adapt(
+            snapshot,
+            replace(
+                proposal,
+                turns=(proposal.turns[0], unsupported_turn, *proposal.turns[2:]),
+            ),
+            treatment,
+        )
+
+    assert error.value.code == "unsupported_claim"
+
+
+def test_adapt_source_rejects_invalid_source_anchor():
+    """Every declared source anchor must resolve even when claims are narrower."""
+    from poddown.content.adaptation import AdaptationError
+
+    snapshot = snapshot_source(SOURCE)
+    treatment = _treatment(snapshot)
+    proposal = _proposal(snapshot, treatment)
+    valid_source_anchor = proposal.turns[0].source_anchors[0]
+    source_block = next(
+        block
+        for block in snapshot.blocks
+        if block.block_id == valid_source_anchor.block_id
+    )
+    invalid_source_anchor = SourceAnchor(
+        valid_source_anchor.block_id,
+        source_block.start,
+        source_block.end + 1,
+    )
+    invalid_turn = replace(proposal.turns[0], source_anchors=(invalid_source_anchor,))
+
+    with pytest.raises(AdaptationError) as error:
+        _adapt(
+            snapshot,
+            replace(proposal, turns=(invalid_turn, *proposal.turns[1:])),
+            treatment,
+        )
+
+    assert error.value.code == "missing_anchor"
+
+
 def test_adapt_source_requires_canonical_turn_ids_two_speakers_and_disagreement():
     """Duplicate IDs, single-speaker dialogue, and filler-only dialogue are invalid."""
     from poddown.content.adaptation import AdaptationError
@@ -289,3 +355,59 @@ def test_fixture_reasoning_port_is_source_and_turn_keyed_without_renderer_calls(
     )
     with pytest.raises(LookupError):
         port.adapt(snapshot_source("# another source\n"), _profile(), treatment)
+
+
+def test_fixture_reasoning_port_snapshots_caller_owned_mappings():
+    """Changing input dictionaries after construction cannot alter the fixture port."""
+    from poddown.content.adaptation import FixtureReasoningPort
+
+    snapshot = snapshot_source(SOURCE)
+    treatment = _treatment(snapshot)
+    proposal = _proposal(snapshot, treatment)
+    proposals = {snapshot.source_sha256: proposal}
+    repairs = {proposal.turns[1].turn_id: proposal.turns[1]}
+    port = FixtureReasoningPort(proposals, repairs)
+
+    proposals.clear()
+    repairs.clear()
+
+    assert port.adapt(snapshot, _profile(), treatment) is proposal
+    assert (
+        port.repair(snapshot, _profile(), proposal.turns[1], "unsupported_claim")
+        == proposal.turns[1]
+    )
+    with pytest.raises(TypeError):
+        port.proposals[snapshot.source_sha256] = proposal
+    with pytest.raises(TypeError):
+        port.repairs[proposal.turns[1].turn_id] = proposal.turns[1]
+
+
+def test_adaptation_errors_do_not_echo_unsafe_turn_ids():
+    """Error detail and serialization must not expose source-like untrusted IDs."""
+    from poddown.content.adaptation import AdaptationError
+
+    snapshot = snapshot_source(SOURCE)
+    unsafe_turn_id = "source-secret-2026-07-31-credentials"
+    base_treatment = _treatment(snapshot)
+    treatment = replace(
+        base_treatment,
+        expected_turn_ids=(
+            unsafe_turn_id,
+            *base_treatment.expected_turn_ids[1:],
+        ),
+    )
+    proposal = _proposal(snapshot, treatment)
+    unsafe_turn = replace(
+        proposal.turns[0], turn_id=unsafe_turn_id, speaker_id="untrusted-speaker"
+    )
+
+    with pytest.raises(AdaptationError) as error:
+        _adapt(
+            snapshot,
+            replace(proposal, turns=(unsafe_turn, *proposal.turns[1:])),
+            treatment,
+        )
+
+    assert error.value.code == "invalid_speaker"
+    assert unsafe_turn_id not in error.value.detail
+    assert unsafe_turn_id not in str(error.value)

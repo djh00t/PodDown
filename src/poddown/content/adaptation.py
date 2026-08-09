@@ -81,15 +81,27 @@ _UNSUPPORTED_WORDS = frozenset(
         "i",
     }
 )
+_SAFE_ERROR_DETAILS = MappingProxyType(
+    {
+        "unsupported_claim": "claim is not supported by its claim anchors",
+        "missing_anchor": "required source anchor is missing or invalid",
+        "invalid_speaker": "speaker is not approved by the profile",
+        "dialogue_quality": "dialogue structure does not meet the approved policy",
+        "duration": "treatment duration or format is not approved",
+    }
+)
 
 
 class AdaptationError(ValueError):
     """A safe, stable adaptation failure that does not include source text."""
 
-    def __init__(self, code: AdaptationErrorCode, detail: str) -> None:
+    def __init__(self, code: AdaptationErrorCode, detail: str | None = None) -> None:
+        del detail
+        if code not in _SAFE_ERROR_DETAILS:
+            raise ValueError("unsupported adaptation error code")
         self.code = code
-        self.detail = detail
-        super().__init__(f"{code}: {detail}")
+        self.detail = _SAFE_ERROR_DETAILS[code]
+        super().__init__(f"{code}: {self.detail}")
 
 
 @dataclass(frozen=True)
@@ -172,6 +184,14 @@ class FixtureReasoningPort:
     proposals: Mapping[str, AdaptationProposal]
     repairs: Mapping[str, ScriptTurn]
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.proposals, Mapping) or not isinstance(
+            self.repairs, Mapping
+        ):
+            raise TypeError("fixture mappings must be mappings")
+        object.__setattr__(self, "proposals", MappingProxyType(dict(self.proposals)))
+        object.__setattr__(self, "repairs", MappingProxyType(dict(self.repairs)))
+
     def adapt(
         self, source: SourceSnapshot, profile: Profile, treatment: EpisodeTreatment
     ) -> AdaptationProposal:
@@ -225,10 +245,8 @@ def _assert_source_bound(turn: ScriptTurn, source: SourceSnapshot) -> None:
         raise AdaptationError(
             "missing_anchor", f"factual turn {turn.turn_id} lacks required anchors"
         )
-    source_text = "\n".join(
+    for anchor in turn.source_anchors:
         _safe_anchor_text(source, anchor, turn.turn_id)
-        for anchor in turn.source_anchors
-    )
     claim_text = "\n".join(
         _safe_anchor_text(source, anchor, turn.turn_id) for anchor in turn.claim_anchors
     )
@@ -252,15 +270,15 @@ def _assert_source_bound(turn: ScriptTurn, source: SourceSnapshot) -> None:
         raise AdaptationError(
             "unsupported_claim", f"changed negation in turn {turn.turn_id}"
         )
-    source_words = {word.casefold() for word in _WORD.findall(source_text)}
+    claim_words = {word.casefold() for word in _WORD.findall(claim_text)}
     for word in _WORD.findall(turn.text):
         normalized = word.casefold()
-        if normalized not in _UNSUPPORTED_WORDS and normalized not in source_words:
+        if normalized not in _UNSUPPORTED_WORDS and normalized not in claim_words:
             raise AdaptationError(
                 "unsupported_claim",
                 f"unsupported claim language in turn {turn.turn_id}",
             )
-    if _COMPARISONS.search(turn.text) and not _COMPARISONS.search(source_text):
+    if _COMPARISONS.search(turn.text) and not _COMPARISONS.search(claim_text):
         raise AdaptationError(
             "unsupported_claim", f"unsupported comparison in turn {turn.turn_id}"
         )
