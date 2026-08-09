@@ -108,15 +108,46 @@ def _expanded_columns(text: str, start: int = 0) -> int:
     return column
 
 
-def _list_continuation_columns(line: str) -> int | None:
-    match = _LIST.match(line.rstrip("\r\n"))
-    if match is None:
-        return None
-    marker_end = _expanded_columns(match.group("indent")) + len(match.group("marker"))
+def _list_match(line: str) -> re.Match[str] | None:
+    return _LIST.match(line.rstrip("\r\n"))
+
+
+def _list_marker_end(match: re.Match[str]) -> int:
+    return _expanded_columns(match.group("indent")) + len(match.group("marker"))
+
+
+def _list_whitespace_columns(match: re.Match[str]) -> int | None:
     whitespace = match.group("whitespace")
     if whitespace is None:
+        return None
+    marker_end = _list_marker_end(match)
+    return _expanded_columns(whitespace, marker_end) - marker_end
+
+
+def _list_item_has_paragraph(line: str) -> bool:
+    match = _list_match(line)
+    if match is None or match.group("content") is None:
+        return False
+    whitespace_columns = _list_whitespace_columns(match)
+    return whitespace_columns is not None and whitespace_columns <= 4
+
+
+def _list_interrupts_paragraph(line: str) -> bool:
+    match = _list_match(line)
+    if not _list_item_has_paragraph(line) or match is None:
+        return False
+    marker = match.group("marker")
+    return not marker[0].isdigit() or int(marker[:-1]) == 1
+
+
+def _list_continuation_columns(line: str) -> int | None:
+    match = _list_match(line)
+    if match is None:
+        return None
+    marker_end = _list_marker_end(match)
+    whitespace_columns = _list_whitespace_columns(match)
+    if whitespace_columns is None:
         return marker_end + 1
-    whitespace_columns = _expanded_columns(whitespace, marker_end) - marker_end
     if whitespace_columns > 4:
         return marker_end + 1
     return marker_end + whitespace_columns
@@ -197,11 +228,13 @@ def snapshot_source(source: str) -> SourceSnapshot:
         if kind == "list":
             continuation_columns = _list_continuation_columns(line)
             assert continuation_columns is not None
+            item_has_paragraph = _list_item_has_paragraph(line)
             while end_index < len(lines):
                 next_line = lines[end_index][1]
                 next_list_columns = _list_continuation_columns(next_line)
                 if next_list_columns is not None:
                     continuation_columns = next_list_columns
+                    item_has_paragraph = _list_item_has_paragraph(next_line)
                     end_index += 1
                     continue
                 if _is_list_continuation(next_line, continuation_columns):
@@ -221,6 +254,15 @@ def snapshot_source(source: str) -> SourceSnapshot:
                     ):
                         end_index += 1
                         continue
+                if (
+                    item_has_paragraph
+                    and _kind(next_line) == "paragraph"
+                    and not _is_table_start(lines, end_index)
+                    and _fence_open(next_line) is None
+                    and not _is_setext_underline(next_line)
+                ):
+                    end_index += 1
+                    continue
                 break
         elif kind == "blockquote":
             while end_index < len(lines) and _kind(lines[end_index][1]) == kind:
@@ -228,8 +270,12 @@ def snapshot_source(source: str) -> SourceSnapshot:
         elif kind == "paragraph":
             while end_index < len(lines):
                 next_line = lines[end_index][1]
+                next_kind = _kind(next_line)
+                if next_kind == "list" and not _list_interrupts_paragraph(next_line):
+                    end_index += 1
+                    continue
                 if (
-                    _kind(next_line) != "paragraph"
+                    next_kind != "paragraph"
                     or _is_table_start(lines, end_index)
                     or _fence_open(next_line)
                     or _is_setext_underline(next_line)

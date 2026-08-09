@@ -89,6 +89,10 @@ FIVE_SPACE_LIST_SOURCE = (
     "       more indented code\n\n"
     "Top-level paragraph\n"
 )
+PARAGRAPH_FOLLOWED_BY_NON_ONE_ORDERED_SOURCE = "Paragraph\n2. item\n"
+PARAGRAPH_FOLLOWED_BY_EMPTY_BULLET_SOURCE = "Paragraph\n*\n"
+PARAGRAPH_FOLLOWED_BY_INDENTED_CODE_LIST_SOURCE = "Paragraph\n1.     indented code\n"
+LAZY_LIST_CONTINUATION_SOURCE = "1. first item\nlazy continuation\n"
 
 
 class _MutableKey(str):
@@ -471,4 +475,64 @@ def test_five_post_marker_spaces_keep_indented_code_and_continuations_in_list():
             "block-0000-0dc07dbd8e72",
         ),
         ("paragraph", "Top-level paragraph", 76, 95, "block-0001-c7459c67e1a4"),
+    ]
+
+
+def test_non_one_ordered_marker_does_not_interrupt_a_paragraph():
+    """Only an ordered 1. marker may interrupt a paragraph."""
+    snapshot = snapshot_source(PARAGRAPH_FOLLOWED_BY_NON_ONE_ORDERED_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        ("paragraph", "Paragraph\n2. item", 0, 17, "block-0000-ca17bd16e52c"),
+    ]
+
+
+def test_empty_bullet_does_not_interrupt_a_paragraph():
+    """An empty bullet marker remains paragraph text without a blank line."""
+    snapshot = snapshot_source(PARAGRAPH_FOLLOWED_BY_EMPTY_BULLET_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        ("paragraph", "Paragraph\n*", 0, 11, "block-0000-1c50a29fbf41"),
+    ]
+
+
+def test_indented_code_list_item_does_not_interrupt_a_paragraph():
+    """A list item beginning with indented code needs a paragraph break."""
+    snapshot = snapshot_source(PARAGRAPH_FOLLOWED_BY_INDENTED_CODE_LIST_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        (
+            "paragraph",
+            "Paragraph\n1.     indented code",
+            0,
+            30,
+            "block-0000-151214106813",
+        ),
+    ]
+
+
+def test_lazy_unindented_continuation_stays_in_list_block():
+    """An unindented paragraph continuation remains part of its list item."""
+    snapshot = snapshot_source(LAZY_LIST_CONTINUATION_SOURCE)
+
+    assert [
+        (block.kind, block.text, block.start, block.end, block.block_id)
+        for block in snapshot.blocks
+    ] == [
+        (
+            "list",
+            "1. first item\nlazy continuation",
+            0,
+            31,
+            "block-0000-81ba044434ca",
+        ),
     ]
