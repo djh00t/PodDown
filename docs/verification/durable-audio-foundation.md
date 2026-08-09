@@ -75,3 +75,6 @@ uv run pytest -p pytest_bdd.plugin tests/bdd/test_durable_audio.py -q` passed
 
 Temporal orchestration, live providers, transcription, diagnostics, mastering,
 packaging, CLI/API/MCP, and publishing are explicitly deferred to later plans.
+Concurrent first-render claim/dispatch coordination and exactly-once provider
+dispatch are also deferred to the Temporal workflow boundary; this local
+filesystem service proves sequential replay and restart replay only.

@@ -17,6 +17,7 @@
 - Render requests, candidates, artifact references, and cost events are immutable frozen values; malformed audio bytes and mismatched metadata are rejected before acceptance.
 - Content-addressed artifacts are immutable; an existing digest is reused only after its bytes are verified, and a conflicting/corrupt object is an error rather than an overwrite.
 - Replaying the same request key returns the persisted candidate without a renderer call or second cost event; a different attempt or take index creates a distinct candidate identity.
+- Concurrent first-render claim/dispatch coordination and exactly-once provider dispatch are deferred to the later Temporal workflow boundary; this local service does not claim to close that race.
 - New behavior requires executable Gherkin scenarios before production implementation and focused unit/integration coverage afterward.
 - Use no live provider credentials, network calls, Temporal server, ffmpeg, or payment approval in this slice.
 
@@ -363,5 +364,6 @@ git commit -m "docs(audio): record durable foundation evidence"
 
 - The durable-audio workflow contract is addressed in later plans; this foundation implements the required immutable input identity, pre-dispatch rights/capability gates, artifact persistence, and replay semantics without pretending to complete acceptance behaviors that require transcription or mastering.
 - Acceptance behavior 2 and 8 are covered by filesystem record replay; behavior 3, 4, 5, 6, and 7 remain explicitly pending because they require Temporal retry policy, hard-gate scoring, diagnostics, mastering, and final-master verification.
+- Concurrent first-render claims are intentionally outside this plan; Temporal owns the durable claim, retry, and exactly-once dispatch coordination required for that race.
 - Every new public type and function used by a later task is defined in the interface block, and task write sets are disjoint except for the explicit `__init__.py` export update.
 - No placeholder tasks or speculative live-provider dependencies are present; all commands are concrete and host-stall limitations are recorded as evidence rather than converted into passes.
