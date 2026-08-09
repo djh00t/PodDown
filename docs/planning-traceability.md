@@ -13,7 +13,7 @@
 | 7 | Voice rights/consent | 001/004 | M0/M3 |
 | 8 | Pronunciation engine | 002 | M1 complete locally; deterministic token evidence verified |
 | 9 | Segmentation engine | 002 | M1 complete locally; capability-safe segmentation verified |
-| 10 | Render orchestration | 003 | M2 |
+| 10 | Render orchestration | 003 | M2 foundation locally verified: [BDD](../tests/features/durable_audio.feature), [unit](../tests/unit/audio/test_render.py), [integration](../tests/integration/test_durable_render.py), and [verification evidence](verification/durable-audio-foundation.md) |
 | 11 | Candidate-take scoring | 003 | M2 |
 | 12 | Transcription/fidelity QA | 001/003 | M0/M2 |
 | 13 | Critical-token verification | 001/002/003 | M0–M2 |
@@ -43,7 +43,9 @@ not expand the MVP feature set; they make the approved service operable.
 - Dependency/order plan: complete through launch.
 - M1 content intelligence: complete locally with deterministic adversarial eval
   evidence; it is not audio-rendering or production-readiness evidence.
-- Immediate next slice: M2 durable audio production remains pending.
+- M2 durable audio foundation: locally verified only for rights/capability
+  preflight, deterministic local takes, immutable artifacts, usage/cost records,
+  and replay across fresh service instances; later M2 work remains pending.
 - Task-level implementation plan: intentionally produced just-in-time per
   milestone so measured interfaces and audio quality inform the next plan.
 - Audio rendering, Temporal, API, CLI, publishing, MCP, Signal & Supply, and
