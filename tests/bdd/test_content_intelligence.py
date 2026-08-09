@@ -154,10 +154,6 @@ def _expected_proposal(context):
     return context.values["proposal"]
 
 
-def _expected_critical_tokens(context):
-    return _attribute_or_key(_expected_proposal(context), "expected_critical_tokens", [])
-
-
 def _expected_negation_occurrences():
     text = "The system is not silent, and it is not stable"
     first = text.index("not")
@@ -186,25 +182,6 @@ def _span_bounds(token, prefix: str) -> tuple[int, int]:
     assert isinstance(start, int) and isinstance(end, int), f"{prefix} span fields are not integers"
     assert start < end, f"{prefix} span end must be greater than start"
     return (start, end)
-
-
-def _critical_token_identity(token: dict) -> str:
-    token_id = _attribute_or_key(token, "occurrence_id")
-    if token_id is not None:
-        return str(token_id)
-    token_id = _attribute_or_key(token, "surface")
-    if token_id is not None:
-        return str(token_id)
-    token_id = _attribute_or_key(token, "token")
-    if token_id is not None:
-        return str(token_id)
-    token_id = _attribute_or_key(token, "text")
-    if token_id is not None:
-        return str(token_id)
-    token_id = _attribute_or_key(token, "source_form")
-    if token_id is not None:
-        return str(token_id)
-    raise AssertionError("critical token entry requires a stable identity")
 
 
 given_given_source_profile = "the robotics mapping source and technical dialogue profile"
@@ -411,14 +388,42 @@ def script_disagreement_only(context):
 @then("every extracted critical token has an expected spoken form")
 def critical_tokens_have_spoken_forms(context):
     tokens = _attribute_or_key(context.values["result"], "critical_tokens", [])
-    expected = _expected_critical_tokens(context)
+    expected_tokens = [
+        ("tok-01", "LIE-dar", "LiDAR", "technical-name"),
+        ("tok-02", "see one", "C1", "acronym"),
+        ("tok-03", "13.8 hertz", "13.8 hertz", "number"),
+        ("tok-04", "ninety-nine point seven percent", "99.7%", "percentage"),
+        ("tok-05", "twelve minutes", "12 minutes", "duration"),
+        ("neg-01", "not", "not", "negation"),
+        ("neg-02", "not", "not", "negation"),
+    ]
+    observed_tokens = [
+        (
+            _attribute_or_key(token, "occurrence_id"),
+            _attribute_or_key(token, "spoken_form"),
+            _attribute_or_key(token, "source_form"),
+            _attribute_or_key(token, "category"),
+        )
+        for token in tokens
+    ]
 
-    assert len(tokens) == len(expected)
-    for observed_token, expected_token in zip(tokens, expected):
-        assert observed_token["occurrence_id"] == expected_token["occurrence_id"]
-        assert observed_token["spoken_form"] == expected_token["spoken_form"]
-        assert observed_token["source_form"] == expected_token["source_form"]
-        assert observed_token["category"] == expected_token["category"]
+    assert observed_tokens == expected_tokens
+
+    expected_negation_spans = [
+        ("neg-01", (1168, 1171), (18, 21)),
+        ("neg-02", (1189, 1192), (33, 36)),
+    ]
+    observed_negation_spans = [
+        (
+            _attribute_or_key(token, "occurrence_id"),
+            _span_bounds(token, "source"),
+            _span_bounds(token, "script"),
+        )
+        for token in tokens
+        if _attribute_or_key(token, "category") == "negation"
+    ]
+
+    assert observed_negation_spans == expected_negation_spans
 
 
 @then("the segmentation manifest preserves turn order and source grouping")
