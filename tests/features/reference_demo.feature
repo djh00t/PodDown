@@ -11,8 +11,13 @@ Feature: Reference episode demo
     And publication is a filesystem demo publication
     And the MCP preview reports no side effect
 
-  Scenario: Resume the completed reference episode from persisted evidence
-    Given a completed reference episode demo
-    When the reference episode demo is resumed
-    Then the result reports replayed render takes
-    And the package and publication identities are unchanged
+    Scenario: Resume the completed reference episode from persisted evidence
+      Given a completed reference episode demo
+      When the reference episode demo is resumed
+      Then the result reports replayed render takes
+      And the package and publication identities are unchanged
+
+    Scenario: Reject tampered persisted result evidence
+      Given a completed reference episode demo with persisted evidence
+      When the persisted result accuracy is changed
+      Then resuming the reference episode fails closed

@@ -10,6 +10,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from importlib import resources
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import cast
 from uuid import UUID
@@ -80,10 +82,17 @@ from poddown.qa.fidelity import evaluate_critical_tokens
 from poddown.qa.final_master import FinalMasterQaService
 
 _ROOT = Path(__file__).resolve().parents[2]
-_FIXTURE_ROOT = _ROOT / "integrations" / "reference-demo" / "v1"
 _TENANT_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b10")
 _PROJECT_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b12")
 _EPISODE_VERSION_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b14")
+
+
+def _reference_fixture_root() -> Path | Traversable:
+    """Resolve source-checkout fixtures or the packaged wheel resources."""
+    source_root = _ROOT / "integrations" / "reference-demo" / "v1"
+    if source_root.is_dir():
+        return source_root
+    return resources.files("poddown").joinpath("reference-demo", "v1")
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,14 +195,14 @@ class _DeterministicTranscriber:
         )
 
 
-def _read_text(path: Path) -> str:
+def _read_text(path: Path | Traversable) -> str:
     try:
         return path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as error:
         raise ValueError(f"missing fixture: {path.name}") from error
 
 
-def _yaml_mapping(path: Path) -> Mapping[str, object]:
+def _yaml_mapping(path: Path | Traversable) -> Mapping[str, object]:
     try:
         value = yaml.safe_load(_read_text(path))
     except yaml.YAMLError as error:
@@ -203,7 +212,7 @@ def _yaml_mapping(path: Path) -> Mapping[str, object]:
     return value
 
 
-def _json_mapping(path: Path) -> Mapping[str, object]:
+def _json_mapping(path: Path | Traversable) -> Mapping[str, object]:
     try:
         value = json.loads(_read_text(path))
     except json.JSONDecodeError as error:
@@ -213,9 +222,9 @@ def _json_mapping(path: Path) -> Mapping[str, object]:
     return value
 
 
-def _load_reference_fixture(fixture_root: Path) -> _ReferenceFixture:
+def _load_reference_fixture(fixture_root: Path | Traversable) -> _ReferenceFixture:
     """Load and reject malformed or non-consented demo evidence before rendering."""
-    root = Path(fixture_root)
+    root = fixture_root
     source = _read_text(root / "source.md")
     snapshot = snapshot_source(source)
     profile_yaml = _read_text(root / "profile.yaml")
@@ -250,7 +259,17 @@ def _load_reference_fixture(fixture_root: Path) -> _ReferenceFixture:
         for speaker in speakers
     ):
         raise ValueError("profile voice binding is invalid")
-    if disclosure.get("spoken") is not True or disclosure.get("show_notes") is not True:
+    if any(
+        type(disclosure.get(name)) is not bool
+        for name in ("spoken", "show_notes", "platform")
+    ):
+        raise ValueError("disclosure policy is incomplete")
+    disclosure_text = disclosure.get("text")
+    if (
+        disclosure.get("show_notes") is not True
+        or not isinstance(disclosure_text, str)
+        or not disclosure_text.strip()
+    ):
         raise ValueError("disclosure policy is incomplete")
     if not isinstance(adaptation.get("source_turns"), list):
         raise ValueError("adaptation turns are missing")
@@ -403,7 +422,13 @@ def _mcp_preview(source: str, profile_id: str) -> Mapping[str, object]:
     return server.call("poddown_preview", {"source": source, "profile": profile_id})
 
 
-def _validate_resume_evidence(root: Path, value: Mapping[str, object]) -> None:
+def _validate_resume_evidence(
+    root: Path,
+    value: Mapping[str, object],
+    prepared: ContentPreparationResult,
+    fixture: _ReferenceFixture,
+    selected: tuple[RenderOutcome, ...],
+) -> None:
     """Authenticate package, publication, and result evidence before replay."""
     manifest_path = root / "packages" / f"{_EPISODE_VERSION_ID}.json"
     expected_manifest_sha = value.get("package_manifest_sha256")
@@ -430,6 +455,64 @@ def _validate_resume_evidence(root: Path, value: Mapping[str, object]) -> None:
         raise ValueError(
             "persisted package evidence is unavailable or invalid"
         ) from error
+
+    details = package.provenance.details
+    workflow = details.get("workflow")
+    if not isinstance(workflow, Mapping):
+        raise ValueError("persisted result evidence is unavailable or invalid")
+    voice_bindings = {
+        segment.segment_id: next(
+            speaker.voice_asset_id
+            for speaker in prepared.profile.speakers
+            if speaker.speaker_id == segment.speaker_ids[0]
+        )
+        for segment in prepared.segments
+    }
+    expected_workflow = {
+        "workflow_id": "reference-demo-local-v1",
+        "failed_segment_ids": workflow.get("failed_segment_ids"),
+        "regenerated_segment_ids": workflow.get("regenerated_segment_ids"),
+        "segment_ids": [segment.segment_id for segment in prepared.segments],
+        "selected_candidate_ids": [
+            outcome.candidate.candidate_id for outcome in selected
+        ],
+        "take_count": 3,
+        "render_requests": len(selected) * 3,
+        "voice_bindings": voice_bindings,
+    }
+    if any(
+        workflow.get(key) != expected
+        for key, expected in expected_workflow.items()
+        if key not in {"failed_segment_ids", "regenerated_segment_ids"}
+    ):
+        raise ValueError("persisted result evidence is unavailable or invalid")
+    for field in ("failed_segment_ids", "regenerated_segment_ids"):
+        if not isinstance(workflow.get(field), list) or not all(
+            isinstance(item, str) for item in cast(list[object], workflow[field])
+        ):
+            raise ValueError("persisted result evidence is unavailable or invalid")
+
+    expected_result = {
+        "mode": "deterministic-local-demo",
+        "source_sha256": prepared.snapshot.source_sha256,
+        "profile_id": prepared.profile.profile_id,
+        "target_minutes": prepared.profile.target_minutes,
+        "speakers": [speaker.speaker_id for speaker in prepared.profile.speakers],
+        "segment_ids": expected_workflow["segment_ids"],
+        "take_count": expected_workflow["take_count"],
+        "selected_candidate_ids": expected_workflow["selected_candidate_ids"],
+        "failed_segment_ids": workflow["failed_segment_ids"],
+        "regenerated_segment_ids": workflow["regenerated_segment_ids"],
+        "critical_token_accuracy": package.provenance.critical_token_accuracy,
+        "package_artifacts": list(REQUIRED_PACKAGE_ARTIFACTS),
+        "package_manifest_sha256": expected_manifest_sha,
+        "usage": {"render_requests": expected_workflow["render_requests"]},
+        "cost": details.get("cost"),
+        "mcp_preview": _mcp_preview(fixture.source, prepared.profile.profile_id),
+        "voice_bindings": expected_workflow["voice_bindings"],
+    }
+    if any(value.get(field) != expected for field, expected in expected_result.items()):
+        raise ValueError("persisted result evidence is unavailable or invalid")
 
     publication_path = root / "publication.json"
     published_root = (
@@ -624,7 +707,7 @@ def run_reference_demo(
     if root.exists() and not root.is_dir():
         raise ValueError("reference demo output must be a directory")
     root.mkdir(parents=True, exist_ok=True)
-    fixture = _load_reference_fixture(_FIXTURE_ROOT)
+    fixture = _load_reference_fixture(_reference_fixture_root())
     prepared = prepare_content(_build_content_request(fixture))
     if not isinstance(prepared, ContentPreparationResult):
         raise ValueError("content preparation did not return typed evidence")
@@ -642,7 +725,7 @@ def run_reference_demo(
         previous = json.loads((root / "result.json").read_text(encoding="utf-8"))
         if not isinstance(previous, Mapping):
             raise ValueError("persisted result evidence is malformed")
-        _validate_resume_evidence(root, previous)
+        _validate_resume_evidence(root, previous, prepared, fixture, selected)
         result = _result_from_dict(previous, replayed)
         _write_json(root / "result.json", result.to_dict())
         _write_status(root, "completed", result.to_dict())
@@ -677,11 +760,33 @@ def run_reference_demo(
     )
     _write_status(root, "qa", qa.to_dict())
     _write_status(root, "mastering", {"wav_checksum": master.provenance.wav_checksum})
+    disclosure_text = cast(str, fixture.disclosure["text"]).strip()
     content_manifest = dict(prepared.manifest)
     content_manifest["show_notes"] = (
+        disclosure_text,
         "On 2026-07-31, the LiDAR team measured a C1 calibration result of "
         "99.7% across the 1.2 km test corridor.",
     )
+    voice_bindings = {
+        segment.segment_id: next(
+            speaker.voice_asset_id
+            for speaker in prepared.profile.speakers
+            if speaker.speaker_id == segment.speaker_ids[0]
+        )
+        for segment in prepared.segments
+    }
+    render_evidence = {
+        "workflow_id": "reference-demo-local-v1",
+        "failed_segment_ids": list(failed),
+        "regenerated_segment_ids": list(regenerated),
+        "segment_ids": [segment.segment_id for segment in prepared.segments],
+        "selected_candidate_ids": [
+            outcome.candidate.candidate_id for outcome in selected
+        ],
+        "take_count": 3,
+        "render_requests": len(selected) * 3,
+        "voice_bindings": voice_bindings,
+    }
     package_input = PackageGenerationInput(
         _EPISODE_VERSION_ID,
         prepared.snapshot,
@@ -692,7 +797,7 @@ def run_reference_demo(
         content_manifest,
         master,
         qa,
-        {"workflow_id": "reference-demo-local-v1", "failed_segment_ids": list(failed)},
+        render_evidence,
         "local-deterministic-v1",
         {"fixture": "reference-demo/v1"},
     )
@@ -733,7 +838,11 @@ def run_reference_demo(
         "secret://deterministic-local",
         "reference-demo",
         "https://example.invalid/reference-demo.xml",
-        DisclosurePolicy(True, True, True),
+        DisclosurePolicy(
+            cast(bool, fixture.disclosure["spoken"]),
+            cast(bool, fixture.disclosure["show_notes"]),
+            cast(bool, fixture.disclosure["platform"]),
+        ),
     )
     receipt = PublishingService(
         artifact_store=PackageArtifactStore(root / "package-artifacts"),
@@ -770,14 +879,7 @@ def run_reference_demo(
         "0",
         replayed if resume else 0,
         _mcp_preview(fixture.source, prepared.profile.profile_id),
-        {
-            segment.segment_id: next(
-                speaker.voice_asset_id
-                for speaker in prepared.profile.speakers
-                if speaker.speaker_id == segment.speaker_ids[0]
-            )
-            for segment in prepared.segments
-        },
+        voice_bindings,
     )
     _write_json(root / "result.json", result.to_dict())
     _write_status(root, "completed", result.to_dict())
