@@ -41,7 +41,11 @@ from poddown.content.segmentation import (
     segment_script,
 )
 from poddown.content.source import anchor_text, snapshot_source
-from poddown.content.tokens import CriticalToken, extract_critical_tokens
+from poddown.content.tokens import (
+    CriticalToken,
+    _find_normalized_span,
+    extract_critical_tokens,
+)
 
 _LEGACY_PRONUNCIATIONS = (
     ("LiDAR", "LIE-dar"),
@@ -286,8 +290,9 @@ def _build_result(request: ContentPreparationRequest) -> ContentPreparationResul
     profile = load_profile(request.profile_yaml, request.voice_assets, request.consents)
     snapshot = snapshot_source(request.markdown)
     profile = resolve_profile_metadata(profile, _profile_override_metadata(snapshot))
+    lexicon_layers = _frontmatter_lexicon_layers(snapshot, request.lexicon_layers)
     script = adapt_source(snapshot, profile, request.treatment, request.reasoning)
-    tokens = _source_bound_tokens(script, snapshot, request.lexicon_layers)
+    tokens = _source_bound_tokens(script, snapshot, lexicon_layers)
     segments = segment_script(script, snapshot, request.capabilities, tokens)
     payload = _manifest_payload(
         snapshot,
@@ -295,7 +300,7 @@ def _build_result(request: ContentPreparationRequest) -> ContentPreparationResul
         script,
         tokens,
         segments,
-        request.lexicon_layers,
+        lexicon_layers,
         request.capabilities,
     )
     serialized = _serialized(payload)
@@ -331,6 +336,54 @@ def _profile_override_metadata(snapshot: SourceSnapshot) -> Mapping[str, object]
     return MappingProxyType({"poddown": allowed})
 
 
+def _frontmatter_lexicon_layers(
+    snapshot: SourceSnapshot, layers: Mapping[LexiconScope, PronunciationLexicon]
+) -> Mapping[LexiconScope, PronunciationLexicon]:
+    """Overlay validated document pronunciations onto the episode precedence layer."""
+    metadata = _profile_override_metadata(snapshot)["poddown"]
+    assert isinstance(metadata, Mapping)
+    raw_overrides = metadata.get("pronunciation_overrides")
+    if raw_overrides is None:
+        return layers
+    if not isinstance(raw_overrides, Mapping):
+        raise ValueError("pronunciation_overrides must be an object")
+    overrides = tuple(
+        sorted(
+            (
+                (normalize_lexicon_key(key), key, value)
+                for key, value in raw_overrides.items()
+                if isinstance(key, str) and isinstance(value, str)
+            ),
+            key=lambda item: item[0],
+        )
+    )
+    if len(overrides) != len(raw_overrides):
+        raise ValueError("pronunciation_overrides must map strings to strings")
+    override_keys = {normalized for normalized, _, _ in overrides}
+    version = (
+        "frontmatter-"
+        + hashlib.sha256(
+            _serialized({key: value for _, key, value in overrides}).encode("utf-8")
+        ).hexdigest()[:12]
+    )
+    existing = layers.get("episode")
+    entries = () if existing is None else existing.entries
+    retained = tuple(
+        entry
+        for entry in entries
+        if normalize_lexicon_key(entry.key) not in override_keys
+    )
+    frontmatter_entries = tuple(
+        PronunciationEntry(f"frontmatter-{index:04d}", key, value, version)
+        for index, (_, key, value) in enumerate(overrides, start=1)
+    )
+    resolved = dict(layers)
+    resolved["episode"] = PronunciationLexicon(
+        "episode", version, (*retained, *frontmatter_entries)
+    )
+    return MappingProxyType(resolved)
+
+
 def _source_bound_tokens(
     script: ScriptVersion,
     snapshot: SourceSnapshot,
@@ -344,7 +397,7 @@ def _source_bound_tokens(
         end = offset + len(turn.text.encode("utf-8"))
         turn_offsets.append((offset, end, turn))
         offset = end + 1
-    used_offsets: dict[tuple[str, str], int] = {}
+    used_offsets: dict[tuple[str, int, int, str], int] = {}
     resolved: list[CriticalToken] = []
     for token in tokens:
         if token.script_span is None:
@@ -356,26 +409,43 @@ def _source_bound_tokens(
         )
         match = next(
             (
-                (anchor, source_text, character_index)
+                (anchor, source_text, character_span)
                 for anchor in turn.claim_anchors
                 for source_text in (anchor_text(snapshot, anchor),)
-                for key in ((anchor.block_id, token.source_form),)
-                for character_index in (
-                    source_text.find(token.source_form, used_offsets.get(key, 0)),
+                for key in (
+                    (
+                        anchor.block_id,
+                        anchor.start,
+                        anchor.end,
+                        normalize_lexicon_key(token.source_form),
+                    ),
                 )
-                if character_index >= 0
+                for character_span in (
+                    _find_normalized_span(
+                        source_text, token.source_form, used_offsets.get(key, 0)
+                    ),
+                )
+                if character_span is not None
             ),
             None,
         )
         if match is None:
             raise AdaptationError("unsupported_claim")
-        source_anchor, source_text, character_index = match
-        key = (source_anchor.block_id, token.source_form)
-        used_offsets[key] = character_index + len(token.source_form)
-        source_start = source_anchor.start + len(
-            source_text[:character_index].encode("utf-8")
+        source_anchor, source_text, character_span = match
+        character_start, character_end = character_span
+        key = (
+            source_anchor.block_id,
+            source_anchor.start,
+            source_anchor.end,
+            normalize_lexicon_key(token.source_form),
         )
-        source_end = source_start + len(token.source_form.encode("utf-8"))
+        used_offsets[key] = character_end
+        source_start = source_anchor.start + len(
+            source_text[:character_start].encode("utf-8")
+        )
+        source_end = source_anchor.start + len(
+            source_text[:character_end].encode("utf-8")
+        )
         resolved.append(
             CriticalToken(
                 token.occurrence_id,

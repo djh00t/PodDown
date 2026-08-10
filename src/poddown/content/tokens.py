@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 from unicodedata import category as unicode_category
+from unicodedata import combining, normalize
 
 from poddown.content.lexicon import (
     LexiconScope,
@@ -188,6 +189,7 @@ _TOKEN_CATEGORIES = frozenset(
     }
 )
 _APOSTROPHE_PATTERN = r"['’‘ʼ＇]"
+_APOSTROPHE_TRANSLATION = str.maketrans({"’": "'", "‘": "'", "ʼ": "'", "＇": "'"})
 _NEGATION_ALTERNATIVES = [
     r"can\s+not",
     r"cannot",
@@ -341,6 +343,54 @@ class _Match:
     pronunciation_source: str | None = None
 
 
+@dataclass(frozen=True)
+class _NormalizedProjection:
+    """Normalized text plus the original character span for each output character."""
+
+    text: str
+    spans: tuple[tuple[int, int], ...]
+
+
+def _normalized_projection(text: str) -> _NormalizedProjection:
+    """Normalize text while retaining enough source information for exact spans."""
+    normalized_characters: list[str] = []
+    spans: list[tuple[int, int]] = []
+    index = 0
+    while index < len(text):
+        start = index
+        if text[index].isspace():
+            while index < len(text) and text[index].isspace():
+                index += 1
+            normalized_characters.append(" ")
+            spans.append((start, index))
+            continue
+        index += 1
+        while index < len(text) and combining(text[index]):
+            index += 1
+        value = normalize("NFC", text[start:index]).translate(_APOSTROPHE_TRANSLATION)
+        for character in value.casefold():
+            normalized_characters.append(character)
+            spans.append((start, index))
+    return _NormalizedProjection("".join(normalized_characters), tuple(spans))
+
+
+def _find_normalized_span(
+    text: str, value: str, start: int = 0
+) -> tuple[int, int] | None:
+    """Find a normalized value and return its original character span."""
+    projection = _normalized_projection(text)
+    normalized_value = normalize_lexicon_key(value)
+    offset = projection.text.find(normalized_value)
+    while offset >= 0:
+        end = offset + len(normalized_value)
+        source_start, _ = projection.spans[offset]
+        _, source_end = projection.spans[end - 1]
+        if source_start >= start:
+            return source_start, source_end
+        offset = projection.text.find(normalized_value, offset + 1)
+    return None
+
+
 def _is_word_character(value: str) -> bool:
     return value == "_" or unicode_category(value).startswith(("L", "M", "N"))
 
@@ -482,25 +532,28 @@ def _lexicon_matches(
     text: str, lexicons: Mapping[LexiconScope, PronunciationLexicon]
 ) -> list[_Match]:
     candidates: dict[tuple[int, int, str], _Match] = {}
-    entries = sorted(
-        (entry for lexicon in lexicons.values() for entry in lexicon.entries),
-        key=lambda entry: (normalize_lexicon_key(entry.key), entry.entry_id),
+    projection = _normalized_projection(text)
+    keys = sorted(
+        {
+            normalize_lexicon_key(entry.key)
+            for lexicon in lexicons.values()
+            for entry in lexicon.entries
+        }
     )
-    for entry in entries:
-        normalized_entry_key = normalize_lexicon_key(entry.key)
-        for start in range(len(text)):
-            if text[start].isspace() or (
-                start > 0 and _is_word_character(text[start - 1])
+    for normalized_entry_key in keys:
+        normalized_start = projection.text.find(normalized_entry_key)
+        while normalized_start >= 0:
+            normalized_end = normalized_start + len(normalized_entry_key)
+            if not (
+                normalized_start > 0
+                and _is_word_character(projection.text[normalized_start - 1])
+            ) and not (
+                normalized_end < len(projection.text)
+                and _is_word_character(projection.text[normalized_end])
             ):
-                continue
-            for end in range(start + 1, len(text) + 1):
-                if text[end - 1].isspace() or (
-                    end < len(text) and _is_word_character(text[end])
-                ):
-                    continue
-                if normalize_lexicon_key(text[start:end]) != normalized_entry_key:
-                    continue
-                resolution = resolve_pronunciation(text[start:end], lexicons)
+                start, _ = projection.spans[normalized_start]
+                _, end = projection.spans[normalized_end - 1]
+                resolution = resolve_pronunciation(normalized_entry_key, lexicons)
                 if resolution is None:
                     continue
                 if not isinstance(resolution, PronunciationResolution):
@@ -513,11 +566,11 @@ def _lexicon_matches(
                     end=end,
                     category=selected_entry.category,
                     spoken_form=resolution.spoken_form,
-                    pronunciation_source=(
-                        f"{resolution.scope}:{resolution.lexicon_version}:{resolution.entry_id}"
-                    ),
+                    pronunciation_source=f"{resolution.scope}:{resolution.lexicon_version}:{resolution.entry_id}",
                 )
-                break
+            normalized_start = projection.text.find(
+                normalized_entry_key, normalized_start + 1
+            )
     return sorted(
         candidates.values(),
         key=lambda match: (match.start, -(match.end - match.start), match.end),
