@@ -82,40 +82,6 @@ def _json_value(value: Any) -> Any:
     return value
 
 
-def _non_retryable_activity_code(error: ActivityError) -> str | None:
-    cause = error.cause
-    if not isinstance(cause, ApplicationError):
-        return None
-    if not cause.non_retryable and cause.type not in NON_RETRYABLE_ERROR_TYPES:
-        return None
-    return cause.type or "NON_RETRYABLE_ACTIVITY_FAILURE"
-
-
-def _failed_gates_for(
-    failure_code: str, candidates: tuple[CandidateQuality, ...]
-) -> tuple[str, ...]:
-    if failure_code == "QUALITY_GATES_EXHAUSTED":
-        gates = (
-            ("fidelity", any(not item.fidelity.passed for item in candidates)),
-            (
-                "pronunciation",
-                any(not item.pronunciation_passed for item in candidates),
-            ),
-            (
-                "audio",
-                any(not item.diagnostics.passes_hard_gates for item in candidates),
-            ),
-        )
-        return tuple(name for name, failed in gates if failed) or ("activity",)
-    if failure_code == RightsFailureError.__name__:
-        return ("rights",)
-    if failure_code == MalformedAudioError.__name__:
-        return ("audio",)
-    if failure_code == WorkflowContractError.__name__:
-        return ("contract",)
-    return ("activity",)
-
-
 def _canonical(value: Any) -> str:
     return json.dumps(_json_value(value), sort_keys=True, separators=(",", ":"))
 
