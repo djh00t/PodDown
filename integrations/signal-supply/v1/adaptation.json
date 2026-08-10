@@ -24,6 +24,7 @@
     {"surface":"TSMC","source_form":"TSMC","spoken_form":"T S M C","category":"acronym","occurrence_id":"tok-tsmc"},
     {"surface":"7.5%","source_form":"7.5%","spoken_form":"seven point five percent","category":"percentage","occurrence_id":"tok-pct"},
     {"surface":"3.2","source_form":"3.2","spoken_form":"three point two","category":"currency","occurrence_id":"tok-capacity"},
-    {"surface":"not","source_form":"not","spoken_form":"not","category":"negation","occurrence_id":"tok-not"}
+    {"surface":"not","source_form":"not","spoken_form":"not","category":"negation","occurrence_id":"tok-not"},
+    {"surface":"not","source_form":"not","spoken_form":"not","category":"negation","occurrence_id":"tok-not-2"}
   ]
 }

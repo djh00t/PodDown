@@ -10,8 +10,11 @@ configuration, and deterministic eval expectations.
 
 The integration calls public `poddown.content.service.prepare_content`,
 `snapshot_source`, `extract_critical_tokens`, and publishing value objects. It
-does not modify PodDown core or add finance, ticker, market, portfolio, or
-investment logic. It makes no provider calls and contains no credentials.
+also invokes `DurableRenderService.render_takes` with the public
+`DeterministicLocalRenderer` contract and passes the versioned deterministic
+spoken transcript through `poddown.qa.fidelity.evaluate_critical_tokens`.
+It does not modify PodDown core or add finance, ticker, market, portfolio, or
+investment logic. It makes no live provider calls and contains no credentials.
 
 ## Acceptance evidence
 
@@ -32,6 +35,9 @@ missing `integrations/signal-supply/v1` files. The final 12-test gate covers
 public-contract preparation, source hashing, critical-token fidelity, counter-
 thesis and uncertainty preservation, disclosure, approved synthetic assets,
 publishing target construction, robotics digest regression, and core isolation.
+The rendering/fidelity assertions verify one local renderer call, the `local`
+provider marker, and exact `accuracy == 1.0` from the real public evaluator
+rather than relying on the eval metadata score.
 
 The robotics fixture baseline is SHA-256
 `ebe2aa14610aafad0fdca688ec156b321a7ae15d5bd98752a9b9f75e318b5c1e`.
