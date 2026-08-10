@@ -148,6 +148,26 @@ def test_segment_script_rejects_unsupported_speakers_and_oversized_turns():
     assert oversized_error.value.code == "turn_too_large"
 
 
+def test_segment_script_permits_anchorless_editorial_turns():
+    """Catch segmentation rejecting editorial turns accepted by adaptation."""
+    from poddown.content.segmentation import segment_script
+
+    script, source, _ = _script("alpha", ("alpha",))
+    editorial = replace(
+        script.turns[0],
+        text="Could you explain that?",
+        kind="editorial",
+        source_anchors=(),
+        claim_anchors=(),
+    )
+    script = replace(script, turns=(editorial,))
+
+    segments = segment_script(script, source, _capabilities(characters=100), ())
+
+    assert segments[0].turn_ids == ("turn-1",)
+    assert segments[0].source_anchors == ()
+
+
 def test_segment_script_rejects_invalid_script_source_and_token_inputs():
     """Unordered or detached provenance cannot produce a canonical manifest."""
     from poddown.content.segmentation import SegmentationError, segment_script

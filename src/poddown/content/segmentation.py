@@ -141,8 +141,18 @@ def _validate_script(script: ScriptVersion, source: SourceSnapshot) -> None:
     previous_end = -1
     previous_block_position = -1
     for turn in script.turns:
-        if not isinstance(turn, ScriptTurn) or not turn.source_anchors:
+        if not isinstance(turn, ScriptTurn):
             raise SegmentationError("invalid_script", "every turn needs source anchors")
+        if turn.kind == "editorial":
+            if turn.source_anchors or turn.claim_anchors:
+                raise SegmentationError(
+                    "invalid_script", "editorial turns cannot carry source anchors"
+                )
+            continue
+        if not turn.source_anchors:
+            raise SegmentationError(
+                "invalid_script", "every factual turn needs source anchors"
+            )
         for anchor in turn.source_anchors:
             try:
                 anchor_text(source, anchor)
