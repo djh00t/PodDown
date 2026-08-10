@@ -14,6 +14,12 @@ reads enforce caller scope, reject final and ancestor symlinks, verify metadata,
 and hash bytes read from the same open descriptor so replacement races fail
 closed.
 
+The port also exposes scoped `delete(tenant_id, project_id, reference)`. It
+verifies exact metadata and bytes before removing the object and sidecar,
+rejects cross-scope references, and fails closed on unsafe paths. Publication
+compensation uses this boundary; durable orphan-blob tracking and garbage
+collection remain deferred.
+
 The adapter is a local demo target only. S3/MinIO clients, presigned URLs,
 retention, database references, outbox events, and restore drills remain
 deferred.
@@ -45,11 +51,11 @@ uv run pytest -q \
   tests/unit/audio/test_storage.py
 ```
 
-Result: **62 passed**.
+Result: **64 passed**.
 
-The final changed-scope gate must include the complete existing suite, branch-
-aware coverage, Ruff, and strict mypy. Live-provider tests remain excluded by
-the repository Makefile.
+The final changed-scope gate includes the complete existing suite, branch-aware
+coverage, Ruff, and strict mypy. Live-provider tests remain excluded by the
+repository Makefile.
 
 Additional checks:
 
