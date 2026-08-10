@@ -1,0 +1,10 @@
+{
+  "fixture_version": "1.0.0",
+  "critical_token_fidelity": 1.0,
+  "preserve_counter_thesis": true,
+  "preserve_uncertainty": true,
+  "unsupported_promotional_claims": [],
+  "provider_calls": 0,
+  "robotics_regression_required": true,
+  "synthetic_demo_only": true
+}

@@ -1,0 +1,11 @@
+version: 1.0.0
+profile_id: signal-supply-finance-tech
+format_type: dialogue
+target_minutes: 12
+speakers:
+  - speaker_id: spk-signal-host
+    display_name: Signal synthetic host
+    voice_asset_id: demo-synthetic-signal-host-v1
+  - speaker_id: spk-supply-analyst
+    display_name: Supply synthetic analyst
+    voice_asset_id: demo-synthetic-supply-analyst-v1

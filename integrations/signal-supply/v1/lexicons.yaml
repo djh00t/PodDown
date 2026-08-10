@@ -1,0 +1,28 @@
+version: 1.0.0
+scope: project
+domain: finance-technology
+entries:
+  - key: NVIDIA
+    spoken_form: en-VID-ee-uh
+    category: name
+  - key: NVDA
+    spoken_form: N V D A
+    category: technical_term
+  - key: ASML
+    spoken_form: A S M L
+    category: technical_term
+  - key: TSMC
+    spoken_form: T S M C
+    category: technical_term
+  - key: Nasdaq
+    spoken_form: NAZ-dak
+    category: technical_term
+  - key: 7.5%
+    spoken_form: seven point five percent
+    category: technical_term
+  - key: 3.2 billion dollars
+    spoken_form: three point two billion dollars
+    category: technical_term
+  - key: not guaranteed
+    spoken_form: not guaranteed
+    category: technical_term

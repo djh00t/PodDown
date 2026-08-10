@@ -125,7 +125,9 @@ M1.
 
 ### M6 — Signal & Supply
 
-Status: pending. Signal & Supply customer integration remains outside M1.
+Status: implemented locally in M6 with deterministic offline evidence; live
+provider, external publication, deployment, and authenticated UAT remain
+pending.
 
 1. Define customer profile and synthetic-presenter disclosure.
 2. Register voice assets/consents without embedding provider IDs in source.
