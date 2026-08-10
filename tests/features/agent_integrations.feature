@@ -28,3 +28,13 @@ Feature: Safe PodDown agent integrations
     Given an authenticated tenant MCP server with an authorized audio resource
     When the agent calls poddown_get_episode
     Then the response contains a resource link and no inline audio bytes
+
+  Scenario: Publish approval is trusted, bounded, and one-time
+    Given an authenticated tenant MCP server with a trusted approval registry
+    When the agent presents a valid approval and replays it
+    Then the first publish succeeds and the replay is rejected
+
+  Scenario: Missing or stale approval fails closed
+    Given an authenticated tenant MCP server with a trusted approval registry
+    When the agent presents a missing or stale approval
+    Then publish is rejected without a side effect

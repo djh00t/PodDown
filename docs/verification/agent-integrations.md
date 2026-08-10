@@ -13,6 +13,11 @@ The v1 skill teaches preview-before-render, source preservation, side-effect
 distinctions, and refusal of unauthorized publication. `skills/poddown/v1/evals.json`
 is deterministic fixture data; it does not call providers or external services.
 
+Review corrections add a trusted injected approval registry with tenant and
+episode scope, trusted-clock expiry, and one-time consumption. Model-supplied
+`fresh` flags and nonces are ignored. The stdio entrypoint reads only
+`PODDOWN_TENANT_ID`; absent authentication exits with code 2.
+
 ## Focused evidence
 
 ```text
@@ -22,17 +27,24 @@ uv run pytest -p pytest_bdd.plugin -q \
   tests/unit/test_agent_mcp.py \
   tests/integration/test_agent_mcp.py \
   tests/contract/test_agent_mcp_contract.py
-13 passed
+23 passed
 ```
 
-The initial RED run failed during collection with four `ModuleNotFoundError`
-errors for the intentionally absent `poddown.agent_mcp` module. A subsequent
-test-harness correction exposed and fixed a ScenarioContext misuse; the final
-focused run passes.
+The review RED run failed during collection because the intentionally absent
+`InMemoryApprovalRegistry` was not yet implemented. The final focused run
+passes 23 scenarios/tests.
+
+## Final checks
+
+The changed-scope `make check`, build, docs, lock, pip, compile, diff, and
+credential checks are required before handoff. No `check-full` or
+`quality-gates` run is permitted locally.
 
 ## Deferrals and residual risks
 
 - This is a transport-neutral local MCP boundary, not a network MCP transport.
+- The stdio JSON-lines entrypoint is MCP-compatible local plumbing, not a claim
+  of production transport, authorization middleware, or deployment readiness.
 - The injected local gateway is deterministic evidence, not a claim of live API,
   Temporal, provider, or publication readiness.
 - API schema reuse and real authenticated context wiring require coordinator-only
