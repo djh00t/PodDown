@@ -51,3 +51,62 @@ def test_stdio_fails_closed_without_authenticated_tenant():
     )
     assert process.returncode == 2
     assert process.stderr.strip() == "authenticated tenant context is required"
+
+
+def test_stdio_registers_trusted_environment_approval_without_printing_token():
+    token = "trusted-token-not-for-output"
+    environment = {
+        **os.environ,
+        "PODDOWN_TENANT_ID": "tenant-a",
+        "PODDOWN_APPROVAL_TOKEN": token,
+        "PODDOWN_APPROVAL_EPISODE_ID": "episode-1",
+        "PODDOWN_APPROVAL_EXPIRES_AT": "2099-01-01T00:00:00+00:00",
+    }
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "poddown_publish",
+            "arguments": {"episode_id": "episode-1", "approval_id": token},
+        },
+    }
+    process = subprocess.run(
+        [sys.executable, "-m", "poddown.agent_mcp_stdio"],
+        input=json.dumps(request) + "\n",
+        text=True,
+        capture_output=True,
+        env=environment,
+        check=False,
+    )
+    assert process.returncode == 0
+    assert json.loads(process.stdout)["result"]["side_effect"] == "external_publish"
+    assert token not in process.stdout
+    assert token not in process.stderr
+
+
+def test_stdio_does_not_authorize_model_fresh_flag_without_trusted_environment():
+    environment = {**os.environ, "PODDOWN_TENANT_ID": "tenant-a"}
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "poddown_publish",
+            "arguments": {
+                "episode_id": "episode-1",
+                "approval_id": "model-token",
+                "fresh": True,
+                "nonce": "model-nonce",
+            },
+        },
+    }
+    process = subprocess.run(
+        [sys.executable, "-m", "poddown.agent_mcp_stdio"],
+        input=json.dumps(request) + "\n",
+        text=True,
+        capture_output=True,
+        env=environment,
+        check=False,
+    )
+    assert json.loads(process.stdout)["error"]["code"] == "invalid_input"
