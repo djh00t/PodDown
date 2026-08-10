@@ -46,6 +46,30 @@ def test_store_reuses_one_content_addressed_object_for_identical_writes(tmp_path
     ]
 
 
+def test_store_rejects_a_corrupted_existing_digest_object_during_put(tmp_path):
+    """Catch put accepting a corrupt target by rechecking only caller bytes."""
+    store = FilesystemArtifactStore(tmp_path)
+    reference = store.put("episode.wav", "audio/wav", b"known-good bytes")
+    (tmp_path / reference.storage_key).write_bytes(b"corrupt target")
+
+    with pytest.raises(RuntimeError):
+        store.put("episode.wav", "audio/wav", b"known-good bytes")
+
+
+def test_store_rejects_a_corrupt_file_exists_race_target(tmp_path, monkeypatch):
+    """Catch a winning writer race whose target bytes differ from the digest."""
+    store = FilesystemArtifactStore(tmp_path)
+
+    def win_race(_temporary, target):
+        target.write_bytes(b"corrupt target")
+        raise FileExistsError
+
+    monkeypatch.setattr("poddown.artifacts.os.link", win_race)
+
+    with pytest.raises(RuntimeError):
+        store.put("episode.wav", "audio/wav", b"known-good bytes")
+
+
 def test_store_rejects_missing_or_corrupted_content_at_read_time(tmp_path):
     """Catch reads that trust missing or tampered content-addressed bytes."""
     store = FilesystemArtifactStore(tmp_path)

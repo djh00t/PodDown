@@ -73,7 +73,15 @@ class PackageProvenance:
     def __post_init__(self) -> None:
         if not isinstance(self.details, Mapping):
             raise PackageError("package provenance details must be a mapping")
-        object.__setattr__(self, "details", MappingProxyType(dict(self.details)))
+        try:
+            details = json.loads(json.dumps(dict(self.details), allow_nan=False))
+        except (TypeError, ValueError, OverflowError) as error:
+            raise PackageError(
+                "package provenance details must be JSON-compatible"
+            ) from error
+        if not isinstance(details, dict):
+            raise PackageError("package provenance details must be a mapping")
+        object.__setattr__(self, "details", MappingProxyType(details))
 
     def to_dict(self) -> dict[str, object]:
         """Return the schema-compatible provenance object."""

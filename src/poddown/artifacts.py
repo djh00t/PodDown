@@ -100,7 +100,7 @@ class FilesystemArtifactStore:
         target = self._root / storage_key
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
-            self._verify_existing(target, data, reference)
+            self._verify_existing(target, reference)
             return reference
 
         temporary_path: Path | None = None
@@ -118,7 +118,7 @@ class FilesystemArtifactStore:
             try:
                 os.link(temporary_path, target)
             except FileExistsError:
-                self._verify_existing(target, data, reference)
+                self._verify_existing(target, reference)
             fsync_directory(target.parent)
             return reference
         except OSError as error:
@@ -141,11 +141,15 @@ class FilesystemArtifactStore:
             data = (self._root / expected_key).read_bytes()
         except OSError as error:
             raise ArtifactIntegrityError("immutable artifact is unavailable") from error
-        self._verify_existing(self._root / expected_key, data, reference)
+        self._verify_existing(self._root / expected_key, reference)
         return data
 
     @staticmethod
-    def _verify_existing(path: Path, data: bytes, reference: ArtifactRef) -> None:
+    def _verify_existing(path: Path, reference: ArtifactRef) -> None:
+        try:
+            data = path.read_bytes()
+        except OSError as error:
+            raise ArtifactIntegrityError("immutable artifact is unavailable") from error
         if (
             len(data) != reference.byte_count
             or sha256(data).hexdigest() != reference.sha256

@@ -164,6 +164,30 @@ def test_identical_commit_replays_the_existing_immutable_manifest(tmp_path):
     assert manifest_path.stat().st_mtime_ns == original_mtime
 
 
+def test_replay_canonicalizes_json_native_provenance_details(tmp_path):
+    """Catch replay conflicts caused by JSON changing tuple and mapping key shapes."""
+    packages = service(tmp_path)
+    episode_version_id = str(uuid4())
+    provenance_details = {1: ("primary", "fallback"), "nested": {2: "value"}}
+
+    first = packages.commit(
+        episode_version_id,
+        package_artifacts(),
+        provenance(details=provenance_details),
+    )
+    replay = packages.commit(
+        episode_version_id,
+        package_artifacts(),
+        provenance(details=provenance_details),
+    )
+
+    assert replay == first
+    assert replay.provenance.details == {
+        "1": ["primary", "fallback"],
+        "nested": {"2": "value"},
+    }
+
+
 @pytest.mark.parametrize(
     "details",
     [{"invalid": object()}, {"invalid": math.nan}],
