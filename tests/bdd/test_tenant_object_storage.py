@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
+from pytest_bdd import given, scenarios, then, when
+
 from poddown.object_storage import (
     FilesystemObjectStore,
     ObjectIntegrityError,
+    ObjectNotFound,
+    ObjectRef,
     ObjectScopeError,
+    ObjectValidationError,
 )
-from pytest_bdd import given, scenarios, then, when
 
 TENANT_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b10")
 PROJECT_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b12")
@@ -121,3 +126,92 @@ def corruption_result(object_context: dict[str, object]) -> None:
     assert isinstance(store, FilesystemObjectStore)
     with pytest.raises(ObjectIntegrityError):
         store.read(TENANT_ID, PROJECT_ID, reference)
+
+
+@when("an object-store ancestor is replaced by a symlink")
+def replace_ancestor_with_symlink(object_context: dict[str, object]) -> None:
+    store = object_context["store"]
+    reference = object_context["reference"]
+    assert isinstance(store, FilesystemObjectStore)
+    real_tenants = store._root / "tenants-real"  # noqa: SLF001
+    (store._root / "tenants").rename(real_tenants)  # noqa: SLF001
+    (store._root / "tenants").symlink_to(real_tenants, target_is_directory=True)  # noqa: SLF001
+    object_context["reference"] = reference
+
+
+@when("I read it with changed display metadata")
+def forge_reference_metadata(object_context: dict[str, object]) -> None:
+    reference = object_context["reference"]
+    object_context["reference"] = replace(reference, name="forged.md")
+
+
+@when("the stored object is removed")
+def remove_stored_object(object_context: dict[str, object]) -> None:
+    store = object_context["store"]
+    reference = object_context["reference"]
+    assert isinstance(store, FilesystemObjectStore)
+    (store._root / reference.storage_key).unlink()  # noqa: SLF001
+
+
+@then("the object read fails with a missing-object error")
+def missing_object_result(object_context: dict[str, object]) -> None:
+    store = object_context["store"]
+    reference = object_context["reference"]
+    assert isinstance(store, FilesystemObjectStore)
+    with pytest.raises(ObjectNotFound):
+        store.read(TENANT_ID, PROJECT_ID, reference)
+
+
+@when("I submit a UUID4 scope and path-traversal name")
+def submit_malformed_input(object_context: dict[str, object]) -> None:
+    store = object_context["store"]
+    assert isinstance(store, FilesystemObjectStore)
+    with pytest.raises(ObjectValidationError):
+        store.put(
+            uuid4(),
+            PROJECT_ID,
+            name="fixture.md",
+            media_type="text/markdown",
+            data=DATA,
+        )
+    with pytest.raises(ObjectValidationError):
+        store.put(
+            TENANT_ID,
+            PROJECT_ID,
+            name="../escape",
+            media_type="text/markdown",
+            data=DATA,
+        )
+    object_context["malformed_input_checked"] = True
+
+
+@then("both puts fail with validation errors")
+def malformed_input_result(object_context: dict[str, object]) -> None:
+    assert object_context["malformed_input_checked"] is True
+
+
+@when("I construct a malformed checksum reference")
+def construct_malformed_reference(object_context: dict[str, object]) -> None:
+    with pytest.raises(ObjectValidationError):
+        ObjectRef(
+            tenant_id=TENANT_ID,
+            project_id=PROJECT_ID,
+            name="fixture.md",
+            media_type="text/markdown",
+            byte_count=0,
+            sha256="not-a-checksum",
+            storage_key="not-a-canonical-key",
+        )
+    object_context["malformed_reference_checked"] = True
+
+
+@then("reference construction fails validation")
+def malformed_reference_result(object_context: dict[str, object]) -> None:
+    assert object_context["malformed_reference_checked"] is True
+
+
+@then("the object store is local and provider-free")
+def local_provider_free_result(object_context: dict[str, object]) -> None:
+    store = object_context["store"]
+    assert isinstance(store, FilesystemObjectStore)
+    assert type(store).__module__ == "poddown.object_storage"
