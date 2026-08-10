@@ -128,6 +128,17 @@ def project_user_levels(context):
     _set_precedence_context(context, project="project-profile", user="user-profile")
 
 
+@given("a CRLF Markdown source with a document profile and project profile")
+def crlf_document_profile(context):
+    context.values.update(
+        source=_markdown("document-profile").replace(b"\n", b"\r\n"),
+        project_config=_profile_config(
+            "document-profile", "project-profile", selected="project-profile"
+        ),
+        user_config=_profile_config("document-profile", "project-profile"),
+    )
+
+
 @given("a profile value at the user level")
 def user_level(context):
     _set_precedence_context(context, user="user-profile")

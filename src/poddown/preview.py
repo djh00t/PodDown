@@ -79,13 +79,18 @@ def _configured_profiles(config: Mapping[str, object]) -> set[str]:
 
 
 def _document_profile(source: str) -> str | None:
-    if not source.startswith("---\n"):
+    if source.startswith("---\r\n"):
+        prefix = 5
+        boundary = source.find("\r\n---\r\n", prefix)
+    elif source.startswith("---\n"):
+        prefix = 4
+        boundary = source.find("\n---\n", prefix)
+    else:
         return None
-    boundary = source.find("\n---\n", 4)
     if boundary < 0:
         return None
     try:
-        parsed = yaml.safe_load(source[4:boundary])
+        parsed = yaml.safe_load(source[prefix:boundary])
     except yaml.YAMLError:
         return None
     if not isinstance(parsed, Mapping):

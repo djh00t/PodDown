@@ -35,6 +35,11 @@ Feature: Preview Markdown locally
     When the Markdown source is previewed without the profile flag
     Then the resolved preview profile is "document-profile"
 
+  Scenario: Prefer a CRLF document profile over project configuration
+    Given a CRLF Markdown source with a document profile and project profile
+    When the Markdown source is previewed without the profile flag
+    Then the resolved preview profile is "document-profile"
+
   Scenario: Prefer the project profile over user configuration
     Given profile values at the project and user levels
     When the Markdown source is previewed without the profile flag
