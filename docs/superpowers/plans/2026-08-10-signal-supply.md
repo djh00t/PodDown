@@ -29,7 +29,7 @@
 - Create: `tests/evals/test_signal_supply.py`
 
 - [ ] Add scenarios for public-contract preparation, 100% critical-token fidelity, counter-thesis/uncertainty preservation, disclosure, unchanged robotics regression, and configuration removal leaving no finance core references.
-- [ ] Load only fixture files and public APIs; invoke the deterministic local renderer through `DurableRenderService.render_takes` and evaluate the fixture transcript with `poddown.qa.fidelity.evaluate_critical_tokens`.
+- [ ] Load only fixture files and public APIs through typed `ContentPreparationRequest`; invoke the deterministic local renderer through `DurableRenderService.render_takes` and evaluate prepared token spoken forms with `poddown.qa.fidelity.evaluate_critical_tokens`.
 - [ ] Run the focused suite and capture the expected RED failure because the M6 fixture does not exist.
 
 ### Task 2: Add versioned Signal & Supply integration artifacts
@@ -51,6 +51,7 @@
 - [ ] Define finance/technology pronunciations and critical-token expectations without ticker/market logic in code.
 - [ ] Define disclosure, provider-neutral publication metadata, and protected workflow configuration as data only.
 - [ ] Keep the transcript deterministic and explicit about local-demo rendering; it is not provider or live audio evidence.
+- [ ] Render both declared speakers and the robotics fixture through the same public local contract.
 
 ### Task 3: Verify, document, and deliver
 

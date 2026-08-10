@@ -8,7 +8,10 @@ approved demo-only synthetic voice assets and consents, pronunciation lexicon,
 disclosure policy, provider-neutral publishing target, protected workflow
 configuration, and deterministic eval expectations.
 
-The integration calls public `poddown.content.service.prepare_content`,
+The integration constructs the typed `ContentPreparationRequest` path with the
+fixture profile's two speakers, declared voice assets/consents, source-bound
+turn anchors, and an episode-scoped `PronunciationLexicon`. It calls public
+`poddown.content.service.prepare_content(request=...)`,
 `snapshot_source`, `extract_critical_tokens`, and publishing value objects. It
 also invokes `DurableRenderService.render_takes` with the public
 `DeterministicLocalRenderer` contract and passes the versioned deterministic
@@ -27,17 +30,21 @@ uv run pytest -p pytest_bdd.plugin -q \
   tests/unit/test_signal_supply_fixtures.py \
   tests/integration/test_signal_supply.py \
   tests/evals/test_signal_supply.py
-12 passed
+15 passed
 ```
 
-The required RED run preceded fixture creation and produced 9 failures from
-missing `integrations/signal-supply/v1` files. The final 12-test gate covers
+The review-fix RED run first failed on missing adapted spoken text and then on
+fidelity scores below 1.0 before the typed request, episode lexicon, declared
+voice mapping, and deterministic transcript path were completed. The final
+15-test gate covers
 public-contract preparation, source hashing, critical-token fidelity, counter-
 thesis and uncertainty preservation, disclosure, approved synthetic assets,
 publishing target construction, robotics digest regression, and core isolation.
 The rendering/fidelity assertions verify one local renderer call, the `local`
 provider marker, and exact `accuracy == 1.0` from the real public evaluator
 rather than relying on the eval metadata score.
+The robotics scenario now prepares and renders its typed request through the
+same local contract and checks the unchanged source digest.
 
 The robotics fixture baseline is SHA-256
 `ebe2aa14610aafad0fdca688ec156b321a7ae15d5bd98752a9b9f75e318b5c1e`.
@@ -52,3 +59,6 @@ The robotics fixture baseline is SHA-256
   repository workflow wiring may be required for a real customer-one pipeline.
 - Finance-specific production content governance and authenticated UAT remain
   outside this offline fixture slice.
+- The transcript is deterministic local evidence, not live transcription; no
+  hosted rendering, transcription, publication, deployment, or customer UAT is
+  established.
