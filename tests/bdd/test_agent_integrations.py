@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
@@ -236,3 +240,37 @@ def null_then_valid(context):
 def null_result_shape(context):
     assert context.values["null_result"]["error"]["code"] == "invalid_input"
     assert context.values["valid_result"]["result"]["side_effect"] == "none"
+
+
+@when("the MCP client sends malformed JSON-RPC framing followed by initialize")
+def malformed_framing_then_initialize(context):
+    environment = {**os.environ, "PODDOWN_TENANT_ID": "tenant-a"}
+    process = subprocess.run(
+        [sys.executable, "-m", "poddown.agent_mcp_stdio"],
+        input='{"jsonrpc": \n'
+        + json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        + "\n",
+        text=True,
+        capture_output=True,
+        env=environment,
+        check=False,
+    )
+    context.values["stdio_process"] = process
+    context.values["stdio_responses"] = [
+        json.loads(line) for line in process.stdout.splitlines()
+    ]
+
+
+@then("stdio returns a framing error and continues")
+def framing_error_then_continue(context):
+    process = context.values["stdio_process"]
+    responses = context.values["stdio_responses"]
+    assert process.returncode == 0
+    assert process.stderr == ""
+    assert responses[0] == {
+        "jsonrpc": "2.0",
+        "id": None,
+        "error": {"code": -32700, "message": "Parse error"},
+    }
+    assert responses[1]["id"] == 1
+    assert responses[1]["result"]["protocolVersion"]
