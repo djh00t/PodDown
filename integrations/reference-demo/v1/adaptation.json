@@ -390,7 +390,7 @@
     {
       "turn_id": "ref-turn-001",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-001",
+      "source_block_anchor": "block-0002-23ff0198ae2f",
       "claim_anchor": "claim-001",
       "text": "Welcome to this reference-demo field-calibration discussion.",
       "supported_by_source": true
@@ -398,7 +398,7 @@
     {
       "turn_id": "ref-turn-002",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-002",
+      "source_block_anchor": "block-0004-a99f810c0308",
       "claim_anchor": "claim-002",
       "text": "We will name LiDAR, C1, and the test corridor clearly, while keeping every statement tied to the written source rather than to an assumed field.",
       "supported_by_source": true
@@ -406,7 +406,7 @@
     {
       "turn_id": "ref-turn-003",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-003",
+      "source_block_anchor": "block-0006-e91553fc5242",
       "claim_anchor": "claim-003",
       "text": "outcome.",
       "supported_by_source": true
@@ -414,7 +414,7 @@
     {
       "turn_id": "ref-turn-004",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-004",
+      "source_block_anchor": "block-0008-d64984aa99c0",
       "claim_anchor": "claim-004",
       "text": "I will test that boundary as we go.",
       "supported_by_source": true
@@ -422,7 +422,7 @@
     {
       "turn_id": "ref-turn-005",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-005",
+      "source_block_anchor": "block-0010-ee78dc1753cc",
       "claim_anchor": "claim-005",
       "text": "A careful dialogue can repeat a measurement without converting it into a certification, a forecast, or an unstated comparison with another.",
       "supported_by_source": true
@@ -430,7 +430,7 @@
     {
       "turn_id": "ref-turn-006",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-006",
+      "source_block_anchor": "block-0012-5d6fcc32b475",
       "claim_anchor": "claim-006",
       "text": "corridor.",
       "supported_by_source": true
@@ -438,7 +438,7 @@
     {
       "turn_id": "ref-turn-007",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-007",
+      "source_block_anchor": "block-0014-392c1ca0f935",
       "claim_anchor": "claim-007",
       "text": "The dated record says that, on 2026-07-31, the LiDAR team measured a C1 calibration result of 99.7% across the 1.2 km test corridor.",
       "supported_by_source": true
@@ -446,7 +446,7 @@
     {
       "turn_id": "ref-turn-008",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-008",
+      "source_block_anchor": "block-0016-c094b1b77b13",
       "claim_anchor": "claim-008",
       "text": "That is the central source-bound observation.",
       "supported_by_source": true
@@ -454,7 +454,7 @@
     {
       "turn_id": "ref-turn-009",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-009",
+      "source_block_anchor": "block-0018-3f43a4d1133f",
       "claim_anchor": "claim-009",
       "text": "It gives a method name, a calibration label, a percentage, a distance, and a date.",
       "supported_by_source": true
@@ -462,7 +462,7 @@
     {
       "turn_id": "ref-turn-010",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-010",
+      "source_block_anchor": "block-0020-0452bb57b3d1",
       "claim_anchor": "claim-010",
       "text": "It does not identify a scanner model, operating environment, threshold, or comparative baseline.",
       "supported_by_source": true
@@ -470,7 +470,7 @@
     {
       "turn_id": "ref-turn-011",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-011",
+      "source_block_anchor": "block-0022-1f6095255799",
       "claim_anchor": "claim-011",
       "text": "So we can state the result precisely, but we cannot say every future LiDAR pass will reproduce it.",
       "supported_by_source": true
@@ -478,7 +478,7 @@
     {
       "turn_id": "ref-turn-012",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-012",
+      "source_block_anchor": "block-0024-52fd899dfc00",
       "claim_anchor": "claim-012",
       "text": "The source records one C1 result, not a universal performance promise.",
       "supported_by_source": true
@@ -486,7 +486,7 @@
     {
       "turn_id": "ref-turn-013",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-013",
+      "source_block_anchor": "block-0026-e26582dafc6f",
       "claim_anchor": "claim-013",
       "text": "That distinction is useful because a number can sound conclusive when spoken quickly.",
       "supported_by_source": true
@@ -494,7 +494,7 @@
     {
       "turn_id": "ref-turn-014",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-014",
+      "source_block_anchor": "block-0028-49a36b7b59b7",
       "claim_anchor": "claim-014",
       "text": "Listeners may supply missing details unless the dialogue says what the record includes and what it leaves unknown.",
       "supported_by_source": true
@@ -502,7 +502,7 @@
     {
       "turn_id": "ref-turn-015",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-015",
+      "source_block_anchor": "block-0030-208c3bb4342c",
       "claim_anchor": "claim-015",
       "text": "LiDAR is the named measurement method, and C1 is the calibration label.",
       "supported_by_source": true
@@ -510,7 +510,7 @@
     {
       "turn_id": "ref-turn-016",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-016",
+      "source_block_anchor": "block-0032-126d7a167127",
       "claim_anchor": "claim-016",
       "text": "Those technical names are traceable, yet the source does not provide the procedure used to calculate C1.",
       "supported_by_source": true
@@ -518,7 +518,7 @@
     {
       "turn_id": "ref-turn-017",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-017",
+      "source_block_anchor": "block-0034-18191f31c336",
       "claim_anchor": "claim-017",
       "text": "We should not infer a sensor configuration, a pass count, or an independent replication merely because the terms sound technical.",
       "supported_by_source": true
@@ -526,7 +526,7 @@
     {
       "turn_id": "ref-turn-018",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-018",
+      "source_block_anchor": "block-0036-9116ef87e3a8",
       "claim_anchor": "claim-018",
       "text": "Names preserve reference, but they do not fill absent methodology.",
       "supported_by_source": true
@@ -534,7 +534,7 @@
     {
       "turn_id": "ref-turn-019",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-019",
+      "source_block_anchor": "block-0038-4fa41ca612fb",
       "claim_anchor": "claim-019",
       "text": "Calibration here means only that the source records a C1 calibration result for the stated corridor on the stated date.",
       "supported_by_source": true
@@ -542,7 +542,7 @@
     {
       "turn_id": "ref-turn-020",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-020",
+      "source_block_anchor": "block-0040-70e6d7a7dba9",
       "claim_anchor": "claim-020",
       "text": "It does not mean a safety finding or universal approval.",
       "supported_by_source": true
@@ -550,7 +550,7 @@
     {
       "turn_id": "ref-turn-021",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-021",
+      "source_block_anchor": "block-0042-f9c5aa2e914e",
       "claim_anchor": "claim-021",
       "text": "A listener may ask how the calibration was calculated or whether another instrument would agree.",
       "supported_by_source": true
@@ -558,7 +558,7 @@
     {
       "turn_id": "ref-turn-022",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-022",
+      "source_block_anchor": "block-0044-cfe42d977eb8",
       "claim_anchor": "claim-022",
       "text": "Those are sensible questions, but this source alone cannot answer either one.",
       "supported_by_source": true
@@ -566,7 +566,7 @@
     {
       "turn_id": "ref-turn-023",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-023",
+      "source_block_anchor": "block-0046-984eacdf5e42",
       "claim_anchor": "claim-023",
       "text": "Our uncertainty concerns conditions the source does not record, including how the same C1 setup would behave outside this test corridor.",
       "supported_by_source": true
@@ -574,7 +574,7 @@
     {
       "turn_id": "ref-turn-024",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-024",
+      "source_block_anchor": "block-0048-2d111aeddfee",
       "claim_anchor": "claim-024",
       "text": "Uncertainty does not erase the dated observation.",
       "supported_by_source": true
@@ -582,7 +582,7 @@
     {
       "turn_id": "ref-turn-025",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-025",
+      "source_block_anchor": "block-0050-c8b30f6f43f7",
       "claim_anchor": "claim-025",
       "text": "Instead, it marks the facts needed for a broader conclusion as unknown.",
       "supported_by_source": true
@@ -590,7 +590,7 @@
     {
       "turn_id": "ref-turn-026",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-026",
+      "source_block_anchor": "block-0052-978fe3545455",
       "claim_anchor": "claim-026",
       "text": "We can report the recorded event while declining to extend it beyond the 1.2 km corridor.",
       "supported_by_source": true
@@ -598,7 +598,7 @@
     {
       "turn_id": "ref-turn-027",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-027",
+      "source_block_anchor": "block-0054-6827383fbf0b",
       "claim_anchor": "claim-027",
       "text": "The source does not state that rain occurred during measurement, and it does not state that rain had no effect.",
       "supported_by_source": true
@@ -606,7 +606,7 @@
     {
       "turn_id": "ref-turn-028",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-028",
+      "source_block_anchor": "block-0056-c5aaec5b7f9c",
       "claim_anchor": "claim-028",
       "text": "Both negations matter because weather details would otherwise sound plausible.",
       "supported_by_source": true
@@ -614,7 +614,7 @@
     {
       "turn_id": "ref-turn-029",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-029",
+      "source_block_anchor": "block-0058-579fef46ac6c",
       "claim_anchor": "claim-029",
       "text": "We cannot say rain improved, degraded, or left unchanged the LiDAR result.",
       "supported_by_source": true
@@ -622,7 +622,7 @@
     {
       "turn_id": "ref-turn-030",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-030",
+      "source_block_anchor": "block-0060-e297482480ed",
       "claim_anchor": "claim-030",
       "text": "The written record contains no rain condition, so a vivid weather story would be unsupported.",
       "supported_by_source": true
@@ -630,7 +630,7 @@
     {
       "turn_id": "ref-turn-031",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-031",
+      "source_block_anchor": "block-0062-3baeea5af9c7",
       "claim_anchor": "claim-031",
       "text": "Reflective surfaces require the same restraint.",
       "supported_by_source": true
@@ -638,7 +638,7 @@
     {
       "turn_id": "ref-turn-032",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-032",
+      "source_block_anchor": "block-0064-7c485be00750",
       "claim_anchor": "claim-032",
       "text": "The source provides no separate comparison, so it neither proves that every reflective material was represented nor proves that all were.",
       "supported_by_source": true
@@ -646,7 +646,7 @@
     {
       "turn_id": "ref-turn-033",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-033",
+      "source_block_anchor": "block-0066-23085f01d2bc",
       "claim_anchor": "claim-033",
       "text": "excluded.",
       "supported_by_source": true
@@ -654,7 +654,7 @@
     {
       "turn_id": "ref-turn-034",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-034",
+      "source_block_anchor": "block-0068-2908a4f5686d",
       "claim_anchor": "claim-034",
       "text": "A real study of reflective surfaces would need its own design, observation, and source.",
       "supported_by_source": true
@@ -662,7 +662,7 @@
     {
       "turn_id": "ref-turn-035",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-035",
+      "source_block_anchor": "block-0070-91e5fe142368",
       "claim_anchor": "claim-035",
       "text": "This fixture cannot borrow confidence from LiDAR or from the 99.7% figure.",
       "supported_by_source": true
@@ -670,7 +670,7 @@
     {
       "turn_id": "ref-turn-036",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-036",
+      "source_block_anchor": "block-0072-114b87817864",
       "claim_anchor": "claim-036",
       "text": "I disagree with any reading that treats 99.7% as a blanket endorsement.",
       "supported_by_source": true,
@@ -679,7 +679,7 @@
     {
       "turn_id": "ref-turn-037",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-037",
+      "source_block_anchor": "block-0074-5b1ca8f7e935",
       "claim_anchor": "claim-037",
       "text": "My disagreement is not a denial that the measurement was recorded on 2026-07-31.",
       "supported_by_source": true,
@@ -688,7 +688,7 @@
     {
       "turn_id": "ref-turn-038",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-038",
+      "source_block_anchor": "block-0076-7a7b8a402610",
       "claim_anchor": "claim-038",
       "text": "My counterpoint is that a bounded result can still teach reporting discipline.",
       "supported_by_source": true
@@ -696,7 +696,7 @@
     {
       "turn_id": "ref-turn-039",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-039",
+      "source_block_anchor": "block-0078-0246bb72fe95",
       "claim_anchor": "claim-039",
       "text": "The disagreement concerns what may be inferred, not whether the source contains a measurement.",
       "supported_by_source": true,
@@ -705,7 +705,7 @@
     {
       "turn_id": "ref-turn-040",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-040",
+      "source_block_anchor": "block-0080-c833081e5f22",
       "claim_anchor": "claim-040",
       "text": "Here is the counter-thesis: refusing every limited result would hide useful examples of careful evidence handling.",
       "supported_by_source": true,
@@ -714,7 +714,7 @@
     {
       "turn_id": "ref-turn-041",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-041",
+      "source_block_anchor": "block-0082-af3e0621c3a4",
       "claim_anchor": "claim-041",
       "text": "The C1 result can be useful without becoming a universal benchmark.",
       "supported_by_source": true
@@ -722,7 +722,7 @@
     {
       "turn_id": "ref-turn-042",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-042",
+      "source_block_anchor": "block-0084-9a78e0ca6f93",
       "claim_anchor": "claim-042",
       "text": "I accept that counter-thesis, but I still resist promotional wording.",
       "supported_by_source": true,
@@ -731,7 +731,7 @@
     {
       "turn_id": "ref-turn-043",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-043",
+      "source_block_anchor": "block-0086-c11085c18be1",
       "claim_anchor": "claim-043",
       "text": "We are not asking anyone to rely on 99.7% for a field decision beyond the stated corridor.",
       "supported_by_source": true
@@ -739,7 +739,7 @@
     {
       "turn_id": "ref-turn-044",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-044",
+      "source_block_anchor": "block-0088-4863d4498c8b",
       "claim_anchor": "claim-044",
       "text": "The host should set context before drawing a conclusion, and the analyst should answer with a precise challenge.",
       "supported_by_source": true
@@ -747,7 +747,7 @@
     {
       "turn_id": "ref-turn-045",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-045",
+      "source_block_anchor": "block-0090-a2c66a2a31cc",
       "claim_anchor": "claim-045",
       "text": "Alternating speakers makes the evidence boundary audible rather than hidden in narration.",
       "supported_by_source": true
@@ -755,7 +755,7 @@
     {
       "turn_id": "ref-turn-046",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-046",
+      "source_block_anchor": "block-0092-41e23174370e",
       "claim_anchor": "claim-046",
       "text": "That order also keeps the disagreement explicit.",
       "supported_by_source": true,
@@ -764,7 +764,7 @@
     {
       "turn_id": "ref-turn-047",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-047",
+      "source_block_anchor": "block-0094-e9d921ccaf29",
       "claim_anchor": "claim-047",
       "text": "I am not disputing the date, the 1.2 km distance, or the C1 label; I am disputing an unsupported generalisation.",
       "supported_by_source": true
@@ -772,7 +772,7 @@
     {
       "turn_id": "ref-turn-048",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-048",
+      "source_block_anchor": "block-0096-4a8ee0c8cfd6",
       "claim_anchor": "claim-048",
       "text": "Repetition is deliberate in this fixture.",
       "supported_by_source": true
@@ -780,7 +780,7 @@
     {
       "turn_id": "ref-turn-049",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-049",
+      "source_block_anchor": "block-0098-991f57913a94",
       "claim_anchor": "claim-049",
       "text": "LiDAR and C1 appear more than once so their written forms, spoken forms, and source locations can be checked across a longer dialogue.",
       "supported_by_source": true
@@ -788,7 +788,7 @@
     {
       "turn_id": "ref-turn-050",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-050",
+      "source_block_anchor": "block-0100-489644871bde",
       "claim_anchor": "claim-050",
       "text": "Repetition does not create new evidence.",
       "supported_by_source": true
@@ -796,7 +796,7 @@
     {
       "turn_id": "ref-turn-051",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-051",
+      "source_block_anchor": "block-0102-f56f4eaa5dc7",
       "claim_anchor": "claim-051",
       "text": "It only gives the local renderer repeated opportunities to preserve technical pronunciation, numbers, units, negation, and the uncertainty.",
       "supported_by_source": true
@@ -804,7 +804,7 @@
     {
       "turn_id": "ref-turn-052",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-052",
+      "source_block_anchor": "block-0104-5318e82f74c9",
       "claim_anchor": "claim-052",
       "text": "carried by ordinary words.",
       "supported_by_source": true
@@ -812,7 +812,7 @@
     {
       "turn_id": "ref-turn-053",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-053",
+      "source_block_anchor": "block-0106-22ff0f352988",
       "claim_anchor": "claim-053",
       "text": "For spoken delivery, LiDAR is expected as LIE-dar, and C1 is expected as see one.",
       "supported_by_source": true
@@ -820,7 +820,7 @@
     {
       "turn_id": "ref-turn-054",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-054",
+      "source_block_anchor": "block-0108-6913d1a72908",
       "claim_anchor": "claim-054",
       "text": "The written forms remain present so listeners can trace speech back to source.",
       "supported_by_source": true
@@ -828,7 +828,7 @@
     {
       "turn_id": "ref-turn-055",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-055",
+      "source_block_anchor": "block-0110-4256b1c0afe4",
       "claim_anchor": "claim-055",
       "text": "We say 99.7% as ninety-nine point seven percent and 1.2 km as one point two kilometres.",
       "supported_by_source": true
@@ -836,7 +836,7 @@
     {
       "turn_id": "ref-turn-056",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-056",
+      "source_block_anchor": "block-0112-5fbd26a83b93",
       "claim_anchor": "claim-056",
       "text": "Those renderings clarify pronunciation; they do not change scope or certainty.",
       "supported_by_source": true
@@ -844,7 +844,7 @@
     {
       "turn_id": "ref-turn-057",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-057",
+      "source_block_anchor": "block-0114-42160e5f54af",
       "claim_anchor": "claim-057",
       "text": "The date 2026-07-31 is spoken as July thirty-first, two thousand twenty-six.",
       "supported_by_source": true
@@ -852,7 +852,7 @@
     {
       "turn_id": "ref-turn-058",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-058",
+      "source_block_anchor": "block-0116-59f37f6be1d4",
       "claim_anchor": "claim-058",
       "text": "Saying it slowly does not make the measurement more current, representative, or complete.",
       "supported_by_source": true
@@ -860,7 +860,7 @@
     {
       "turn_id": "ref-turn-059",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-059",
+      "source_block_anchor": "block-0118-04b2f5a9a29a",
       "claim_anchor": "claim-059",
       "text": "Pronunciation metadata is delivery evidence, not measurement evidence.",
       "supported_by_source": true
@@ -868,7 +868,7 @@
     {
       "turn_id": "ref-turn-060",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-060",
+      "source_block_anchor": "block-0120-6afff164ee4c",
       "claim_anchor": "claim-060",
       "text": "A local voice can pronounce LiDAR carefully while remaining unable to verify rain, surface conditions, or future performance.",
       "supported_by_source": true
@@ -876,7 +876,7 @@
     {
       "turn_id": "ref-turn-061",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-061",
+      "source_block_anchor": "block-0122-69e490754f6c",
       "claim_anchor": "claim-061",
       "text": "Each turn stays short enough for the renderer capability.",
       "supported_by_source": true
@@ -884,7 +884,7 @@
     {
       "turn_id": "ref-turn-062",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-062",
+      "source_block_anchor": "block-0124-554e3a031163",
       "claim_anchor": "claim-062",
       "text": "That technical limit protects complete speaker turns and prevents a convenient but unsupported split inside a source-bound claim.",
       "supported_by_source": true
@@ -892,7 +892,7 @@
     {
       "turn_id": "ref-turn-063",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-063",
+      "source_block_anchor": "block-0126-1f52bd91c9f8",
       "claim_anchor": "claim-063",
       "text": "Short turns do not reduce the episode to a summary.",
       "supported_by_source": true
@@ -900,7 +900,7 @@
     {
       "turn_id": "ref-turn-064",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-064",
+      "source_block_anchor": "block-0128-3ede69d9e8f0",
       "claim_anchor": "claim-064",
       "text": "Together they retain context, disagreement, uncertainty, pronunciation discussion, and the distinction between local demonstration audio and.",
       "supported_by_source": true,
@@ -909,7 +909,7 @@
     {
       "turn_id": "ref-turn-065",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-065",
+      "source_block_anchor": "block-0130-763a31ce5946",
       "claim_anchor": "claim-065",
       "text": "operational validation.",
       "supported_by_source": true
@@ -917,7 +917,7 @@
     {
       "turn_id": "ref-turn-066",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-066",
+      "source_block_anchor": "block-0132-451e4c3355c3",
       "claim_anchor": "claim-066",
       "text": "We can say the result belongs to the stated corridor on the stated date.",
       "supported_by_source": true
@@ -925,7 +925,7 @@
     {
       "turn_id": "ref-turn-067",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-067",
+      "source_block_anchor": "block-0134-5b6ad8908d22",
       "claim_anchor": "claim-067",
       "text": "We cannot say every deployment, surface, team, or future pass will produce 99.7%.",
       "supported_by_source": true
@@ -933,7 +933,7 @@
     {
       "turn_id": "ref-turn-068",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-068",
+      "source_block_anchor": "block-0136-7eabc9f4c8f8",
       "claim_anchor": "claim-068",
       "text": "We can also say C1 is named in the record.",
       "supported_by_source": true
@@ -941,7 +941,7 @@
     {
       "turn_id": "ref-turn-069",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-069",
+      "source_block_anchor": "block-0138-6c9b4ff1392d",
       "claim_anchor": "claim-069",
       "text": "We cannot define its calculation, threshold, or sensor configuration without another source that actually supplies those details.",
       "supported_by_source": true
@@ -949,7 +949,7 @@
     {
       "turn_id": "ref-turn-070",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-070",
+      "source_block_anchor": "block-0140-08c9b9ad7f66",
       "claim_anchor": "claim-070",
       "text": "The 1.2 km unit is part of the claim boundary, not decoration.",
       "supported_by_source": true
@@ -957,7 +957,7 @@
     {
       "turn_id": "ref-turn-071",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-071",
+      "source_block_anchor": "block-0142-baa1831c7ae9",
       "claim_anchor": "claim-071",
       "text": "Removing it would make the result sound wider, while changing it would break traceability to the source.",
       "supported_by_source": true
@@ -965,7 +965,7 @@
     {
       "turn_id": "ref-turn-072",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-072",
+      "source_block_anchor": "block-0144-b662480b887d",
       "claim_anchor": "claim-072",
       "text": "Likewise, the word not is substantive.",
       "supported_by_source": true
@@ -973,7 +973,7 @@
     {
       "turn_id": "ref-turn-073",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-073",
+      "source_block_anchor": "block-0146-5da62ce3f8e7",
       "claim_anchor": "claim-073",
       "text": "If a renderer loses that negation, listeners could hear a claim about rain or reflective surfaces that the source explicitly refuses.",
       "supported_by_source": true
@@ -981,7 +981,7 @@
     {
       "turn_id": "ref-turn-074",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-074",
+      "source_block_anchor": "block-0148-8eab1c6fb505",
       "claim_anchor": "claim-074",
       "text": "I remain uncertain about conditions outside the test corridor.",
       "supported_by_source": true
@@ -989,7 +989,7 @@
     {
       "turn_id": "ref-turn-075",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-075",
+      "source_block_anchor": "block-0150-1528b200bd26",
       "claim_anchor": "claim-075",
       "text": "That uncertainty is not a numerical confidence interval, and it is not an allegation that the dated observation was invented.",
       "supported_by_source": true
@@ -997,7 +997,7 @@
     {
       "turn_id": "ref-turn-076",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-076",
+      "source_block_anchor": "block-0152-fbec715aec04",
       "claim_anchor": "claim-076",
       "text": "It is a plain statement of missing facts.",
       "supported_by_source": true
@@ -1005,7 +1005,7 @@
     {
       "turn_id": "ref-turn-077",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-077",
+      "source_block_anchor": "block-0154-5079d41832f1",
       "claim_anchor": "claim-077",
       "text": "We know the record reports a LiDAR C1 calibration result; we do not know enough to generalise it responsibly.",
       "supported_by_source": true
@@ -1013,7 +1013,7 @@
     {
       "turn_id": "ref-turn-078",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-078",
+      "source_block_anchor": "block-0156-d04afb4257dc",
       "claim_anchor": "claim-078",
       "text": "This is why the counter-thesis remains valuable.",
       "supported_by_source": true,
@@ -1022,7 +1022,7 @@
     {
       "turn_id": "ref-turn-079",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-079",
+      "source_block_anchor": "block-0158-dda4bfcef502",
       "claim_anchor": "claim-079",
       "text": "A listener can hear a concrete result and also hear the challenge that prevents confidence from outrunning the recorded evidence.",
       "supported_by_source": true
@@ -1030,7 +1030,7 @@
     {
       "turn_id": "ref-turn-080",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-080",
+      "source_block_anchor": "block-0160-a11087c45cc8",
       "claim_anchor": "claim-080",
       "text": "I disagree only with the broad reading, not with publication of the bounded example.",
       "supported_by_source": true,
@@ -1039,7 +1039,7 @@
     {
       "turn_id": "ref-turn-081",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-081",
+      "source_block_anchor": "block-0162-5c34b20d7bda",
       "claim_anchor": "claim-081",
       "text": "Keeping both positions visible is more honest than hiding either the number or the caveat.",
       "supported_by_source": true
@@ -1047,7 +1047,7 @@
     {
       "turn_id": "ref-turn-082",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-082",
+      "source_block_anchor": "block-0164-6d4cbe83aba0",
       "claim_anchor": "claim-082",
       "text": "Publication should retain the source-bound result, the uncertainty, the counter-thesis, and the disagreement.",
       "supported_by_source": true,
@@ -1056,7 +1056,7 @@
     {
       "turn_id": "ref-turn-083",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-083",
+      "source_block_anchor": "block-0166-0114f1588cc5",
       "claim_anchor": "claim-083",
       "text": "It should also retain the turn order and the two synthetic speaker identities.",
       "supported_by_source": true
@@ -1064,7 +1064,7 @@
     {
       "turn_id": "ref-turn-084",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-084",
+      "source_block_anchor": "block-0168-c4a1d5482dbc",
       "claim_anchor": "claim-084",
       "text": "Local voice metadata has a deliberately narrow role.",
       "supported_by_source": true
@@ -1072,7 +1072,7 @@
     {
       "turn_id": "ref-turn-085",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-085",
+      "source_block_anchor": "block-0170-e6b623d2cd87",
       "claim_anchor": "claim-085",
       "text": "It selects an approved synthetic demonstration voice for compatible local engines; it does not identify a hosted account or authorize network.",
       "supported_by_source": true
@@ -1080,7 +1080,7 @@
     {
       "turn_id": "ref-turn-086",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-086",
+      "source_block_anchor": "block-0172-2919ab7980eb",
       "claim_anchor": "claim-086",
       "text": "use.",
       "supported_by_source": true
@@ -1088,7 +1088,7 @@
     {
       "turn_id": "ref-turn-087",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-087",
+      "source_block_anchor": "block-0174-29225b2c1b0c",
       "claim_anchor": "claim-087",
       "text": "The episode is therefore a local reference demo, not live-provider validation and not operational field certification.",
       "supported_by_source": true
@@ -1096,7 +1096,7 @@
     {
       "turn_id": "ref-turn-088",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-088",
+      "source_block_anchor": "block-0176-f8dd401b7a1b",
       "claim_anchor": "claim-088",
       "text": "Its value is inspectable wording, deterministic fixtures, and preserved source anchors.",
       "supported_by_source": true
@@ -1104,7 +1104,7 @@
     {
       "turn_id": "ref-turn-089",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-089",
+      "source_block_anchor": "block-0178-075ca7fc5a56",
       "claim_anchor": "claim-089",
       "text": "A successful local rendering cannot make the source broader than it is.",
       "supported_by_source": true
@@ -1112,7 +1112,7 @@
     {
       "turn_id": "ref-turn-090",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-090",
+      "source_block_anchor": "block-0180-e3edc52821ac",
       "claim_anchor": "claim-090",
       "text": "It can only demonstrate that the approved text, speakers, and pronunciation entries travelled through preparation.",
       "supported_by_source": true
@@ -1120,7 +1120,7 @@
     {
       "turn_id": "ref-turn-091",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-091",
+      "source_block_anchor": "block-0182-3c0e1ac16f37",
       "claim_anchor": "claim-091",
       "text": "Before closing, repeat the central record: on 2026-07-31, LiDAR measured a C1 calibration result of 99.7% across the 1.2 km test corridor.",
       "supported_by_source": true
@@ -1128,7 +1128,7 @@
     {
       "turn_id": "ref-turn-092",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-092",
+      "source_block_anchor": "block-0184-cc8ea9c4fdc3",
       "claim_anchor": "claim-092",
       "text": "And repeat the limit: rain and reflective surfaces remain unresolved by this source.",
       "supported_by_source": true
@@ -1136,7 +1136,7 @@
     {
       "turn_id": "ref-turn-093",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-093",
+      "source_block_anchor": "block-0186-56454bc498b4",
       "claim_anchor": "claim-093",
       "text": "We should not convert silence about conditions into an assertion that conditions were harmless.",
       "supported_by_source": true
@@ -1144,7 +1144,7 @@
     {
       "turn_id": "ref-turn-094",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-094",
+      "source_block_anchor": "block-0188-5440d46069d6",
       "claim_anchor": "claim-094",
       "text": "The two speakers have not solved every field question.",
       "supported_by_source": true
@@ -1152,7 +1152,7 @@
     {
       "turn_id": "ref-turn-095",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-095",
+      "source_block_anchor": "block-0190-4289b953d0d1",
       "claim_anchor": "claim-095",
       "text": "They have shown how a host can state a bounded fact and an analyst can preserve its counterargument.",
       "supported_by_source": true
@@ -1160,7 +1160,7 @@
     {
       "turn_id": "ref-turn-096",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-096",
+      "source_block_anchor": "block-0192-6bd84ad9e341",
       "claim_anchor": "claim-096",
       "text": "That is the intended twelve-minute shape: many short alternating turns, enough context for listening, and no claim that local synthetic audio.",
       "supported_by_source": true
@@ -1168,7 +1168,7 @@
     {
       "turn_id": "ref-turn-097",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-097",
+      "source_block_anchor": "block-0194-d5ce96156dd2",
       "claim_anchor": "claim-097",
       "text": "proves a live operational outcome.",
       "supported_by_source": true
@@ -1176,7 +1176,7 @@
     {
       "turn_id": "ref-turn-098",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-098",
+      "source_block_anchor": "block-0196-29973bdcdff7",
       "claim_anchor": "claim-098",
       "text": "We preserve LiDAR, C1, the date, 99.7%, and 1.2 km because exact technical forms matter.",
       "supported_by_source": true
@@ -1184,7 +1184,7 @@
     {
       "turn_id": "ref-turn-099",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-099",
+      "source_block_anchor": "block-0198-0c49ec746617",
       "claim_anchor": "claim-099",
       "text": "We preserve not and uncertain because logical limits matter too.",
       "supported_by_source": true
@@ -1192,7 +1192,7 @@
     {
       "turn_id": "ref-turn-100",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-100",
+      "source_block_anchor": "block-0200-ee9c07fb9390",
       "claim_anchor": "claim-100",
       "text": "To close, the result remains bounded, the disagreement remains explicit, and the source remains primary.",
       "supported_by_source": true,
@@ -1201,7 +1201,7 @@
     {
       "turn_id": "ref-turn-101",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-101",
+      "source_block_anchor": "block-0202-c27ed066ff2f",
       "claim_anchor": "claim-101",
       "text": "A careful local rendering may aid listening, but it cannot certify anything beyond this record.",
       "supported_by_source": true
@@ -1209,7 +1209,7 @@
     {
       "turn_id": "ref-turn-102",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-102",
+      "source_block_anchor": "block-0204-b95c555b4b7b",
       "claim_anchor": "claim-102",
       "text": "The source label helps a listener find the exact claim again, even after local speech turns a written phrase into a spoken phrase.",
       "supported_by_source": true
@@ -1217,7 +1217,7 @@
     {
       "turn_id": "ref-turn-103",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-103",
+      "source_block_anchor": "block-0206-71aa7fd659ae",
       "claim_anchor": "claim-103",
       "text": "That traceability matters when technical confidence, careful pacing, and ordinary caveats appear together in the same discussion.",
       "supported_by_source": true
@@ -1225,7 +1225,7 @@
     {
       "turn_id": "ref-turn-104",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-104",
+      "source_block_anchor": "block-0208-11b5f94f871c",
       "claim_anchor": "claim-104",
       "text": "Neither speaker is an eyewitness beyond the source.",
       "supported_by_source": true
@@ -1233,7 +1233,7 @@
     {
       "turn_id": "ref-turn-105",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-105",
+      "source_block_anchor": "block-0210-19a2b0b9d576",
       "claim_anchor": "claim-105",
       "text": "Each speaker is a synthetic presenter reading an approved, bounded reference script.",
       "supported_by_source": true
@@ -1241,7 +1241,7 @@
     {
       "turn_id": "ref-turn-106",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-106",
+      "source_block_anchor": "block-0212-7dca250e2892",
       "claim_anchor": "claim-106",
       "text": "The dialogue can be listened to repeatedly, but repeat listening does not add a new measurement or an independent replication.",
       "supported_by_source": true
@@ -1249,7 +1249,7 @@
     {
       "turn_id": "ref-turn-107",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-107",
+      "source_block_anchor": "block-0214-07ce960742af",
       "claim_anchor": "claim-107",
       "text": "We keep the method label visible because listeners should not have to guess whether LiDAR is a product, a person, or a measurement term.",
       "supported_by_source": true
@@ -1257,7 +1257,7 @@
     {
       "turn_id": "ref-turn-108",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-108",
+      "source_block_anchor": "block-0216-9315e06afd59",
       "claim_anchor": "claim-108",
       "text": "We keep the calibration label visible because C1 carries source meaning even when its calculation remains outside this documented record.",
       "supported_by_source": true
@@ -1265,7 +1265,7 @@
     {
       "turn_id": "ref-turn-109",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-109",
+      "source_block_anchor": "block-0218-edf7b2fe4c43",
       "claim_anchor": "claim-109",
       "text": "A precise claim can be modest.",
       "supported_by_source": true
@@ -1273,7 +1273,7 @@
     {
       "turn_id": "ref-turn-110",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-110",
+      "source_block_anchor": "block-0220-ee66f615d37f",
       "claim_anchor": "claim-110",
       "text": "Precision names the corridor and date; modesty declines to promise a result beyond them.",
       "supported_by_source": true
@@ -1281,7 +1281,7 @@
     {
       "turn_id": "ref-turn-111",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-111",
+      "source_block_anchor": "block-0222-34498d091803",
       "claim_anchor": "claim-111",
       "text": "That pairing is the intended lesson for adaptation: preserve the observation, preserve the limits, and make neither disappear in smooth.",
       "supported_by_source": true
@@ -1289,7 +1289,7 @@
     {
       "turn_id": "ref-turn-112",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-112",
+      "source_block_anchor": "block-0224-61df60b34b03",
       "claim_anchor": "claim-112",
       "text": "Clear narration preserves every stated limit.",
       "supported_by_source": true
@@ -1297,7 +1297,7 @@
     {
       "turn_id": "ref-turn-113",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-113",
+      "source_block_anchor": "block-0226-d1b03edcfd52",
       "claim_anchor": "claim-113",
       "text": "The local renderer receives complete turns, so the listener can attribute a statement and its qualification to a speaker without a mid-claim.",
       "supported_by_source": true
@@ -1305,7 +1305,7 @@
     {
       "turn_id": "ref-turn-114",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-114",
+      "source_block_anchor": "block-0228-1174e47bb60e",
       "claim_anchor": "claim-114",
       "text": "break.",
       "supported_by_source": true
@@ -1313,7 +1313,7 @@
     {
       "turn_id": "ref-turn-115",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-115",
+      "source_block_anchor": "block-0230-c324f4012506",
       "claim_anchor": "claim-115",
       "text": "The fixture remains deterministic because its source anchors, adaptation rows, pronunciation forms, and speaker order can be inspected after.",
       "supported_by_source": true
@@ -1321,7 +1321,7 @@
     {
       "turn_id": "ref-turn-116",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-116",
+      "source_block_anchor": "block-0232-1dc4650e2713",
       "claim_anchor": "claim-116",
       "text": "This preparation remains source-bound.",
       "supported_by_source": true
@@ -1329,7 +1329,7 @@
     {
       "turn_id": "ref-turn-117",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-117",
+      "source_block_anchor": "block-0234-52042daec511",
       "claim_anchor": "claim-117",
       "text": "No external provider is needed for this demonstration.",
       "supported_by_source": true
@@ -1337,7 +1337,7 @@
     {
       "turn_id": "ref-turn-118",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-118",
+      "source_block_anchor": "block-0236-512e5bca835e",
       "claim_anchor": "claim-118",
       "text": "That boundary protects the distinction between local testing and a service-backed production workflow.",
       "supported_by_source": true
@@ -1345,7 +1345,7 @@
     {
       "turn_id": "ref-turn-119",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-119",
+      "source_block_anchor": "block-0238-51a095e40e24",
       "claim_anchor": "claim-119",
       "text": "The recorded percentage is not a probability of success for a new job.",
       "supported_by_source": true
@@ -1353,7 +1353,7 @@
     {
       "turn_id": "ref-turn-120",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-120",
+      "source_block_anchor": "block-0240-13b5e0b6ef41",
       "claim_anchor": "claim-120",
       "text": "It is the written value associated with this bounded calibration result.",
       "supported_by_source": true
@@ -1361,7 +1361,7 @@
     {
       "turn_id": "ref-turn-121",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-121",
+      "source_block_anchor": "block-0242-8416c6569b52",
       "claim_anchor": "claim-121",
       "text": "The corridor distance is not a coverage promise.",
       "supported_by_source": true
@@ -1369,7 +1369,7 @@
     {
       "turn_id": "ref-turn-122",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-122",
+      "source_block_anchor": "block-0244-7e459ea09bb7",
       "claim_anchor": "claim-122",
       "text": "It is the unit and extent stated in the record for the dated measurement.",
       "supported_by_source": true
@@ -1377,7 +1377,7 @@
     {
       "turn_id": "ref-turn-123",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-123",
+      "source_block_anchor": "block-0246-7bcde0b4acc5",
       "claim_anchor": "claim-123",
       "text": "The disagreement is constructive because it narrows an inference without deleting the observation that motivated the conversation.",
       "supported_by_source": true,
@@ -1386,7 +1386,7 @@
     {
       "turn_id": "ref-turn-124",
       "speaker_id": "ref-analyst",
-      "source_block_anchor": "block-124",
+      "source_block_anchor": "block-0248-2ac4b46eca75",
       "claim_anchor": "claim-124",
       "text": "The counter-thesis is constructive because it explains why a limited example can remain publishable when its limitations are spoken plainly.",
       "supported_by_source": true,
@@ -1395,7 +1395,7 @@
     {
       "turn_id": "ref-turn-125",
       "speaker_id": "ref-host",
-      "source_block_anchor": "block-125",
+      "source_block_anchor": "block-0250-d784c8f76e07",
       "claim_anchor": "claim-125",
       "text": "Our final check is simple: every prepared turn should still point to an exact source phrase, with no invented detail added for dramatic effect.",
       "supported_by_source": true
@@ -1404,7 +1404,7 @@
   "claims": [
     {
       "claim_anchor": "claim-001",
-      "source_block_anchor": "block-001",
+      "source_block_anchor": "block-0002-23ff0198ae2f",
       "source_value": "Welcome to this reference-demo field-calibration discussion.",
       "adapted_value": "Welcome to this reference-demo field-calibration discussion.",
       "speaker_id": "ref-host",
@@ -1413,7 +1413,7 @@
     },
     {
       "claim_anchor": "claim-002",
-      "source_block_anchor": "block-002",
+      "source_block_anchor": "block-0004-a99f810c0308",
       "source_value": "We will name LiDAR, C1, and the test corridor clearly, while keeping every statement tied to the written source rather than to an assumed field.",
       "adapted_value": "We will name LiDAR, C1, and the test corridor clearly, while keeping every statement tied to the written source rather than to an assumed field.",
       "speaker_id": "ref-analyst",
@@ -1422,7 +1422,7 @@
     },
     {
       "claim_anchor": "claim-003",
-      "source_block_anchor": "block-003",
+      "source_block_anchor": "block-0006-e91553fc5242",
       "source_value": "outcome.",
       "adapted_value": "outcome.",
       "speaker_id": "ref-host",
@@ -1431,7 +1431,7 @@
     },
     {
       "claim_anchor": "claim-004",
-      "source_block_anchor": "block-004",
+      "source_block_anchor": "block-0008-d64984aa99c0",
       "source_value": "I will test that boundary as we go.",
       "adapted_value": "I will test that boundary as we go.",
       "speaker_id": "ref-analyst",
@@ -1440,7 +1440,7 @@
     },
     {
       "claim_anchor": "claim-005",
-      "source_block_anchor": "block-005",
+      "source_block_anchor": "block-0010-ee78dc1753cc",
       "source_value": "A careful dialogue can repeat a measurement without converting it into a certification, a forecast, or an unstated comparison with another.",
       "adapted_value": "A careful dialogue can repeat a measurement without converting it into a certification, a forecast, or an unstated comparison with another.",
       "speaker_id": "ref-host",
@@ -1449,7 +1449,7 @@
     },
     {
       "claim_anchor": "claim-006",
-      "source_block_anchor": "block-006",
+      "source_block_anchor": "block-0012-5d6fcc32b475",
       "source_value": "corridor.",
       "adapted_value": "corridor.",
       "speaker_id": "ref-analyst",
@@ -1458,7 +1458,7 @@
     },
     {
       "claim_anchor": "claim-007",
-      "source_block_anchor": "block-007",
+      "source_block_anchor": "block-0014-392c1ca0f935",
       "source_value": "The dated record says that, on 2026-07-31, the LiDAR team measured a C1 calibration result of 99.7% across the 1.2 km test corridor.",
       "adapted_value": "The dated record says that, on 2026-07-31, the LiDAR team measured a C1 calibration result of 99.7% across the 1.2 km test corridor.",
       "speaker_id": "ref-host",
@@ -1467,7 +1467,7 @@
     },
     {
       "claim_anchor": "claim-008",
-      "source_block_anchor": "block-008",
+      "source_block_anchor": "block-0016-c094b1b77b13",
       "source_value": "That is the central source-bound observation.",
       "adapted_value": "That is the central source-bound observation.",
       "speaker_id": "ref-analyst",
@@ -1476,7 +1476,7 @@
     },
     {
       "claim_anchor": "claim-009",
-      "source_block_anchor": "block-009",
+      "source_block_anchor": "block-0018-3f43a4d1133f",
       "source_value": "It gives a method name, a calibration label, a percentage, a distance, and a date.",
       "adapted_value": "It gives a method name, a calibration label, a percentage, a distance, and a date.",
       "speaker_id": "ref-host",
@@ -1485,7 +1485,7 @@
     },
     {
       "claim_anchor": "claim-010",
-      "source_block_anchor": "block-010",
+      "source_block_anchor": "block-0020-0452bb57b3d1",
       "source_value": "It does not identify a scanner model, operating environment, threshold, or comparative baseline.",
       "adapted_value": "It does not identify a scanner model, operating environment, threshold, or comparative baseline.",
       "speaker_id": "ref-analyst",
@@ -1494,7 +1494,7 @@
     },
     {
       "claim_anchor": "claim-011",
-      "source_block_anchor": "block-011",
+      "source_block_anchor": "block-0022-1f6095255799",
       "source_value": "So we can state the result precisely, but we cannot say every future LiDAR pass will reproduce it.",
       "adapted_value": "So we can state the result precisely, but we cannot say every future LiDAR pass will reproduce it.",
       "speaker_id": "ref-host",
@@ -1503,7 +1503,7 @@
     },
     {
       "claim_anchor": "claim-012",
-      "source_block_anchor": "block-012",
+      "source_block_anchor": "block-0024-52fd899dfc00",
       "source_value": "The source records one C1 result, not a universal performance promise.",
       "adapted_value": "The source records one C1 result, not a universal performance promise.",
       "speaker_id": "ref-analyst",
@@ -1512,7 +1512,7 @@
     },
     {
       "claim_anchor": "claim-013",
-      "source_block_anchor": "block-013",
+      "source_block_anchor": "block-0026-e26582dafc6f",
       "source_value": "That distinction is useful because a number can sound conclusive when spoken quickly.",
       "adapted_value": "That distinction is useful because a number can sound conclusive when spoken quickly.",
       "speaker_id": "ref-host",
@@ -1521,7 +1521,7 @@
     },
     {
       "claim_anchor": "claim-014",
-      "source_block_anchor": "block-014",
+      "source_block_anchor": "block-0028-49a36b7b59b7",
       "source_value": "Listeners may supply missing details unless the dialogue says what the record includes and what it leaves unknown.",
       "adapted_value": "Listeners may supply missing details unless the dialogue says what the record includes and what it leaves unknown.",
       "speaker_id": "ref-analyst",
@@ -1530,7 +1530,7 @@
     },
     {
       "claim_anchor": "claim-015",
-      "source_block_anchor": "block-015",
+      "source_block_anchor": "block-0030-208c3bb4342c",
       "source_value": "LiDAR is the named measurement method, and C1 is the calibration label.",
       "adapted_value": "LiDAR is the named measurement method, and C1 is the calibration label.",
       "speaker_id": "ref-host",
@@ -1539,7 +1539,7 @@
     },
     {
       "claim_anchor": "claim-016",
-      "source_block_anchor": "block-016",
+      "source_block_anchor": "block-0032-126d7a167127",
       "source_value": "Those technical names are traceable, yet the source does not provide the procedure used to calculate C1.",
       "adapted_value": "Those technical names are traceable, yet the source does not provide the procedure used to calculate C1.",
       "speaker_id": "ref-analyst",
@@ -1548,7 +1548,7 @@
     },
     {
       "claim_anchor": "claim-017",
-      "source_block_anchor": "block-017",
+      "source_block_anchor": "block-0034-18191f31c336",
       "source_value": "We should not infer a sensor configuration, a pass count, or an independent replication merely because the terms sound technical.",
       "adapted_value": "We should not infer a sensor configuration, a pass count, or an independent replication merely because the terms sound technical.",
       "speaker_id": "ref-host",
@@ -1557,7 +1557,7 @@
     },
     {
       "claim_anchor": "claim-018",
-      "source_block_anchor": "block-018",
+      "source_block_anchor": "block-0036-9116ef87e3a8",
       "source_value": "Names preserve reference, but they do not fill absent methodology.",
       "adapted_value": "Names preserve reference, but they do not fill absent methodology.",
       "speaker_id": "ref-analyst",
@@ -1566,7 +1566,7 @@
     },
     {
       "claim_anchor": "claim-019",
-      "source_block_anchor": "block-019",
+      "source_block_anchor": "block-0038-4fa41ca612fb",
       "source_value": "Calibration here means only that the source records a C1 calibration result for the stated corridor on the stated date.",
       "adapted_value": "Calibration here means only that the source records a C1 calibration result for the stated corridor on the stated date.",
       "speaker_id": "ref-host",
@@ -1575,7 +1575,7 @@
     },
     {
       "claim_anchor": "claim-020",
-      "source_block_anchor": "block-020",
+      "source_block_anchor": "block-0040-70e6d7a7dba9",
       "source_value": "It does not mean a safety finding or universal approval.",
       "adapted_value": "It does not mean a safety finding or universal approval.",
       "speaker_id": "ref-analyst",
@@ -1584,7 +1584,7 @@
     },
     {
       "claim_anchor": "claim-021",
-      "source_block_anchor": "block-021",
+      "source_block_anchor": "block-0042-f9c5aa2e914e",
       "source_value": "A listener may ask how the calibration was calculated or whether another instrument would agree.",
       "adapted_value": "A listener may ask how the calibration was calculated or whether another instrument would agree.",
       "speaker_id": "ref-host",
@@ -1593,7 +1593,7 @@
     },
     {
       "claim_anchor": "claim-022",
-      "source_block_anchor": "block-022",
+      "source_block_anchor": "block-0044-cfe42d977eb8",
       "source_value": "Those are sensible questions, but this source alone cannot answer either one.",
       "adapted_value": "Those are sensible questions, but this source alone cannot answer either one.",
       "speaker_id": "ref-analyst",
@@ -1602,7 +1602,7 @@
     },
     {
       "claim_anchor": "claim-023",
-      "source_block_anchor": "block-023",
+      "source_block_anchor": "block-0046-984eacdf5e42",
       "source_value": "Our uncertainty concerns conditions the source does not record, including how the same C1 setup would behave outside this test corridor.",
       "adapted_value": "Our uncertainty concerns conditions the source does not record, including how the same C1 setup would behave outside this test corridor.",
       "speaker_id": "ref-host",
@@ -1611,7 +1611,7 @@
     },
     {
       "claim_anchor": "claim-024",
-      "source_block_anchor": "block-024",
+      "source_block_anchor": "block-0048-2d111aeddfee",
       "source_value": "Uncertainty does not erase the dated observation.",
       "adapted_value": "Uncertainty does not erase the dated observation.",
       "speaker_id": "ref-analyst",
@@ -1620,7 +1620,7 @@
     },
     {
       "claim_anchor": "claim-025",
-      "source_block_anchor": "block-025",
+      "source_block_anchor": "block-0050-c8b30f6f43f7",
       "source_value": "Instead, it marks the facts needed for a broader conclusion as unknown.",
       "adapted_value": "Instead, it marks the facts needed for a broader conclusion as unknown.",
       "speaker_id": "ref-host",
@@ -1629,7 +1629,7 @@
     },
     {
       "claim_anchor": "claim-026",
-      "source_block_anchor": "block-026",
+      "source_block_anchor": "block-0052-978fe3545455",
       "source_value": "We can report the recorded event while declining to extend it beyond the 1.2 km corridor.",
       "adapted_value": "We can report the recorded event while declining to extend it beyond the 1.2 km corridor.",
       "speaker_id": "ref-analyst",
@@ -1638,7 +1638,7 @@
     },
     {
       "claim_anchor": "claim-027",
-      "source_block_anchor": "block-027",
+      "source_block_anchor": "block-0054-6827383fbf0b",
       "source_value": "The source does not state that rain occurred during measurement, and it does not state that rain had no effect.",
       "adapted_value": "The source does not state that rain occurred during measurement, and it does not state that rain had no effect.",
       "speaker_id": "ref-host",
@@ -1647,7 +1647,7 @@
     },
     {
       "claim_anchor": "claim-028",
-      "source_block_anchor": "block-028",
+      "source_block_anchor": "block-0056-c5aaec5b7f9c",
       "source_value": "Both negations matter because weather details would otherwise sound plausible.",
       "adapted_value": "Both negations matter because weather details would otherwise sound plausible.",
       "speaker_id": "ref-analyst",
@@ -1656,7 +1656,7 @@
     },
     {
       "claim_anchor": "claim-029",
-      "source_block_anchor": "block-029",
+      "source_block_anchor": "block-0058-579fef46ac6c",
       "source_value": "We cannot say rain improved, degraded, or left unchanged the LiDAR result.",
       "adapted_value": "We cannot say rain improved, degraded, or left unchanged the LiDAR result.",
       "speaker_id": "ref-host",
@@ -1665,7 +1665,7 @@
     },
     {
       "claim_anchor": "claim-030",
-      "source_block_anchor": "block-030",
+      "source_block_anchor": "block-0060-e297482480ed",
       "source_value": "The written record contains no rain condition, so a vivid weather story would be unsupported.",
       "adapted_value": "The written record contains no rain condition, so a vivid weather story would be unsupported.",
       "speaker_id": "ref-analyst",
@@ -1674,7 +1674,7 @@
     },
     {
       "claim_anchor": "claim-031",
-      "source_block_anchor": "block-031",
+      "source_block_anchor": "block-0062-3baeea5af9c7",
       "source_value": "Reflective surfaces require the same restraint.",
       "adapted_value": "Reflective surfaces require the same restraint.",
       "speaker_id": "ref-host",
@@ -1683,7 +1683,7 @@
     },
     {
       "claim_anchor": "claim-032",
-      "source_block_anchor": "block-032",
+      "source_block_anchor": "block-0064-7c485be00750",
       "source_value": "The source provides no separate comparison, so it neither proves that every reflective material was represented nor proves that all were.",
       "adapted_value": "The source provides no separate comparison, so it neither proves that every reflective material was represented nor proves that all were.",
       "speaker_id": "ref-analyst",
@@ -1692,7 +1692,7 @@
     },
     {
       "claim_anchor": "claim-033",
-      "source_block_anchor": "block-033",
+      "source_block_anchor": "block-0066-23085f01d2bc",
       "source_value": "excluded.",
       "adapted_value": "excluded.",
       "speaker_id": "ref-host",
@@ -1701,7 +1701,7 @@
     },
     {
       "claim_anchor": "claim-034",
-      "source_block_anchor": "block-034",
+      "source_block_anchor": "block-0068-2908a4f5686d",
       "source_value": "A real study of reflective surfaces would need its own design, observation, and source.",
       "adapted_value": "A real study of reflective surfaces would need its own design, observation, and source.",
       "speaker_id": "ref-analyst",
@@ -1710,7 +1710,7 @@
     },
     {
       "claim_anchor": "claim-035",
-      "source_block_anchor": "block-035",
+      "source_block_anchor": "block-0070-91e5fe142368",
       "source_value": "This fixture cannot borrow confidence from LiDAR or from the 99.7% figure.",
       "adapted_value": "This fixture cannot borrow confidence from LiDAR or from the 99.7% figure.",
       "speaker_id": "ref-host",
@@ -1719,7 +1719,7 @@
     },
     {
       "claim_anchor": "claim-036",
-      "source_block_anchor": "block-036",
+      "source_block_anchor": "block-0072-114b87817864",
       "source_value": "I disagree with any reading that treats 99.7% as a blanket endorsement.",
       "adapted_value": "I disagree with any reading that treats 99.7% as a blanket endorsement.",
       "speaker_id": "ref-analyst",
@@ -1729,7 +1729,7 @@
     },
     {
       "claim_anchor": "claim-037",
-      "source_block_anchor": "block-037",
+      "source_block_anchor": "block-0074-5b1ca8f7e935",
       "source_value": "My disagreement is not a denial that the measurement was recorded on 2026-07-31.",
       "adapted_value": "My disagreement is not a denial that the measurement was recorded on 2026-07-31.",
       "speaker_id": "ref-host",
@@ -1739,7 +1739,7 @@
     },
     {
       "claim_anchor": "claim-038",
-      "source_block_anchor": "block-038",
+      "source_block_anchor": "block-0076-7a7b8a402610",
       "source_value": "My counterpoint is that a bounded result can still teach reporting discipline.",
       "adapted_value": "My counterpoint is that a bounded result can still teach reporting discipline.",
       "speaker_id": "ref-analyst",
@@ -1748,7 +1748,7 @@
     },
     {
       "claim_anchor": "claim-039",
-      "source_block_anchor": "block-039",
+      "source_block_anchor": "block-0078-0246bb72fe95",
       "source_value": "The disagreement concerns what may be inferred, not whether the source contains a measurement.",
       "adapted_value": "The disagreement concerns what may be inferred, not whether the source contains a measurement.",
       "speaker_id": "ref-host",
@@ -1758,7 +1758,7 @@
     },
     {
       "claim_anchor": "claim-040",
-      "source_block_anchor": "block-040",
+      "source_block_anchor": "block-0080-c833081e5f22",
       "source_value": "Here is the counter-thesis: refusing every limited result would hide useful examples of careful evidence handling.",
       "adapted_value": "Here is the counter-thesis: refusing every limited result would hide useful examples of careful evidence handling.",
       "speaker_id": "ref-analyst",
@@ -1768,7 +1768,7 @@
     },
     {
       "claim_anchor": "claim-041",
-      "source_block_anchor": "block-041",
+      "source_block_anchor": "block-0082-af3e0621c3a4",
       "source_value": "The C1 result can be useful without becoming a universal benchmark.",
       "adapted_value": "The C1 result can be useful without becoming a universal benchmark.",
       "speaker_id": "ref-host",
@@ -1777,7 +1777,7 @@
     },
     {
       "claim_anchor": "claim-042",
-      "source_block_anchor": "block-042",
+      "source_block_anchor": "block-0084-9a78e0ca6f93",
       "source_value": "I accept that counter-thesis, but I still resist promotional wording.",
       "adapted_value": "I accept that counter-thesis, but I still resist promotional wording.",
       "speaker_id": "ref-analyst",
@@ -1787,7 +1787,7 @@
     },
     {
       "claim_anchor": "claim-043",
-      "source_block_anchor": "block-043",
+      "source_block_anchor": "block-0086-c11085c18be1",
       "source_value": "We are not asking anyone to rely on 99.7% for a field decision beyond the stated corridor.",
       "adapted_value": "We are not asking anyone to rely on 99.7% for a field decision beyond the stated corridor.",
       "speaker_id": "ref-host",
@@ -1796,7 +1796,7 @@
     },
     {
       "claim_anchor": "claim-044",
-      "source_block_anchor": "block-044",
+      "source_block_anchor": "block-0088-4863d4498c8b",
       "source_value": "The host should set context before drawing a conclusion, and the analyst should answer with a precise challenge.",
       "adapted_value": "The host should set context before drawing a conclusion, and the analyst should answer with a precise challenge.",
       "speaker_id": "ref-analyst",
@@ -1805,7 +1805,7 @@
     },
     {
       "claim_anchor": "claim-045",
-      "source_block_anchor": "block-045",
+      "source_block_anchor": "block-0090-a2c66a2a31cc",
       "source_value": "Alternating speakers makes the evidence boundary audible rather than hidden in narration.",
       "adapted_value": "Alternating speakers makes the evidence boundary audible rather than hidden in narration.",
       "speaker_id": "ref-host",
@@ -1814,7 +1814,7 @@
     },
     {
       "claim_anchor": "claim-046",
-      "source_block_anchor": "block-046",
+      "source_block_anchor": "block-0092-41e23174370e",
       "source_value": "That order also keeps the disagreement explicit.",
       "adapted_value": "That order also keeps the disagreement explicit.",
       "speaker_id": "ref-analyst",
@@ -1824,7 +1824,7 @@
     },
     {
       "claim_anchor": "claim-047",
-      "source_block_anchor": "block-047",
+      "source_block_anchor": "block-0094-e9d921ccaf29",
       "source_value": "I am not disputing the date, the 1.2 km distance, or the C1 label; I am disputing an unsupported generalisation.",
       "adapted_value": "I am not disputing the date, the 1.2 km distance, or the C1 label; I am disputing an unsupported generalisation.",
       "speaker_id": "ref-host",
@@ -1833,7 +1833,7 @@
     },
     {
       "claim_anchor": "claim-048",
-      "source_block_anchor": "block-048",
+      "source_block_anchor": "block-0096-4a8ee0c8cfd6",
       "source_value": "Repetition is deliberate in this fixture.",
       "adapted_value": "Repetition is deliberate in this fixture.",
       "speaker_id": "ref-analyst",
@@ -1842,7 +1842,7 @@
     },
     {
       "claim_anchor": "claim-049",
-      "source_block_anchor": "block-049",
+      "source_block_anchor": "block-0098-991f57913a94",
       "source_value": "LiDAR and C1 appear more than once so their written forms, spoken forms, and source locations can be checked across a longer dialogue.",
       "adapted_value": "LiDAR and C1 appear more than once so their written forms, spoken forms, and source locations can be checked across a longer dialogue.",
       "speaker_id": "ref-host",
@@ -1851,7 +1851,7 @@
     },
     {
       "claim_anchor": "claim-050",
-      "source_block_anchor": "block-050",
+      "source_block_anchor": "block-0100-489644871bde",
       "source_value": "Repetition does not create new evidence.",
       "adapted_value": "Repetition does not create new evidence.",
       "speaker_id": "ref-analyst",
@@ -1860,7 +1860,7 @@
     },
     {
       "claim_anchor": "claim-051",
-      "source_block_anchor": "block-051",
+      "source_block_anchor": "block-0102-f56f4eaa5dc7",
       "source_value": "It only gives the local renderer repeated opportunities to preserve technical pronunciation, numbers, units, negation, and the uncertainty.",
       "adapted_value": "It only gives the local renderer repeated opportunities to preserve technical pronunciation, numbers, units, negation, and the uncertainty.",
       "speaker_id": "ref-host",
@@ -1869,7 +1869,7 @@
     },
     {
       "claim_anchor": "claim-052",
-      "source_block_anchor": "block-052",
+      "source_block_anchor": "block-0104-5318e82f74c9",
       "source_value": "carried by ordinary words.",
       "adapted_value": "carried by ordinary words.",
       "speaker_id": "ref-analyst",
@@ -1878,7 +1878,7 @@
     },
     {
       "claim_anchor": "claim-053",
-      "source_block_anchor": "block-053",
+      "source_block_anchor": "block-0106-22ff0f352988",
       "source_value": "For spoken delivery, LiDAR is expected as LIE-dar, and C1 is expected as see one.",
       "adapted_value": "For spoken delivery, LiDAR is expected as LIE-dar, and C1 is expected as see one.",
       "speaker_id": "ref-host",
@@ -1887,7 +1887,7 @@
     },
     {
       "claim_anchor": "claim-054",
-      "source_block_anchor": "block-054",
+      "source_block_anchor": "block-0108-6913d1a72908",
       "source_value": "The written forms remain present so listeners can trace speech back to source.",
       "adapted_value": "The written forms remain present so listeners can trace speech back to source.",
       "speaker_id": "ref-analyst",
@@ -1896,7 +1896,7 @@
     },
     {
       "claim_anchor": "claim-055",
-      "source_block_anchor": "block-055",
+      "source_block_anchor": "block-0110-4256b1c0afe4",
       "source_value": "We say 99.7% as ninety-nine point seven percent and 1.2 km as one point two kilometres.",
       "adapted_value": "We say 99.7% as ninety-nine point seven percent and 1.2 km as one point two kilometres.",
       "speaker_id": "ref-host",
@@ -1905,7 +1905,7 @@
     },
     {
       "claim_anchor": "claim-056",
-      "source_block_anchor": "block-056",
+      "source_block_anchor": "block-0112-5fbd26a83b93",
       "source_value": "Those renderings clarify pronunciation; they do not change scope or certainty.",
       "adapted_value": "Those renderings clarify pronunciation; they do not change scope or certainty.",
       "speaker_id": "ref-analyst",
@@ -1914,7 +1914,7 @@
     },
     {
       "claim_anchor": "claim-057",
-      "source_block_anchor": "block-057",
+      "source_block_anchor": "block-0114-42160e5f54af",
       "source_value": "The date 2026-07-31 is spoken as July thirty-first, two thousand twenty-six.",
       "adapted_value": "The date 2026-07-31 is spoken as July thirty-first, two thousand twenty-six.",
       "speaker_id": "ref-host",
@@ -1923,7 +1923,7 @@
     },
     {
       "claim_anchor": "claim-058",
-      "source_block_anchor": "block-058",
+      "source_block_anchor": "block-0116-59f37f6be1d4",
       "source_value": "Saying it slowly does not make the measurement more current, representative, or complete.",
       "adapted_value": "Saying it slowly does not make the measurement more current, representative, or complete.",
       "speaker_id": "ref-analyst",
@@ -1932,7 +1932,7 @@
     },
     {
       "claim_anchor": "claim-059",
-      "source_block_anchor": "block-059",
+      "source_block_anchor": "block-0118-04b2f5a9a29a",
       "source_value": "Pronunciation metadata is delivery evidence, not measurement evidence.",
       "adapted_value": "Pronunciation metadata is delivery evidence, not measurement evidence.",
       "speaker_id": "ref-host",
@@ -1941,7 +1941,7 @@
     },
     {
       "claim_anchor": "claim-060",
-      "source_block_anchor": "block-060",
+      "source_block_anchor": "block-0120-6afff164ee4c",
       "source_value": "A local voice can pronounce LiDAR carefully while remaining unable to verify rain, surface conditions, or future performance.",
       "adapted_value": "A local voice can pronounce LiDAR carefully while remaining unable to verify rain, surface conditions, or future performance.",
       "speaker_id": "ref-analyst",
@@ -1950,7 +1950,7 @@
     },
     {
       "claim_anchor": "claim-061",
-      "source_block_anchor": "block-061",
+      "source_block_anchor": "block-0122-69e490754f6c",
       "source_value": "Each turn stays short enough for the renderer capability.",
       "adapted_value": "Each turn stays short enough for the renderer capability.",
       "speaker_id": "ref-host",
@@ -1959,7 +1959,7 @@
     },
     {
       "claim_anchor": "claim-062",
-      "source_block_anchor": "block-062",
+      "source_block_anchor": "block-0124-554e3a031163",
       "source_value": "That technical limit protects complete speaker turns and prevents a convenient but unsupported split inside a source-bound claim.",
       "adapted_value": "That technical limit protects complete speaker turns and prevents a convenient but unsupported split inside a source-bound claim.",
       "speaker_id": "ref-analyst",
@@ -1968,7 +1968,7 @@
     },
     {
       "claim_anchor": "claim-063",
-      "source_block_anchor": "block-063",
+      "source_block_anchor": "block-0126-1f52bd91c9f8",
       "source_value": "Short turns do not reduce the episode to a summary.",
       "adapted_value": "Short turns do not reduce the episode to a summary.",
       "speaker_id": "ref-host",
@@ -1977,7 +1977,7 @@
     },
     {
       "claim_anchor": "claim-064",
-      "source_block_anchor": "block-064",
+      "source_block_anchor": "block-0128-3ede69d9e8f0",
       "source_value": "Together they retain context, disagreement, uncertainty, pronunciation discussion, and the distinction between local demonstration audio and.",
       "adapted_value": "Together they retain context, disagreement, uncertainty, pronunciation discussion, and the distinction between local demonstration audio and.",
       "speaker_id": "ref-analyst",
@@ -1987,7 +1987,7 @@
     },
     {
       "claim_anchor": "claim-065",
-      "source_block_anchor": "block-065",
+      "source_block_anchor": "block-0130-763a31ce5946",
       "source_value": "operational validation.",
       "adapted_value": "operational validation.",
       "speaker_id": "ref-host",
@@ -1996,7 +1996,7 @@
     },
     {
       "claim_anchor": "claim-066",
-      "source_block_anchor": "block-066",
+      "source_block_anchor": "block-0132-451e4c3355c3",
       "source_value": "We can say the result belongs to the stated corridor on the stated date.",
       "adapted_value": "We can say the result belongs to the stated corridor on the stated date.",
       "speaker_id": "ref-analyst",
@@ -2005,7 +2005,7 @@
     },
     {
       "claim_anchor": "claim-067",
-      "source_block_anchor": "block-067",
+      "source_block_anchor": "block-0134-5b6ad8908d22",
       "source_value": "We cannot say every deployment, surface, team, or future pass will produce 99.7%.",
       "adapted_value": "We cannot say every deployment, surface, team, or future pass will produce 99.7%.",
       "speaker_id": "ref-host",
@@ -2014,7 +2014,7 @@
     },
     {
       "claim_anchor": "claim-068",
-      "source_block_anchor": "block-068",
+      "source_block_anchor": "block-0136-7eabc9f4c8f8",
       "source_value": "We can also say C1 is named in the record.",
       "adapted_value": "We can also say C1 is named in the record.",
       "speaker_id": "ref-analyst",
@@ -2023,7 +2023,7 @@
     },
     {
       "claim_anchor": "claim-069",
-      "source_block_anchor": "block-069",
+      "source_block_anchor": "block-0138-6c9b4ff1392d",
       "source_value": "We cannot define its calculation, threshold, or sensor configuration without another source that actually supplies those details.",
       "adapted_value": "We cannot define its calculation, threshold, or sensor configuration without another source that actually supplies those details.",
       "speaker_id": "ref-host",
@@ -2032,7 +2032,7 @@
     },
     {
       "claim_anchor": "claim-070",
-      "source_block_anchor": "block-070",
+      "source_block_anchor": "block-0140-08c9b9ad7f66",
       "source_value": "The 1.2 km unit is part of the claim boundary, not decoration.",
       "adapted_value": "The 1.2 km unit is part of the claim boundary, not decoration.",
       "speaker_id": "ref-analyst",
@@ -2041,7 +2041,7 @@
     },
     {
       "claim_anchor": "claim-071",
-      "source_block_anchor": "block-071",
+      "source_block_anchor": "block-0142-baa1831c7ae9",
       "source_value": "Removing it would make the result sound wider, while changing it would break traceability to the source.",
       "adapted_value": "Removing it would make the result sound wider, while changing it would break traceability to the source.",
       "speaker_id": "ref-host",
@@ -2050,7 +2050,7 @@
     },
     {
       "claim_anchor": "claim-072",
-      "source_block_anchor": "block-072",
+      "source_block_anchor": "block-0144-b662480b887d",
       "source_value": "Likewise, the word not is substantive.",
       "adapted_value": "Likewise, the word not is substantive.",
       "speaker_id": "ref-analyst",
@@ -2059,7 +2059,7 @@
     },
     {
       "claim_anchor": "claim-073",
-      "source_block_anchor": "block-073",
+      "source_block_anchor": "block-0146-5da62ce3f8e7",
       "source_value": "If a renderer loses that negation, listeners could hear a claim about rain or reflective surfaces that the source explicitly refuses.",
       "adapted_value": "If a renderer loses that negation, listeners could hear a claim about rain or reflective surfaces that the source explicitly refuses.",
       "speaker_id": "ref-host",
@@ -2068,7 +2068,7 @@
     },
     {
       "claim_anchor": "claim-074",
-      "source_block_anchor": "block-074",
+      "source_block_anchor": "block-0148-8eab1c6fb505",
       "source_value": "I remain uncertain about conditions outside the test corridor.",
       "adapted_value": "I remain uncertain about conditions outside the test corridor.",
       "speaker_id": "ref-analyst",
@@ -2077,7 +2077,7 @@
     },
     {
       "claim_anchor": "claim-075",
-      "source_block_anchor": "block-075",
+      "source_block_anchor": "block-0150-1528b200bd26",
       "source_value": "That uncertainty is not a numerical confidence interval, and it is not an allegation that the dated observation was invented.",
       "adapted_value": "That uncertainty is not a numerical confidence interval, and it is not an allegation that the dated observation was invented.",
       "speaker_id": "ref-host",
@@ -2086,7 +2086,7 @@
     },
     {
       "claim_anchor": "claim-076",
-      "source_block_anchor": "block-076",
+      "source_block_anchor": "block-0152-fbec715aec04",
       "source_value": "It is a plain statement of missing facts.",
       "adapted_value": "It is a plain statement of missing facts.",
       "speaker_id": "ref-analyst",
@@ -2095,7 +2095,7 @@
     },
     {
       "claim_anchor": "claim-077",
-      "source_block_anchor": "block-077",
+      "source_block_anchor": "block-0154-5079d41832f1",
       "source_value": "We know the record reports a LiDAR C1 calibration result; we do not know enough to generalise it responsibly.",
       "adapted_value": "We know the record reports a LiDAR C1 calibration result; we do not know enough to generalise it responsibly.",
       "speaker_id": "ref-host",
@@ -2104,7 +2104,7 @@
     },
     {
       "claim_anchor": "claim-078",
-      "source_block_anchor": "block-078",
+      "source_block_anchor": "block-0156-d04afb4257dc",
       "source_value": "This is why the counter-thesis remains valuable.",
       "adapted_value": "This is why the counter-thesis remains valuable.",
       "speaker_id": "ref-analyst",
@@ -2114,7 +2114,7 @@
     },
     {
       "claim_anchor": "claim-079",
-      "source_block_anchor": "block-079",
+      "source_block_anchor": "block-0158-dda4bfcef502",
       "source_value": "A listener can hear a concrete result and also hear the challenge that prevents confidence from outrunning the recorded evidence.",
       "adapted_value": "A listener can hear a concrete result and also hear the challenge that prevents confidence from outrunning the recorded evidence.",
       "speaker_id": "ref-host",
@@ -2123,7 +2123,7 @@
     },
     {
       "claim_anchor": "claim-080",
-      "source_block_anchor": "block-080",
+      "source_block_anchor": "block-0160-a11087c45cc8",
       "source_value": "I disagree only with the broad reading, not with publication of the bounded example.",
       "adapted_value": "I disagree only with the broad reading, not with publication of the bounded example.",
       "speaker_id": "ref-analyst",
@@ -2133,7 +2133,7 @@
     },
     {
       "claim_anchor": "claim-081",
-      "source_block_anchor": "block-081",
+      "source_block_anchor": "block-0162-5c34b20d7bda",
       "source_value": "Keeping both positions visible is more honest than hiding either the number or the caveat.",
       "adapted_value": "Keeping both positions visible is more honest than hiding either the number or the caveat.",
       "speaker_id": "ref-host",
@@ -2142,7 +2142,7 @@
     },
     {
       "claim_anchor": "claim-082",
-      "source_block_anchor": "block-082",
+      "source_block_anchor": "block-0164-6d4cbe83aba0",
       "source_value": "Publication should retain the source-bound result, the uncertainty, the counter-thesis, and the disagreement.",
       "adapted_value": "Publication should retain the source-bound result, the uncertainty, the counter-thesis, and the disagreement.",
       "speaker_id": "ref-analyst",
@@ -2152,7 +2152,7 @@
     },
     {
       "claim_anchor": "claim-083",
-      "source_block_anchor": "block-083",
+      "source_block_anchor": "block-0166-0114f1588cc5",
       "source_value": "It should also retain the turn order and the two synthetic speaker identities.",
       "adapted_value": "It should also retain the turn order and the two synthetic speaker identities.",
       "speaker_id": "ref-host",
@@ -2161,7 +2161,7 @@
     },
     {
       "claim_anchor": "claim-084",
-      "source_block_anchor": "block-084",
+      "source_block_anchor": "block-0168-c4a1d5482dbc",
       "source_value": "Local voice metadata has a deliberately narrow role.",
       "adapted_value": "Local voice metadata has a deliberately narrow role.",
       "speaker_id": "ref-analyst",
@@ -2170,7 +2170,7 @@
     },
     {
       "claim_anchor": "claim-085",
-      "source_block_anchor": "block-085",
+      "source_block_anchor": "block-0170-e6b623d2cd87",
       "source_value": "It selects an approved synthetic demonstration voice for compatible local engines; it does not identify a hosted account or authorize network.",
       "adapted_value": "It selects an approved synthetic demonstration voice for compatible local engines; it does not identify a hosted account or authorize network.",
       "speaker_id": "ref-host",
@@ -2179,7 +2179,7 @@
     },
     {
       "claim_anchor": "claim-086",
-      "source_block_anchor": "block-086",
+      "source_block_anchor": "block-0172-2919ab7980eb",
       "source_value": "use.",
       "adapted_value": "use.",
       "speaker_id": "ref-analyst",
@@ -2188,7 +2188,7 @@
     },
     {
       "claim_anchor": "claim-087",
-      "source_block_anchor": "block-087",
+      "source_block_anchor": "block-0174-29225b2c1b0c",
       "source_value": "The episode is therefore a local reference demo, not live-provider validation and not operational field certification.",
       "adapted_value": "The episode is therefore a local reference demo, not live-provider validation and not operational field certification.",
       "speaker_id": "ref-host",
@@ -2197,7 +2197,7 @@
     },
     {
       "claim_anchor": "claim-088",
-      "source_block_anchor": "block-088",
+      "source_block_anchor": "block-0176-f8dd401b7a1b",
       "source_value": "Its value is inspectable wording, deterministic fixtures, and preserved source anchors.",
       "adapted_value": "Its value is inspectable wording, deterministic fixtures, and preserved source anchors.",
       "speaker_id": "ref-analyst",
@@ -2206,7 +2206,7 @@
     },
     {
       "claim_anchor": "claim-089",
-      "source_block_anchor": "block-089",
+      "source_block_anchor": "block-0178-075ca7fc5a56",
       "source_value": "A successful local rendering cannot make the source broader than it is.",
       "adapted_value": "A successful local rendering cannot make the source broader than it is.",
       "speaker_id": "ref-host",
@@ -2215,7 +2215,7 @@
     },
     {
       "claim_anchor": "claim-090",
-      "source_block_anchor": "block-090",
+      "source_block_anchor": "block-0180-e3edc52821ac",
       "source_value": "It can only demonstrate that the approved text, speakers, and pronunciation entries travelled through preparation.",
       "adapted_value": "It can only demonstrate that the approved text, speakers, and pronunciation entries travelled through preparation.",
       "speaker_id": "ref-analyst",
@@ -2224,7 +2224,7 @@
     },
     {
       "claim_anchor": "claim-091",
-      "source_block_anchor": "block-091",
+      "source_block_anchor": "block-0182-3c0e1ac16f37",
       "source_value": "Before closing, repeat the central record: on 2026-07-31, LiDAR measured a C1 calibration result of 99.7% across the 1.2 km test corridor.",
       "adapted_value": "Before closing, repeat the central record: on 2026-07-31, LiDAR measured a C1 calibration result of 99.7% across the 1.2 km test corridor.",
       "speaker_id": "ref-host",
@@ -2233,7 +2233,7 @@
     },
     {
       "claim_anchor": "claim-092",
-      "source_block_anchor": "block-092",
+      "source_block_anchor": "block-0184-cc8ea9c4fdc3",
       "source_value": "And repeat the limit: rain and reflective surfaces remain unresolved by this source.",
       "adapted_value": "And repeat the limit: rain and reflective surfaces remain unresolved by this source.",
       "speaker_id": "ref-analyst",
@@ -2242,7 +2242,7 @@
     },
     {
       "claim_anchor": "claim-093",
-      "source_block_anchor": "block-093",
+      "source_block_anchor": "block-0186-56454bc498b4",
       "source_value": "We should not convert silence about conditions into an assertion that conditions were harmless.",
       "adapted_value": "We should not convert silence about conditions into an assertion that conditions were harmless.",
       "speaker_id": "ref-host",
@@ -2251,7 +2251,7 @@
     },
     {
       "claim_anchor": "claim-094",
-      "source_block_anchor": "block-094",
+      "source_block_anchor": "block-0188-5440d46069d6",
       "source_value": "The two speakers have not solved every field question.",
       "adapted_value": "The two speakers have not solved every field question.",
       "speaker_id": "ref-analyst",
@@ -2260,7 +2260,7 @@
     },
     {
       "claim_anchor": "claim-095",
-      "source_block_anchor": "block-095",
+      "source_block_anchor": "block-0190-4289b953d0d1",
       "source_value": "They have shown how a host can state a bounded fact and an analyst can preserve its counterargument.",
       "adapted_value": "They have shown how a host can state a bounded fact and an analyst can preserve its counterargument.",
       "speaker_id": "ref-host",
@@ -2269,7 +2269,7 @@
     },
     {
       "claim_anchor": "claim-096",
-      "source_block_anchor": "block-096",
+      "source_block_anchor": "block-0192-6bd84ad9e341",
       "source_value": "That is the intended twelve-minute shape: many short alternating turns, enough context for listening, and no claim that local synthetic audio.",
       "adapted_value": "That is the intended twelve-minute shape: many short alternating turns, enough context for listening, and no claim that local synthetic audio.",
       "speaker_id": "ref-analyst",
@@ -2278,7 +2278,7 @@
     },
     {
       "claim_anchor": "claim-097",
-      "source_block_anchor": "block-097",
+      "source_block_anchor": "block-0194-d5ce96156dd2",
       "source_value": "proves a live operational outcome.",
       "adapted_value": "proves a live operational outcome.",
       "speaker_id": "ref-host",
@@ -2287,7 +2287,7 @@
     },
     {
       "claim_anchor": "claim-098",
-      "source_block_anchor": "block-098",
+      "source_block_anchor": "block-0196-29973bdcdff7",
       "source_value": "We preserve LiDAR, C1, the date, 99.7%, and 1.2 km because exact technical forms matter.",
       "adapted_value": "We preserve LiDAR, C1, the date, 99.7%, and 1.2 km because exact technical forms matter.",
       "speaker_id": "ref-analyst",
@@ -2296,7 +2296,7 @@
     },
     {
       "claim_anchor": "claim-099",
-      "source_block_anchor": "block-099",
+      "source_block_anchor": "block-0198-0c49ec746617",
       "source_value": "We preserve not and uncertain because logical limits matter too.",
       "adapted_value": "We preserve not and uncertain because logical limits matter too.",
       "speaker_id": "ref-host",
@@ -2305,7 +2305,7 @@
     },
     {
       "claim_anchor": "claim-100",
-      "source_block_anchor": "block-100",
+      "source_block_anchor": "block-0200-ee9c07fb9390",
       "source_value": "To close, the result remains bounded, the disagreement remains explicit, and the source remains primary.",
       "adapted_value": "To close, the result remains bounded, the disagreement remains explicit, and the source remains primary.",
       "speaker_id": "ref-analyst",
@@ -2315,7 +2315,7 @@
     },
     {
       "claim_anchor": "claim-101",
-      "source_block_anchor": "block-101",
+      "source_block_anchor": "block-0202-c27ed066ff2f",
       "source_value": "A careful local rendering may aid listening, but it cannot certify anything beyond this record.",
       "adapted_value": "A careful local rendering may aid listening, but it cannot certify anything beyond this record.",
       "speaker_id": "ref-host",
@@ -2324,7 +2324,7 @@
     },
     {
       "claim_anchor": "claim-102",
-      "source_block_anchor": "block-102",
+      "source_block_anchor": "block-0204-b95c555b4b7b",
       "source_value": "The source label helps a listener find the exact claim again, even after local speech turns a written phrase into a spoken phrase.",
       "adapted_value": "The source label helps a listener find the exact claim again, even after local speech turns a written phrase into a spoken phrase.",
       "speaker_id": "ref-analyst",
@@ -2333,7 +2333,7 @@
     },
     {
       "claim_anchor": "claim-103",
-      "source_block_anchor": "block-103",
+      "source_block_anchor": "block-0206-71aa7fd659ae",
       "source_value": "That traceability matters when technical confidence, careful pacing, and ordinary caveats appear together in the same discussion.",
       "adapted_value": "That traceability matters when technical confidence, careful pacing, and ordinary caveats appear together in the same discussion.",
       "speaker_id": "ref-host",
@@ -2342,7 +2342,7 @@
     },
     {
       "claim_anchor": "claim-104",
-      "source_block_anchor": "block-104",
+      "source_block_anchor": "block-0208-11b5f94f871c",
       "source_value": "Neither speaker is an eyewitness beyond the source.",
       "adapted_value": "Neither speaker is an eyewitness beyond the source.",
       "speaker_id": "ref-analyst",
@@ -2351,7 +2351,7 @@
     },
     {
       "claim_anchor": "claim-105",
-      "source_block_anchor": "block-105",
+      "source_block_anchor": "block-0210-19a2b0b9d576",
       "source_value": "Each speaker is a synthetic presenter reading an approved, bounded reference script.",
       "adapted_value": "Each speaker is a synthetic presenter reading an approved, bounded reference script.",
       "speaker_id": "ref-host",
@@ -2360,7 +2360,7 @@
     },
     {
       "claim_anchor": "claim-106",
-      "source_block_anchor": "block-106",
+      "source_block_anchor": "block-0212-7dca250e2892",
       "source_value": "The dialogue can be listened to repeatedly, but repeat listening does not add a new measurement or an independent replication.",
       "adapted_value": "The dialogue can be listened to repeatedly, but repeat listening does not add a new measurement or an independent replication.",
       "speaker_id": "ref-analyst",
@@ -2369,7 +2369,7 @@
     },
     {
       "claim_anchor": "claim-107",
-      "source_block_anchor": "block-107",
+      "source_block_anchor": "block-0214-07ce960742af",
       "source_value": "We keep the method label visible because listeners should not have to guess whether LiDAR is a product, a person, or a measurement term.",
       "adapted_value": "We keep the method label visible because listeners should not have to guess whether LiDAR is a product, a person, or a measurement term.",
       "speaker_id": "ref-host",
@@ -2378,7 +2378,7 @@
     },
     {
       "claim_anchor": "claim-108",
-      "source_block_anchor": "block-108",
+      "source_block_anchor": "block-0216-9315e06afd59",
       "source_value": "We keep the calibration label visible because C1 carries source meaning even when its calculation remains outside this documented record.",
       "adapted_value": "We keep the calibration label visible because C1 carries source meaning even when its calculation remains outside this documented record.",
       "speaker_id": "ref-analyst",
@@ -2387,7 +2387,7 @@
     },
     {
       "claim_anchor": "claim-109",
-      "source_block_anchor": "block-109",
+      "source_block_anchor": "block-0218-edf7b2fe4c43",
       "source_value": "A precise claim can be modest.",
       "adapted_value": "A precise claim can be modest.",
       "speaker_id": "ref-host",
@@ -2396,7 +2396,7 @@
     },
     {
       "claim_anchor": "claim-110",
-      "source_block_anchor": "block-110",
+      "source_block_anchor": "block-0220-ee66f615d37f",
       "source_value": "Precision names the corridor and date; modesty declines to promise a result beyond them.",
       "adapted_value": "Precision names the corridor and date; modesty declines to promise a result beyond them.",
       "speaker_id": "ref-analyst",
@@ -2405,7 +2405,7 @@
     },
     {
       "claim_anchor": "claim-111",
-      "source_block_anchor": "block-111",
+      "source_block_anchor": "block-0222-34498d091803",
       "source_value": "That pairing is the intended lesson for adaptation: preserve the observation, preserve the limits, and make neither disappear in smooth.",
       "adapted_value": "That pairing is the intended lesson for adaptation: preserve the observation, preserve the limits, and make neither disappear in smooth.",
       "speaker_id": "ref-host",
@@ -2414,7 +2414,7 @@
     },
     {
       "claim_anchor": "claim-112",
-      "source_block_anchor": "block-112",
+      "source_block_anchor": "block-0224-61df60b34b03",
       "source_value": "Clear narration preserves every stated limit.",
       "adapted_value": "Clear narration preserves every stated limit.",
       "speaker_id": "ref-analyst",
@@ -2423,7 +2423,7 @@
     },
     {
       "claim_anchor": "claim-113",
-      "source_block_anchor": "block-113",
+      "source_block_anchor": "block-0226-d1b03edcfd52",
       "source_value": "The local renderer receives complete turns, so the listener can attribute a statement and its qualification to a speaker without a mid-claim.",
       "adapted_value": "The local renderer receives complete turns, so the listener can attribute a statement and its qualification to a speaker without a mid-claim.",
       "speaker_id": "ref-host",
@@ -2432,7 +2432,7 @@
     },
     {
       "claim_anchor": "claim-114",
-      "source_block_anchor": "block-114",
+      "source_block_anchor": "block-0228-1174e47bb60e",
       "source_value": "break.",
       "adapted_value": "break.",
       "speaker_id": "ref-analyst",
@@ -2441,7 +2441,7 @@
     },
     {
       "claim_anchor": "claim-115",
-      "source_block_anchor": "block-115",
+      "source_block_anchor": "block-0230-c324f4012506",
       "source_value": "The fixture remains deterministic because its source anchors, adaptation rows, pronunciation forms, and speaker order can be inspected after.",
       "adapted_value": "The fixture remains deterministic because its source anchors, adaptation rows, pronunciation forms, and speaker order can be inspected after.",
       "speaker_id": "ref-host",
@@ -2450,7 +2450,7 @@
     },
     {
       "claim_anchor": "claim-116",
-      "source_block_anchor": "block-116",
+      "source_block_anchor": "block-0232-1dc4650e2713",
       "source_value": "This preparation remains source-bound.",
       "adapted_value": "This preparation remains source-bound.",
       "speaker_id": "ref-analyst",
@@ -2459,7 +2459,7 @@
     },
     {
       "claim_anchor": "claim-117",
-      "source_block_anchor": "block-117",
+      "source_block_anchor": "block-0234-52042daec511",
       "source_value": "No external provider is needed for this demonstration.",
       "adapted_value": "No external provider is needed for this demonstration.",
       "speaker_id": "ref-host",
@@ -2468,7 +2468,7 @@
     },
     {
       "claim_anchor": "claim-118",
-      "source_block_anchor": "block-118",
+      "source_block_anchor": "block-0236-512e5bca835e",
       "source_value": "That boundary protects the distinction between local testing and a service-backed production workflow.",
       "adapted_value": "That boundary protects the distinction between local testing and a service-backed production workflow.",
       "speaker_id": "ref-analyst",
@@ -2477,7 +2477,7 @@
     },
     {
       "claim_anchor": "claim-119",
-      "source_block_anchor": "block-119",
+      "source_block_anchor": "block-0238-51a095e40e24",
       "source_value": "The recorded percentage is not a probability of success for a new job.",
       "adapted_value": "The recorded percentage is not a probability of success for a new job.",
       "speaker_id": "ref-host",
@@ -2486,7 +2486,7 @@
     },
     {
       "claim_anchor": "claim-120",
-      "source_block_anchor": "block-120",
+      "source_block_anchor": "block-0240-13b5e0b6ef41",
       "source_value": "It is the written value associated with this bounded calibration result.",
       "adapted_value": "It is the written value associated with this bounded calibration result.",
       "speaker_id": "ref-analyst",
@@ -2495,7 +2495,7 @@
     },
     {
       "claim_anchor": "claim-121",
-      "source_block_anchor": "block-121",
+      "source_block_anchor": "block-0242-8416c6569b52",
       "source_value": "The corridor distance is not a coverage promise.",
       "adapted_value": "The corridor distance is not a coverage promise.",
       "speaker_id": "ref-host",
@@ -2504,7 +2504,7 @@
     },
     {
       "claim_anchor": "claim-122",
-      "source_block_anchor": "block-122",
+      "source_block_anchor": "block-0244-7e459ea09bb7",
       "source_value": "It is the unit and extent stated in the record for the dated measurement.",
       "adapted_value": "It is the unit and extent stated in the record for the dated measurement.",
       "speaker_id": "ref-analyst",
@@ -2513,7 +2513,7 @@
     },
     {
       "claim_anchor": "claim-123",
-      "source_block_anchor": "block-123",
+      "source_block_anchor": "block-0246-7bcde0b4acc5",
       "source_value": "The disagreement is constructive because it narrows an inference without deleting the observation that motivated the conversation.",
       "adapted_value": "The disagreement is constructive because it narrows an inference without deleting the observation that motivated the conversation.",
       "speaker_id": "ref-host",
@@ -2523,7 +2523,7 @@
     },
     {
       "claim_anchor": "claim-124",
-      "source_block_anchor": "block-124",
+      "source_block_anchor": "block-0248-2ac4b46eca75",
       "source_value": "The counter-thesis is constructive because it explains why a limited example can remain publishable when its limitations are spoken plainly.",
       "adapted_value": "The counter-thesis is constructive because it explains why a limited example can remain publishable when its limitations are spoken plainly.",
       "speaker_id": "ref-analyst",
@@ -2533,7 +2533,7 @@
     },
     {
       "claim_anchor": "claim-125",
-      "source_block_anchor": "block-125",
+      "source_block_anchor": "block-0250-d784c8f76e07",
       "source_value": "Our final check is simple: every prepared turn should still point to an exact source phrase, with no invented detail added for dramatic effect.",
       "adapted_value": "Our final check is simple: every prepared turn should still point to an exact source phrase, with no invented detail added for dramatic effect.",
       "speaker_id": "ref-host",
