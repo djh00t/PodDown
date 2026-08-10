@@ -341,6 +341,7 @@ def create_app(
         )
         return EpisodeStatusResponse(
             episode_id=record.episode_id,
+            version=record.version,
             stage=record.state.value,
             progress=_progress(record.state),
             failure=_safe_failure(record.failure)
@@ -369,6 +370,14 @@ def create_app(
             project_id=context.project_id,
             episode_id=episode_id,
         )
+        replay = command_dispatcher.replay(
+            tenant_id=context.tenant_id,
+            episode_id=record.episode_id,
+            command="render",
+            idempotency_key=context.idempotency_key,
+        )
+        if replay is not None:
+            return replay
         if record.state == EpisodeState.PUBLISHED:
             raise InvalidEpisodeTransition("published episode cannot be rendered")
         return command_dispatcher.submit(

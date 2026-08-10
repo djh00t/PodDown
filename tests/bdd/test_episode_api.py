@@ -205,6 +205,13 @@ def status_redaction(context) -> None:
     assert "authorization" not in str(response.json()).lower()
 
 
+@then("the status response contains the current episode version")
+def status_version(context) -> None:
+    response = context.values["response"]
+    assert response.status_code == 200
+    assert response.json()["version"] == 1
+
+
 @when("I request the failed episode status")
 def request_failed_status(context) -> None:
     context.values["response"] = _client(context).get(

@@ -98,3 +98,45 @@ The API's in-memory idempotency namespace is tenant-wide: a same-key request
 from another project is rejected as a conflict rather than rebound to a second
 resource. The regression is covered by
 `test_create_idempotency_rejects_cross_project_key_rebinding`.
+
+## PR17 review-feedback verification
+
+The PR17 feedback regressions were written first. Before the implementation,
+the focused command reported four expected failures: the status response lacked
+`version`, command receipts conflicted on a shared key across commands, a
+published episode returned `409` instead of replaying its accepted render
+receipt, and the matching BDD scenario could not read `version`.
+
+After the minimal transport and dispatcher changes, the focused regression
+selection passed:
+
+```bash
+PYDANTIC_DISABLE_PLUGINS=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest \
+  -p pytest_bdd.plugin -p pytest_cov.plugin -q \
+  tests/unit/test_api_models.py tests/unit/test_api_runtime.py \
+  tests/integration/test_episode_api.py tests/bdd/test_episode_api.py
+```
+
+Result: **44 passed**.
+
+Fresh repository-owned validation then passed:
+
+```bash
+make check
+make build
+make docs
+rtk proxy uv lock --check
+rtk proxy uv pip check
+rtk proxy uv run python -m compileall -q src tests
+git diff --check
+```
+
+`make check` result: **680 passed, 1 live-provider test deselected**, total
+branch coverage **86.54%**; Ruff format/check and strict mypy passed. Build
+produced both sdist and wheel, documentation generated successfully, the lock
+was current, installed packages were compatible, compileall and diff checks
+passed. A credential-pattern scan of the changed diff returned no matches.
+
+The command receipt identity is now exactly tenant, episode, command, and
+idempotency key. Render first performs a non-mutating replay lookup; only a
+new request reaches the published-state gate.

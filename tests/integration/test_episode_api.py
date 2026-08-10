@@ -8,6 +8,7 @@ provider/network clients.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from uuid import UUID
 
 import pytest
@@ -214,7 +215,10 @@ def test_get_episode_and_status_return_tenant_scoped_summary_and_redacted_status
     assert episode.status_code == 200
     assert episode.json()["id"] == episode_id
     assert status.status_code == 200
-    assert {"episode_id", "stage", "progress", "failure"} <= set(status.json())
+    assert {"episode_id", "version", "stage", "progress", "failure"} <= set(
+        status.json()
+    )
+    assert status.json()["version"] == episode.json()["version"]
     assert SOURCE not in str(status.json())
     assert "authorization" not in str(status.json()).lower()
 
@@ -309,6 +313,39 @@ def test_render_is_non_blocking_and_idempotently_reuses_its_receipt(
     assert first.json()["command"] == "render"
     assert first.json()["accepted"] is True
     assert first.json()["state"] == "queued"
+
+
+def test_render_replays_accepted_receipt_after_episode_is_published() -> None:
+    repository = InMemoryEpisodeRepository()
+    service = EpisodeApplicationService(
+        repository=repository,
+        available_profiles={PROFILE},
+    )
+    record = service.create_episode(
+        EpisodeCreateCommand(
+            tenant_id=UUID(TENANT_ID),
+            project_id=UUID(PROJECT_ID),
+            idempotency_key="published-render-create-001",
+            source_bytes=SOURCE.encode("utf-8"),
+            profile_name=PROFILE,
+        )
+    )
+    with TestClient(create_app(service)) as test_client:
+        headers = _headers(key="published-render-001")
+        first = test_client.post(
+            f"/v1/episodes/{record.episode_id}/render", headers=headers
+        )
+        repository.replace(
+            UUID(TENANT_ID),
+            replace(record, state=EpisodeState.PUBLISHED, version=record.version + 1),
+            expected_version=record.version,
+        )
+        replay = test_client.post(
+            f"/v1/episodes/{record.episode_id}/render", headers=headers
+        )
+
+    assert first.status_code == replay.status_code == 202
+    assert replay.json() == first.json()
 
 
 def test_publish_requires_explicit_authorization_header(client: TestClient) -> None:

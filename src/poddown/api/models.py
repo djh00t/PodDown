@@ -85,6 +85,7 @@ class EpisodeStatusResponse(_FrozenModel):
     """Tenant-scoped status without source or credential material."""
 
     episode_id: UUID
+    version: int
     stage: str
     progress: float
     failure: dict[str, object] | None = None

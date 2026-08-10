@@ -32,6 +32,11 @@ Feature: Submit and monitor tenant-scoped episodes over HTTP
     When I request the episode status
     Then the status response contains no source or credential material
 
+  Scenario: Report the current lifecycle version in status
+    Given an offline episode API client with a created episode
+    When I request the episode status
+    Then the status response contains the current episode version
+
   Scenario: Expose allowlisted failure details in status
     Given an offline episode API client with a failed episode
     When I request the failed episode status
