@@ -12,9 +12,14 @@ credentials are outside the default test boundary.
 Focused contract tests:
 
 ```text
-rtk uv run pytest -q tests/unit/test_production_contracts.py tests/unit/test_compose_contract.py tests/integration/test_health_boundary.py tests/bdd/test_production_readiness.py
-17 passed after the runtime/probe/redaction regression slice.
+rtk uv run pytest -q tests/unit/test_production_contracts.py tests/unit/test_compose_contract.py tests/integration/test_health_boundary.py tests/unit/test_runtime_entrypoints.py tests/bdd/test_production_readiness.py
+26 passed, including the worker runtime-entrypoint lifecycle contract.
 ```
+
+The first correction run was intentionally RED during test-first development:
+pytest collection failed with `ImportError: cannot import name
+'runtime_dependency_probes' from poddown.runtime`. Production edits followed
+that captured failure.
 
 The dependency-advisor decision for the direct API server dependency was
 `uvicorn==0.51.0` under the Python conservative policy with a 720-hour minimum
@@ -27,7 +32,12 @@ the existing `create_app()` through uvicorn. The worker reads
 `EpisodeRenderWorkflow` and `render_segment_activity` contracts. Missing
 required worker configuration fails before a network connection.
 
-The changed-scope `rtk make check` completed with 822 selected tests and one
+The worker marker is removed before connection, created only after the entered
+Temporal worker reports `is_running`, and removed in the shutdown path. Static
+Compose/Dockerfile assertions and the lifecycle test cover PATH, non-secret
+Temporal environment, marker healthcheck, and cleanup wiring.
+
+The changed-scope `rtk make check` completed with 831 selected tests and one
 live-provider test deselected; its full output is local command evidence, not
 Compose E2E evidence.
 
@@ -51,6 +61,8 @@ or live-service readiness claim is made.
 - Provider outage, budget exhaustion, and load/capacity testing.
 - Signing, SBOM, vulnerability scanning, and staged deployment.
 - Deployment credentials and live provider credentials.
+- Kubernetes manifests or hosted migration adapters (Kubernetes is explicitly
+  excluded from this local Compose contract).
 
 Docker/Compose execution was not run; service availability and the Docker
 daemon were not assumed.

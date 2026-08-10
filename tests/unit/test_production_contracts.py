@@ -75,6 +75,47 @@ def test_metric_rejects_raw_sensitive_values() -> None:
         )
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_metric_rejects_non_finite_values(value: float) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        MetricSample.create(
+            name="episode.render.seconds",
+            value=value,
+            tenant_id="tenant-1",
+            project_id="project-1",
+            labels={"stage": "render"},
+        )
+
+
+def test_metric_rejects_unsafe_or_oversized_labels_but_accepts_small_safe_labels() -> (
+    None
+):
+    metric = MetricSample.create(
+        name="episode.render.seconds",
+        value=1.5,
+        tenant_id="tenant-1",
+        project_id="project-1",
+        labels={"stage": "render", "attempt": "1"},
+    )
+    assert metric.labels["stage"] == "render"
+    with pytest.raises(ValueError, match="label"):
+        MetricSample.create(
+            name="episode.render.seconds",
+            value=1,
+            tenant_id="tenant-1",
+            project_id="project-1",
+            labels={"stage": "raw provider payload"},
+        )
+    with pytest.raises(ValueError, match="label"):
+        MetricSample.create(
+            name="episode.render.seconds",
+            value=1,
+            tenant_id="tenant-1",
+            project_id="project-1",
+            labels={"stage": "x" * 129},
+        )
+
+
 def test_operational_event_redacts_nested_sequences_and_key_variants() -> None:
     event = OperationalEvent.create(
         event_name="episode.completed",
@@ -98,3 +139,20 @@ def test_operational_event_redacts_nested_sequences_and_key_variants() -> None:
         ],
         "transcript": "[REDACTED]",
     }
+
+
+def test_operational_event_deep_freezes_input_and_safe_serialization() -> None:
+    nested = {"safe": [{"stage": "qa"}]}
+    event = OperationalEvent.create(
+        event_name="episode.qa",
+        tenant_id="tenant-1",
+        project_id="project-1",
+        correlation_id="corr-1",
+        attributes=nested,
+    )
+    nested["safe"][0]["stage"] = "changed"
+    serialized = event.to_dict()
+    serialized["attributes"]["safe"][0]["stage"] = "mutated-output"
+    assert event.to_dict()["attributes"]["safe"][0]["stage"] == "qa"
+    with pytest.raises(TypeError):
+        event.attributes["safe"][0]["stage"] = "blocked"  # type: ignore[index]
