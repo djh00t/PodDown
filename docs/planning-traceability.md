@@ -13,13 +13,13 @@
 | 7 | Voice rights/consent | 001/004 | M0/M3 |
 | 8 | Pronunciation engine | 002 | M1 complete locally; deterministic token evidence verified |
 | 9 | Segmentation engine | 002 | M1 complete locally; capability-safe segmentation verified |
-| 10 | Render orchestration | 003 | M2 |
-| 11 | Candidate-take scoring | 003 | M2 |
-| 12 | Transcription/fidelity QA | 001/003 | M0/M2 |
-| 13 | Critical-token verification | 001/002/003 | M0–M2 |
-| 14 | Audio quality gates | 003 | M2 |
-| 15 | Mastering | 003 | M2 |
-| 16 | Package/provenance | 001/003 | M0/M2 |
+| 10 | Render orchestration | 003 | M2 foundation plus bounded Temporal orchestration and provider-bound local activity wiring locally verified: [durable BDD](../tests/features/durable_audio.feature), [Temporal BDD](../tests/features/temporal_orchestration.feature), [provider-activity BDD](../tests/features/provider_temporal_render.feature), [durable integration](../tests/integration/test_durable_render.py), [Temporal integration](../tests/integration/test_temporal_orchestration.py), [provider-activity integration](../tests/integration/test_temporal_durable_render_activity.py), [terminal failure integration](../tests/integration/test_temporal_failure_semantics.py), [partial-take retry BDD](../tests/features/provider_temporal_render.feature), [concurrent claim integration](../tests/integration/test_durable_render_concurrency.py), [separate-process claim integration](../tests/integration/test_durable_render_multiprocess.py), and [verification evidence](verification/provider-temporal-render-activity.md) |
+| 11 | Candidate-take scoring | 003 | M2 locally verified for deterministic hard-gate selection and stable ranking: [selection tests](../tests/unit/audio/test_selection.py) and [Temporal verification](verification/temporal-orchestration-qa.md); provider-backed scoring remains pending |
+| 12 | Transcription/fidelity QA | 001/003 | M0/M2 locally verified for injected normalized transcript QA, audio-bound checksum/empty-text rejection, deterministic local mode, transcription failure mapping, atomic transcription response plus estimated-cost replay, immutable quality replay, and provider usage/cost evidence: [provider BDD](../tests/features/provider_temporal_render.feature), [provider contract tests](../tests/contract/providers/test_openai_transcription.py), [activity tests](../tests/unit/audio/test_activities.py), [quality/unit tests](../tests/unit/audio/test_selection.py), [quality storage tests](../tests/unit/audio/test_storage.py), and [verification evidence](verification/transcription-fidelity-qa.md); external billing reconciliation remains M3 |
+| 13 | Critical-token verification | 001/002/003 | M0–M2 locally verified against provider transcript text with segment-only rerender evidence and independent final-master fidelity: [final-master BDD](../tests/features/final_master_qa.feature), [final-master unit tests](../tests/unit/qa/test_final_master.py), and [verification evidence](verification/final-master-qa.md) |
+| 14 | Audio quality gates | 003 | M2 locally verified for WAV diagnostics, clipping regression, provider-bound artifact checks, deterministic mastering input/output gates, and independent final-master media preflight: [diagnostic tests](../tests/unit/audio/test_diagnostics.py), [mastering verification](verification/deterministic-mastering.md), and [final-master verification](verification/final-master-qa.md); listening gates remain pending |
+| 15 | Mastering | 003 | M2 deterministic mastering and final-master QA boundaries locally verified for stable ordering, profile validation, injected ffmpeg/ffprobe boundaries, exact-byte transcription binding, WAV/MP3 inspection, and immutable provenance: [mastering BDD](../tests/features/mastering.feature), [final-master BDD](../tests/features/final_master_qa.feature), and [verification evidence](verification/final-master-qa.md) |
+| 16 | Package/provenance | 001/003 | M0–M2 locally verified for content-addressed immutable artifacts, deterministic nine-file generation, final checksum and critical-token binding, replay, and conflict preservation: [package BDD](../tests/features/package.feature), [package-generation BDD](../tests/features/package_generation.feature), [artifact unit tests](../tests/unit/test_artifacts.py), [package unit tests](../tests/unit/test_packages.py), [package-generation unit tests](../tests/unit/test_package_generation.py), [immutable package verification](verification/immutable-package.md), and [package-generation verification](verification/package-generation.md); object-storage, Temporal workflow integration, and publication remain pending |
 | 17 | Publishing adapters | 007 | M5 |
 | 18 | CLI | 005 | M4 |
 | 19 | MCP server | 006 | M5 |
@@ -43,7 +43,35 @@ not expand the MVP feature set; they make the approved service operable.
 - Dependency/order plan: complete through launch.
 - M1 content intelligence: complete locally with deterministic adversarial eval
   evidence; it is not audio-rendering or production-readiness evidence.
-- Immediate next slice: M2 durable audio production remains pending.
+- M2 durable audio foundation: locally verified only for rights/capability
+  preflight, deterministic local takes, immutable artifacts, usage/cost records,
+  and replay across fresh service instances; later M2 work remains pending.
+- M2 Temporal orchestration and audio QA boundary: locally verified for bounded
+  retry, three-take selection, hard-gate precedence, failed-segment repair,
+  structured failure, completed-workflow replay, provider-bound activity
+  wiring, rights-before-dispatch, immutable artifact persistence, and one
+  local cost event per candidate across post-persist replay. Non-retryable
+  rights failures now terminate on the original attempt, successful takes
+  remain selectable when a sibling take exhausts transient retries, unknown
+  terminal activity failures report configuration/activity gates, and the
+  filesystem claim prevents concurrent local-process dispatch for one
+  idempotency key; the crash window after provider dispatch and before record
+  save still belongs to hosted provider idempotency and reconciliation.
+  injected transcription/fidelity QA now records normalized provider evidence
+  plus an atomic estimated-cost event, binds transcript checksums to audio,
+  rejects empty evidence, maps terminal and retryable transcription failures to
+  the transcription gate, and replays persisted quality without a second
+  renderer or transcription dispatch. External billing reconciliation remains
+  M3-owned. The deterministic-local mode is explicitly labeled and zero-cost.
+  Deterministic mastering and final-master QA now locally verify stable segment
+  assembly, profile-bound WAV/MP3 media inspection, mandatory MP3 metadata,
+  injected ffprobe failure handling, read-only provenance/checksum evidence,
+  exact-byte final-master transcription binding, critical-token scoring, and
+  retry/terminal provider mapping. Immutable local artifact storage and
+  nine-file package manifest assembly and pure generation from verified
+  final-master evidence now pass schema-compatible checks with deterministic
+  replay and conflict preservation; object-storage integration and publication
+  remain pending.
 - Task-level implementation plan: intentionally produced just-in-time per
   milestone so measured interfaces and audio quality inform the next plan.
 - Audio rendering, Temporal, API, CLI, publishing, MCP, Signal & Supply, and
