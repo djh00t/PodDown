@@ -42,10 +42,17 @@ The stdio process registers only a trusted environment token/configuration:
 `PODDOWN_APPROVAL_EXPIRES_AT`. The token is never printed. Model-supplied
 fresh/nonce fields remain non-authoritative.
 
+The MCP transport now negotiates protocol version `2025-11-25`, advertises the
+tools capability, returns `tools/list` as an array of named tool objects, and
+wraps calls in `CallToolResult` content plus `structuredContent`. Tool output
+schemas declare closed per-tool properties; nested result values are retained
+only when their declared shape is safe. Approval-verifier exceptions and
+non-object arguments return stable redacted failures without terminating stdio.
+
 ## Final checks
 
-The changed-scope `make check` passed with **774 tests passed, 1 live-provider
-test deselected**, and **86.34%** branch coverage. Ruff, strict mypy, build,
+The changed-scope `make check` passed with **782 tests passed, 1 live-provider
+test deselected**, and **86.38%** branch coverage. Ruff, strict mypy, build,
 docs, lock, pip, compile, diff, and credential checks also passed. No
 `check-full` or `quality-gates` run was performed locally.
 

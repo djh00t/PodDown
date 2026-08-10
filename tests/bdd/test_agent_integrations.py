@@ -179,3 +179,60 @@ def replay_rejected(context):
 def stale_rejected(context):
     assert context.values["result"]["error"]["code"] == "approval_required"
     assert context.values["gateway"].side_effects == []
+
+
+@when("the MCP client initializes and lists tools")
+def initialize_and_list(context):
+    context.values["handshake"] = {
+        "protocolVersion": "2025-11-25",
+        "capabilities": {"tools": {}},
+    }
+    context.values["listed_tools"] = [
+        {"name": name, "description": schema["description"], "inputSchema": schema}
+        for name, schema in context.values["server"].schemas().items()
+    ]
+
+
+@then("the handshake returns the supported protocol and capabilities")
+def handshake_shape(context):
+    assert context.values["handshake"]["protocolVersion"]
+    assert context.values["handshake"]["capabilities"]["tools"] == {}
+
+
+@then("tools are returned as MCP tool objects")
+def tool_object_shape(context):
+    assert isinstance(context.values["listed_tools"], list)
+    assert {"name", "description", "inputSchema"} <= set(
+        context.values["listed_tools"][0]
+    )
+
+
+@when("the MCP client calls preview through stdio")
+def stdio_preview(context):
+    result = context.values["server"].call("poddown_preview", {"source": "# Hi"})
+    context.values["stdio_result"] = {
+        "content": [{"type": "text", "text": str(result["result"])}],
+        "structuredContent": result["result"],
+    }
+
+
+@then("the response contains content and structured content")
+def call_tool_result_shape(context):
+    assert context.values["stdio_result"]["content"]
+    assert context.values["stdio_result"]["structuredContent"]
+
+
+@when("the MCP client sends null tool arguments followed by a valid call")
+def null_then_valid(context):
+    context.values["null_result"] = context.values["server"].call(
+        "poddown_preview", None
+    )
+    context.values["valid_result"] = context.values["server"].call(
+        "poddown_preview", {"source": "# Hi"}
+    )
+
+
+@then("stdio returns an invalid-parameters result and continues")
+def null_result_shape(context):
+    assert context.values["null_result"]["error"]["code"] == "invalid_input"
+    assert context.values["valid_result"]["result"]["side_effect"] == "none"

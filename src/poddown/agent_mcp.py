@@ -132,14 +132,56 @@ class AgentMCPServer:
         return TOOL_NAMES
 
     def schemas(self) -> dict[str, dict[str, object]]:
-        output = {"type": "object", "additionalProperties": False}
+        output = {
+            "type": "object",
+            "properties": {
+                "source_sha256": {"type": "string"},
+                "profile_id": {"type": "string"},
+                "side_effect": {"type": "string"},
+                "job_id": {"type": "string"},
+                "stage": {"type": "string"},
+                "episode_id": {"type": "string"},
+                "tenant_id": {"type": "string"},
+                "publication_id": {"type": "string"},
+                "resources": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "uri": {"type": "string"},
+                            "mime_type": {"type": "string"},
+                        },
+                        "required": ["uri", "mime_type"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "additionalProperties": False,
+        }
+        output_fields = {
+            "poddown_preview": {"source_sha256", "profile_id", "side_effect"},
+            "poddown_render": {"job_id", "side_effect"},
+            "poddown_publish": {"publication_id", "side_effect"},
+            "poddown_get_status": {"episode_id", "stage"},
+            "poddown_get_episode": {"episode_id", "tenant_id", "resources"},
+        }
+        output_properties = cast(dict[str, dict[str, object]], output["properties"])
+
+        def scoped_output(tool: str) -> dict[str, object]:
+            return {
+                **output,
+                "properties": {
+                    key: output_properties[key] for key in output_fields[tool]
+                },
+            }
+
         common = {
             "type": "object",
             "properties": {"episode_id": {"type": "string"}},
             "required": ["episode_id"],
             "additionalProperties": False,
             "description": "Tenant-scoped episode operation.",
-            "output_schema": output,
+            "output_schema": scoped_output("poddown_get_status"),
         }
         return cast(
             dict[str, dict[str, object]],
@@ -153,9 +195,12 @@ class AgentMCPServer:
                     "required": ["source"],
                     "additionalProperties": False,
                     "description": "Validate Markdown without paid provider work.",
-                    "output_schema": output,
+                    "output_schema": scoped_output("poddown_preview"),
                 },
-                "poddown_render": common,
+                "poddown_render": {
+                    **common,
+                    "output_schema": scoped_output("poddown_render"),
+                },
                 "poddown_publish": {
                     "type": "object",
                     "properties": {
@@ -165,26 +210,31 @@ class AgentMCPServer:
                     "required": ["episode_id", "approval_id"],
                     "additionalProperties": False,
                     "description": "Publish only with fresh trusted scoped approval.",
-                    "output_schema": output,
+                    "output_schema": scoped_output("poddown_publish"),
                 },
                 "poddown_get_status": common,
-                "poddown_get_episode": common,
+                "poddown_get_episode": {
+                    **common,
+                    "output_schema": scoped_output("poddown_get_episode"),
+                },
             },
         )
 
     def call(self, tool: str, arguments: Mapping[str, object]) -> dict[str, object]:
         if tool not in TOOL_NAMES:
             return self._error("unknown_tool", "unsupported PodDown tool")
+        if not isinstance(arguments, Mapping):
+            return self._error("invalid_input", "tool arguments must be an object")
         if "tenant_id" in arguments:
             return self._error("invalid_input", "tenant scope is server-authenticated")
         validation_error = self._validate_arguments(tool, arguments)
         if validation_error:
             return self._error("invalid_input", validation_error)
-        if tool == "poddown_publish" and not self._trusted_approval(arguments):
-            return self._error(
-                "approval_required", "fresh scoped publish approval is required"
-            )
         try:
+            if tool == "poddown_publish" and not self._trusted_approval(arguments):
+                return self._error(
+                    "approval_required", "fresh scoped publish approval is required"
+                )
             gateway_arguments = dict(arguments)
             if tool == "poddown_preview":
                 gateway_arguments["source"] = str(arguments["source"]).encode("utf-8")
@@ -252,8 +302,12 @@ class AgentMCPServer:
             "manifest_sha256",
             "status",
         }
-        safe = {key: value for key, value in result.items() if key in allowed}
-        resources = safe.get("resources")
+        safe: dict[str, object] = {
+            key: value
+            for key, value in result.items()
+            if key in allowed - {"resources"} and isinstance(value, str)
+        }
+        resources = result.get("resources")
         if isinstance(resources, list):
             safe["resources"] = [
                 {
@@ -261,7 +315,9 @@ class AgentMCPServer:
                     "mime_type": item.get("mime_type", "application/octet-stream"),
                 }
                 for item in resources
-                if isinstance(item, Mapping) and isinstance(item.get("uri"), str)
+                if isinstance(item, Mapping)
+                and isinstance(item.get("uri"), str)
+                and isinstance(item.get("mime_type", "application/octet-stream"), str)
             ]
         return safe
 

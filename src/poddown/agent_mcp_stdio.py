@@ -15,6 +15,8 @@ from poddown.agent_mcp import (
     LocalGateway,
 )
 
+MCP_PROTOCOL_VERSION = "2025-11-25"
+
 
 def _server_from_environment() -> AgentMCPServer | None:
     tenant_id = os.environ.get("PODDOWN_TENANT_ID")
@@ -43,11 +45,40 @@ def main() -> int:
     for line in sys.stdin:
         request = json.loads(line)
         method = request.get("method")
-        if method == "tools/list":
+        if method == "initialize":
             response = {
                 "jsonrpc": "2.0",
                 "id": request.get("id"),
-                "result": {"tools": server.schemas()},
+                "result": {
+                    "protocolVersion": MCP_PROTOCOL_VERSION,
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "poddown", "version": "0.1.0"},
+                },
+            }
+        elif method == "tools/list":
+            tools = [
+                {
+                    "name": name,
+                    "description": schema["description"],
+                    "inputSchema": {
+                        key: value
+                        for key, value in schema.items()
+                        if key
+                        in {
+                            "type",
+                            "properties",
+                            "required",
+                            "additionalProperties",
+                            "description",
+                        }
+                    },
+                }
+                for name, schema in server.schemas().items()
+            ]
+            response = {
+                "jsonrpc": "2.0",
+                "id": request.get("id"),
+                "result": {"tools": tools},
             }
         elif method == "tools/call":
             params = request.get("params")
@@ -58,10 +89,33 @@ def main() -> int:
                     "error": {"code": "invalid_input", "message": "invalid tool call"},
                 }
             else:
+                arguments = params.get("arguments", {})
+                result = server.call(str(params.get("name")), arguments)
+                if "error" in result:
+                    payload = {
+                        "isError": True,
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": json.dumps(result["error"], sort_keys=True),
+                            }
+                        ],
+                    }
+                else:
+                    structured = result.get("result", {})
+                    payload = {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": json.dumps(structured, sort_keys=True),
+                            }
+                        ],
+                        "structuredContent": structured,
+                    }
                 response = {
                     "jsonrpc": "2.0",
                     "id": request.get("id"),
-                    **server.call(str(params.get("name")), params.get("arguments", {})),
+                    "result": payload,
                 }
         else:
             response = {

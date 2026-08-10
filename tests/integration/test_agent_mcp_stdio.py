@@ -11,7 +11,11 @@ def test_stdio_supports_tools_list_and_tool_call_without_external_services():
     process = subprocess.run(
         [sys.executable, "-m", "poddown.agent_mcp_stdio"],
         input=(
-            json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+            json.dumps(
+                {"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}}
+            )
+            + "\n"
+            + json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
             + "\n"
             + json.dumps(
                 {
@@ -33,8 +37,43 @@ def test_stdio_supports_tools_list_and_tool_call_without_external_services():
     )
     responses = [json.loads(line) for line in process.stdout.splitlines()]
     assert process.returncode == 0
-    assert len(responses[0]["result"]["tools"]) == 5
-    assert responses[1]["result"]["side_effect"] == "none"
+    assert responses[0]["result"]["protocolVersion"]
+    assert responses[0]["result"]["capabilities"]["tools"] == {}
+    assert len(responses[1]["result"]["tools"]) == 5
+    assert responses[1]["result"]["tools"][0]["inputSchema"]
+    assert responses[2]["result"]["structuredContent"]["side_effect"] == "none"
+    assert responses[2]["result"]["content"][0]["type"] == "text"
+
+
+def test_stdio_rejects_null_arguments_and_continues_session():
+    environment = {**os.environ, "PODDOWN_TENANT_ID": "tenant-a"}
+    requests = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "poddown_preview", "arguments": None},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "poddown_preview", "arguments": {"source": "# Hi"}},
+        },
+    ]
+    process = subprocess.run(
+        [sys.executable, "-m", "poddown.agent_mcp_stdio"],
+        input="\n".join(json.dumps(request) for request in requests) + "\n",
+        text=True,
+        capture_output=True,
+        env=environment,
+        check=False,
+    )
+    responses = [json.loads(line) for line in process.stdout.splitlines()]
+    assert process.returncode == 0
+    assert responses[1]["result"]["isError"] is True
+    assert responses[2]["result"]["structuredContent"]["side_effect"] == "none"
 
 
 def test_stdio_fails_closed_without_authenticated_tenant():
@@ -80,7 +119,10 @@ def test_stdio_registers_trusted_environment_approval_without_printing_token():
         check=False,
     )
     assert process.returncode == 0
-    assert json.loads(process.stdout)["result"]["side_effect"] == "external_publish"
+    assert (
+        json.loads(process.stdout)["result"]["structuredContent"]["side_effect"]
+        == "external_publish"
+    )
     assert token not in process.stdout
     assert token not in process.stderr
 
@@ -109,4 +151,4 @@ def test_stdio_does_not_authorize_model_fresh_flag_without_trusted_environment()
         env=environment,
         check=False,
     )
-    assert json.loads(process.stdout)["error"]["code"] == "invalid_input"
+    assert json.loads(process.stdout)["result"]["isError"] is True
