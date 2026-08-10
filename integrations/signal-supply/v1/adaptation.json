@@ -1,0 +1,29 @@
+{
+  "proposal_id": "signal-supply-semiconductor-v1",
+  "source_episode_id": "signal-supply-semiconductor-v1",
+  "source_speaker_ids": ["spk-signal-host", "spk-supply-analyst"],
+  "expected_turn_order": ["t-supply-001", "t-supply-002", "t-supply-003", "t-supply-004"],
+  "expected_source_blocks": ["block-supply-overview", "block-capacity", "block-counter-thesis", "block-uncertainty"],
+  "factual_anchor_ids": ["claim-supply-001", "claim-capacity-001", "claim-counter-001", "claim-uncertainty-001"],
+  "source_turns": [
+    {"turn_id":"t-supply-001","speaker_id":"spk-signal-host","source_block_anchor":"block-supply-overview","claim_anchor":"claim-supply-001","text":"NVIDIA reported a 7.5% sequential increase in data-centre demand.","supported_by_source":true},
+    {"turn_id":"t-supply-002","speaker_id":"spk-supply-analyst","source_block_anchor":"block-capacity","claim_anchor":"claim-capacity-001","text":"The source describes 3.2 billion dollars of planned capacity and says the estimate is not guaranteed.","supported_by_source":true},
+    {"turn_id":"t-supply-003","speaker_id":"spk-supply-analyst","source_block_anchor":"block-counter-thesis","claim_anchor":"claim-counter-001","text":"The counter-thesis: I challenge the assumption that demand will persist before every planned facility is utilized.","supported_by_source":true,"is_disagreement":true},
+    {"turn_id":"t-supply-004","speaker_id":"spk-signal-host","source_block_anchor":"block-uncertainty","claim_anchor":"claim-uncertainty-001","text":"We are uncertain whether the reported timing will hold, and this fixture does not make an investment recommendation.","supported_by_source":true}
+  ],
+  "claims": [
+    {"claim_anchor":"claim-supply-001","source_block_anchor":"block-supply-overview","source_value":"NVIDIA reported a 7.5% sequential increase in data-centre demand in this synthetic source. The article names NVDA, ASML, TSMC and the Nasdaq only as source-bound references.","adapted_value":"NVIDIA reported a 7.5% sequential increase in data-centre demand in this synthetic source. The article names NVDA, ASML, TSMC and the Nasdaq only as source-bound references.","speaker_id":"spk-signal-host","turn_id":"t-supply-001","supported":true},
+    {"claim_anchor":"claim-capacity-001","source_block_anchor":"block-capacity","source_value":"The source describes 3.2 billion dollars of planned capacity and says the estimate is not guaranteed.","adapted_value":"The source describes 3.2 billion dollars of planned capacity and says the estimate is not guaranteed.","speaker_id":"spk-supply-analyst","turn_id":"t-supply-002","supported":true},
+    {"claim_anchor":"claim-counter-001","source_block_anchor":"block-counter-thesis","source_value":"The counter-thesis: I challenge the assumption that demand will persist before every planned facility is utilized.","adapted_value":"The counter-thesis: I challenge the assumption that demand will persist before every planned facility is utilized.","speaker_id":"spk-supply-analyst","turn_id":"t-supply-003","supported":true,"is_disagreement":true},
+    {"claim_anchor":"claim-uncertainty-001","source_block_anchor":"block-uncertainty","source_value":"We are uncertain whether the reported timing will hold, and this fixture does not make an investment recommendation.","adapted_value":"We are uncertain whether the reported timing will hold, and this fixture does not make an investment recommendation.","speaker_id":"spk-signal-host","turn_id":"t-supply-004","supported":true}
+  ],
+  "expected_critical_tokens": [
+    {"surface":"NVIDIA","source_form":"NVIDIA","spoken_form":"en-VID-ee-uh","category":"name","occurrence_id":"tok-nvidia"},
+    {"surface":"NVDA","source_form":"NVDA","spoken_form":"N V D A","category":"acronym","occurrence_id":"tok-nvda"},
+    {"surface":"ASML","source_form":"ASML","spoken_form":"A S M L","category":"acronym","occurrence_id":"tok-asml"},
+    {"surface":"TSMC","source_form":"TSMC","spoken_form":"T S M C","category":"acronym","occurrence_id":"tok-tsmc"},
+    {"surface":"7.5%","source_form":"7.5%","spoken_form":"seven point five percent","category":"percentage","occurrence_id":"tok-pct"},
+    {"surface":"3.2","source_form":"3.2","spoken_form":"three point two","category":"currency","occurrence_id":"tok-capacity"},
+    {"surface":"not","source_form":"not","spoken_form":"not","category":"negation","occurrence_id":"tok-not"}
+  ]
+}
