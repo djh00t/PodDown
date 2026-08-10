@@ -523,6 +523,7 @@ def _validate_resume_evidence(
         / "projects"
         / str(_PROJECT_ID)
         / "reference-demo"
+        / str(_EPISODE_VERSION_ID)
     )
     try:
         publication = json.loads(publication_path.read_text(encoding="utf-8"))

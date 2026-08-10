@@ -125,6 +125,27 @@ def replayed(context):
     assert context.values["result"].replayed_takes > 0
 
 
+@then("the persisted publication is scoped to its episode version")
+def episode_scoped_publication(context):
+    publication = json.loads(
+        (context.values["output_dir"] / "publication.json").read_text(encoding="utf-8")
+    )
+    published_root = (
+        context.values["output_dir"]
+        / "published"
+        / "tenants"
+        / publication["tenant_id"]
+        / "projects"
+        / publication["project_id"]
+        / publication["target_id"]
+        / publication["episode_version_id"]
+    )
+    assert published_root.is_dir()
+    assert {path.name for path in published_root.iterdir() if path.is_file()} == set(
+        REQUIRED_PACKAGE_ARTIFACTS
+    )
+
+
 @then("the package and publication identities are unchanged")
 def stable_identities(context):
     first = context.values["first"].to_dict()

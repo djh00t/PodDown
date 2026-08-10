@@ -16,6 +16,7 @@ Feature: Reference episode demo
       Given a completed reference episode demo
       When the reference episode demo is resumed
       Then the result reports replayed render takes
+      And the persisted publication is scoped to its episode version
       And the package and publication identities are unchanged
 
     Scenario: Reject tampered persisted result evidence
