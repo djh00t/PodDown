@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
@@ -217,6 +218,44 @@ def test_malformed_persisted_episode_fails_closed(tmp_path: Path) -> None:
 
     with pytest.raises(PersistenceIntegrityError):
         SQLiteEpisodeRepository(database).get(TENANT_ID, EPISODE_ID)
+
+
+@pytest.mark.parametrize("failure", ["null", "[]", "42", "false"])
+def test_non_object_persisted_failure_fails_closed(
+    tmp_path: Path, failure: str
+) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    SQLiteEpisodeRepository(database).create(episode_record())
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute("UPDATE episodes SET failure = ?", (failure,))
+        connection.commit()
+    finally:
+        connection.close()
+
+    with pytest.raises(PersistenceIntegrityError):
+        SQLiteEpisodeRepository(database).get(TENANT_ID, EPISODE_ID)
+
+
+def test_usage_events_order_by_normalized_utc_timestamp(tmp_path: Path) -> None:
+    ledger = SQLiteUsageLedger(tmp_path / "poddown.sqlite3")
+    later_textually = replace(
+        usage_event(provider_request_id="offset-later"),
+        created_at=datetime(2026, 8, 10, 1, 0, tzinfo=timezone(timedelta(hours=5))),
+    )
+    earlier_textually = replace(
+        usage_event(provider_request_id="utc-earlier"),
+        created_at=datetime(2026, 8, 10, 0, 0, tzinfo=UTC),
+    )
+    ledger.record(later_textually)
+    ledger.record(earlier_textually)
+
+    assert [
+        event.provider_request_id for event in ledger.list_for_job(TENANT_ID, JOB_ID)
+    ] == [
+        "offset-later",
+        "utc-earlier",
+    ]
 
 
 def test_malformed_persisted_usage_cost_fails_closed(tmp_path: Path) -> None:

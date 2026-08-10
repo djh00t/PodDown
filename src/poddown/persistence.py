@@ -78,7 +78,7 @@ def _json_text(value: object) -> str:
 def _timestamp(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("timestamps must be timezone-aware")
-    return value.isoformat()
+    return value.astimezone(UTC).isoformat()
 
 
 def _parse_timestamp(value: object) -> datetime:
@@ -297,7 +297,11 @@ def _episode_from_row(row: sqlite3.Row) -> EpisodeRecord:
         qa_value = json.loads(row["qa_evidence"]) if row["qa_evidence"] else None
         if qa_value is not None and not isinstance(qa_value, Mapping):
             raise ValueError("qa evidence must be a mapping")
-        failure_value = json.loads(row["failure"]) if row["failure"] else None
+        failure_value = (
+            json.loads(row["failure"]) if row["failure"] is not None else None
+        )
+        if row["failure"] is not None and not isinstance(failure_value, Mapping):
+            raise ValueError("failure must be a mapping")
         failure = (
             StructuredFailure(
                 code=failure_value["code"],
@@ -538,6 +542,24 @@ class SQLiteCommandDispatcher:
             except sqlite3.IntegrityError as error:
                 raise IdempotencyConflict() from error
         return receipt
+
+    def replay(
+        self,
+        *,
+        tenant_id: UUID,
+        episode_id: UUID,
+        command: Literal["create", "render", "publish"],
+        idempotency_key: str,
+    ) -> CommandReceipt | None:
+        """Return an existing receipt without accepting a new command."""
+        with _read_connection(self._database) as connection:
+            row = connection.execute(
+                """SELECT * FROM command_receipts
+                   WHERE tenant_id = ? AND episode_id = ?
+                   AND command = ? AND idempotency_key = ?""",
+                (str(tenant_id), str(episode_id), command, idempotency_key),
+            ).fetchone()
+        return _receipt_from_row(row) if row is not None else None
 
 
 def _usage_from_row(row: sqlite3.Row) -> UsageEvent:
