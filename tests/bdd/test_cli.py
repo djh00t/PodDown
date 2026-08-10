@@ -302,6 +302,7 @@ def action_is_safe(cli_context: dict[str, object]) -> None:
     action = cli_context["action"]
     assert "poddown preview" in action
     assert "pull_request" in action
+    assert "tests/fixtures/content/cli-preview.md" in action
     assert "workflow_dispatch:" in action
     assert "concurrency:" in action
     assert "poddown-render-approval" in action

@@ -52,7 +52,7 @@ jobs:
       - name: Validate reference Markdown
         uses: ./.github/actions/poddown-preview
         with:
-          markdown: tests/fixtures/content/robotics-mapping.md
+          markdown: tests/fixtures/content/cli-preview.md
 
   approved-render:
     name: Protected reference render
