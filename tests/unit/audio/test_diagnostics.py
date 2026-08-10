@@ -89,6 +89,18 @@ def test_clipping_and_silence_metrics_are_deterministic():
     assert diagnostics.silence_ratio == 0.5
 
 
+def test_wav_metrics_are_aggregated_in_bounded_pcm_chunks():
+    reader = _ChunkedWave((0, 1_000, -1_000, 32_767, -32_768, 0) * 4_000)
+
+    with patch("poddown.audio.diagnostics.wave.open", return_value=reader):
+        diagnostics = diagnose_wav(b"fixture")
+
+    assert diagnostics.peak_amplitude == 1.0
+    assert diagnostics.clipping_ratio == pytest.approx(2 / 6)
+    assert diagnostics.silence_ratio == pytest.approx(2 / 6)
+    assert max(reader.read_sizes) < reader.getnframes()
+
+
 @pytest.mark.parametrize("sample_width", [1, 3, 4])
 def test_supported_pcm_sample_widths_decode_deterministically(sample_width: int):
     diagnostics = diagnose_wav(
@@ -172,6 +184,31 @@ class _FakeWave:
 
     def readframes(self, _frame_count):
         return b"\0\0"
+
+
+class _ChunkedWave(_FakeWave):
+    """PCM reader that rejects one-shot reads of its full payload."""
+
+    def __init__(self, samples: tuple[int, ...]):
+        super().__init__(channels=1, sample_width=2, compression="NONE")
+        self.samples = samples
+        self.read_sizes: list[int] = []
+        self.position = 0
+
+    def getnframes(self):
+        return len(self.samples)
+
+    def readframes(self, frame_count):
+        self.read_sizes.append(frame_count)
+        if frame_count >= self.getnframes():
+            raise AssertionError("diagnostics must read PCM in bounded chunks")
+        end = min(self.position + frame_count, self.getnframes())
+        payload = b"".join(
+            sample.to_bytes(2, "little", signed=True)
+            for sample in self.samples[self.position : end]
+        )
+        self.position = end
+        return payload
 
 
 @pytest.mark.parametrize(

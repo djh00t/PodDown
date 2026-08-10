@@ -1,8 +1,11 @@
 """Deterministic diagnostics for decoded PCM WAV audio."""
 
 import wave
+from collections.abc import Iterator
 from dataclasses import dataclass
 from io import BytesIO
+
+_PCM_CHUNK_FRAMES = 8_192
 
 
 class AudioDiagnosticsError(ValueError):
@@ -73,14 +76,28 @@ def diagnose_wav(
                 raise AudioDiagnosticsError("invalid WAV metadata")
             if sample_width not in (1, 2, 3, 4):
                 raise AudioDiagnosticsError("invalid WAV sample width")
-            payload = audio.readframes(frame_count)
+            expected_size = frame_count * channels * sample_width
+            maximum = (1 << (sample_width * 8 - 1)) - 1
+            peak = clipping_samples = silent_samples = read_size = 0
+            remaining_frames = frame_count
+            while remaining_frames:
+                chunk_frames = min(remaining_frames, _PCM_CHUNK_FRAMES)
+                payload = audio.readframes(chunk_frames)
+                expected_chunk_size = chunk_frames * channels * sample_width
+                if len(payload) != expected_chunk_size:
+                    raise AudioDiagnosticsError("truncated WAV frame payload")
+                read_size += len(payload)
+                for sample in _decode_samples(payload, sample_width):
+                    peak = max(peak, abs(sample))
+                    clipping_samples += abs(sample) >= maximum
+                    silent_samples += sample == 0
+                remaining_frames -= chunk_frames
     except AudioDiagnosticsError:
         raise
     except (EOFError, OSError, ValueError, wave.Error) as error:
         raise AudioDiagnosticsError("malformed or invalid WAV audio") from error
 
-    expected_size = frame_count * channels * sample_width
-    if len(payload) != expected_size:
+    if read_size != expected_size:
         raise AudioDiagnosticsError("truncated WAV frame payload")
     if (
         expected_sample_rate_hz is not None
@@ -96,11 +113,10 @@ def diagnose_wav(
     if max_duration_seconds is not None and duration_seconds > max_duration_seconds:
         raise AudioDiagnosticsError("WAV duration exceeds the maximum")
 
-    samples = tuple(_decode_samples(payload, sample_width))
-    maximum = (1 << (sample_width * 8 - 1)) - 1
-    peak_amplitude = min(max(abs(sample) for sample in samples) / maximum, 1.0)
-    clipping_ratio = sum(abs(sample) >= maximum for sample in samples) / len(samples)
-    silence_ratio = sum(sample == 0 for sample in samples) / len(samples)
+    sample_count = frame_count * channels
+    peak_amplitude = min(peak / maximum, 1.0)
+    clipping_ratio = clipping_samples / sample_count
+    silence_ratio = silent_samples / sample_count
     return AudioDiagnostics(
         sample_rate_hz=sample_rate_hz,
         channels=channels,
@@ -139,25 +155,20 @@ def _validate_bounds(
         raise AudioDiagnosticsError("minimum duration exceeds maximum duration")
 
 
-def _decode_samples(payload: bytes, sample_width: int) -> tuple[int, ...]:
+def _decode_samples(payload: bytes, sample_width: int) -> Iterator[int]:
     if sample_width == 1:
-        return tuple(sample - 128 for sample in payload)
-    if sample_width == 2:
-        return tuple(
-            int.from_bytes(payload[index : index + 2], "little", signed=True)
-            for index in range(0, len(payload), 2)
-        )
-    if sample_width == 3:
-        return tuple(
-            int.from_bytes(
+        yield from (sample - 128 for sample in payload)
+    elif sample_width == 2:
+        for index in range(0, len(payload), 2):
+            yield int.from_bytes(payload[index : index + 2], "little", signed=True)
+    elif sample_width == 3:
+        for index in range(0, len(payload), 3):
+            yield int.from_bytes(
                 payload[index : index + 3]
                 + (b"\xff" if payload[index + 2] & 0x80 else b"\x00"),
                 "little",
                 signed=True,
             )
-            for index in range(0, len(payload), 3)
-        )
-    return tuple(
-        int.from_bytes(payload[index : index + 4], "little", signed=True)
-        for index in range(0, len(payload), 4)
-    )
+    else:
+        for index in range(0, len(payload), 4):
+            yield int.from_bytes(payload[index : index + 4], "little", signed=True)
