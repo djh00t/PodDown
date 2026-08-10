@@ -68,3 +68,30 @@ with one live-provider test deselected. Branch-aware total coverage was
 **86.56%** against the repository's 80% threshold; the object-storage module
 was **88%**. No provider, network, cloud storage, database, or credential path
 is invoked by the storage tests.
+
+## PR18 review-feedback verification
+
+The new crash-recovery, concurrent replay, directory-sync, and BDD regressions
+first failed: replay rejected a verified object with no metadata sidecar,
+one of two identical concurrent puts failed, and the linked destination
+directory was never passed to `fsync`.
+
+After the fix, focused storage integration and BDD coverage passed **25 tests**.
+The final dependency-safe branch includes PR17 as merge commit `6536ead` rather
+than a force-pushed rebase. Fresh `make check` passed **710 tests** with one
+live-provider test deselected, total branch coverage **86.53%**, Ruff, and
+strict mypy. Additional validation is recorded with:
+
+```bash
+make check
+make build
+make docs
+rtk proxy uv lock --check
+rtk proxy uv pip check
+rtk proxy uv run python -m compileall -q src tests
+git diff --check
+```
+
+The adapter verifies object bytes before recreating only the exact metadata
+sidecar, continues rejecting conflicting metadata, and fsyncs the destination
+directory after each successful hard-link publication.
