@@ -222,26 +222,26 @@
 
   Ask a Terra reviewer to inspect the M8 diff against the reference-demo acceptance criteria, with special attention to source fidelity, consent, idempotency, replay status, package artifact completeness, and claims that could confuse deterministic fixtures with live provider evidence.
 
-- [ ] **Step 3: Fix every valid Critical, Important, or acceptance-blocking finding.**
+- [x] **Step 3: Fix every valid Critical, Important, or acceptance-blocking finding.**
 
   Add a regression test before each behavior change, rerun the focused suite and `make check`, and record the review response in the PR conversation.
 
   Review remediation tasks:
 
-  - [ ] Bundle the versioned reference fixtures into the wheel and resolve them
+  - [x] Bundle the versioned reference fixtures into the wheel and resolve them
     through package resources so `poddown-demo` works after installation.
-  - [ ] Publish the disclosure text in the show-notes artifact and set receipt
+  - [x] Publish the disclosure text in the show-notes artifact and set receipt
     policy flags only for disclosure channels actually represented by the demo.
-  - [ ] Bind resume-time `result.json` fields to immutable package provenance
+  - [x] Bind resume-time `result.json` fields to immutable package provenance
     and persisted render evidence; reject tampered result evidence.
 
-- [ ] **Step 4: Re-run the complete review and verification loop.**
+- [x] **Step 4: Re-run the complete review and verification loop.**
 
   Reply to each review thread with the changed files and focused/full-gate
   evidence, resolve each thread only after its fix is pushed, and confirm the
   exact PR head is green and conflict-free.
 
-- [ ] **Step 5: Push a normal ready PR stacked on `codex/m7-production-readiness`.**
+- [x] **Step 5: Push a normal ready PR stacked on `codex/m7-production-readiness`.**
 
   Read `/Users/djh/.codex/AGENTS-DELIVERY.md`, use a Conventional Commit/PR title, include the parent branch, acceptance behavior, verification evidence, demo commands, deterministic/live limitations, and no draft flag. Monitor CI until all required checks are green; do not merge or approve.
 
