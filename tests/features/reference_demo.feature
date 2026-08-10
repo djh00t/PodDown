@@ -30,3 +30,13 @@ Feature: Reference episode demo
       Then the result records host-local speech provenance
       And three takes are rendered for every segment with stable voice bindings
       And one failed segment is regenerated before QA
+
+    Scenario: Reject a mismatched local-speech resume before dispatch
+      Given a completed local speech reference episode demo
+      When it is resumed with mismatched local renderer provenance
+      Then local speech resume fails before renderer dispatch
+
+    Scenario: Reject unsafe local-speech renderer evidence
+      Given an empty local speech reference demo output directory
+      When unsafe local speech renderers are run
+      Then each unsafe local speech renderer fails before publication

@@ -7,6 +7,7 @@ import wave
 from decimal import Decimal
 from io import BytesIO
 
+import pytest
 from pytest_bdd import given, scenarios, then, when
 
 from poddown.audio import DeterministicLocalRenderer
@@ -25,18 +26,35 @@ class FakeLocalSpeechRenderer:
     model = "host-local-tts-v1"
     mode = "local-system-tts-demo"
 
-    def provenance(self):
+    def __init__(
+        self,
+        *,
+        frames: int = 220_500,
+        sample: int = 500,
+        provenance: dict[str, object] | None = None,
+    ) -> None:
+        self.requests: list[RenderRequest] = []
+        self._frames = frames
+        self._sample = sample
+        self._provenance = provenance
+
+    def provenance(self) -> dict[str, object]:
         """Return the stable fake engine evidence asserted by this feature."""
+        if self._provenance is not None:
+            return self._provenance
         return {"engine": "fake-local-speech", "mode": self.mode}
 
     async def render(self, request: RenderRequest) -> RenderedAudio:
         """Return a quiet five-second WAV with the requested provider identity."""
+        self.requests.append(request)
         stream = BytesIO()
         with wave.open(stream, "wb") as output:
             output.setnchannels(1)
             output.setsampwidth(2)
             output.setframerate(request.sample_rate_hz)
-            output.writeframes((500).to_bytes(2, "little", signed=True) * 220_500)
+            output.writeframes(
+                self._sample.to_bytes(2, "little", signed=True) * self._frames
+            )
         audio_bytes = stream.getvalue()
         return RenderedAudio(
             audio_bytes,
@@ -92,6 +110,65 @@ def local_speech_provenance(context):
     assert details["workflow"]["renderer"]["provenance"]["engine"] == (
         "fake-local-speech"
     )
+
+
+@given("a completed local speech reference episode demo")
+def completed_local_speech_demo(context, tmp_path):
+    from poddown.demo import run_reference_demo
+
+    context.values["output_dir"] = tmp_path / "reference-demo-local-speech"
+    run_reference_demo(context.values["output_dir"], renderer=FakeLocalSpeechRenderer())
+
+
+@when("it is resumed with mismatched local renderer provenance")
+def resume_with_mismatched_local_renderer(context):
+    from poddown.demo import run_reference_demo
+
+    renderer = FakeLocalSpeechRenderer(
+        provenance={"engine": "other-local-speech", "mode": "local-system-tts-demo"}
+    )
+    context.values["renderer"] = renderer
+    context.values["resume_error"] = pytest.raises(
+        ValueError,
+        run_reference_demo,
+        context.values["output_dir"],
+        resume=True,
+        renderer=renderer,
+    )
+
+
+@then("local speech resume fails before renderer dispatch")
+def resume_fails_before_dispatch(context):
+    assert "renderer identity" in str(context.values["resume_error"].value)
+    assert context.values["renderer"].requests == []
+
+
+@when("unsafe local speech renderers are run")
+def run_unsafe_local_speech_renderers(context):
+    from poddown.demo import run_reference_demo
+
+    cases = (
+        FakeLocalSpeechRenderer(frames=44_100),
+        FakeLocalSpeechRenderer(sample=32_767),
+        FakeLocalSpeechRenderer(provenance={}),
+    )
+    errors: list[ValueError] = []
+    for index, renderer in enumerate(cases):
+        with pytest.raises(ValueError) as error:
+            run_reference_demo(
+                context.values["output_dir"] / str(index), renderer=renderer
+            )
+        errors.append(error.value)
+    context.values["unsafe_errors"] = errors
+    context.values["unsafe_renderers"] = cases
+
+
+@then("each unsafe local speech renderer fails before publication")
+def unsafe_local_speech_fails(context):
+    assert "media inspection" in str(context.values["unsafe_errors"][0])
+    assert "failed hard gates" in str(context.values["unsafe_errors"][1])
+    assert "provenance" in str(context.values["unsafe_errors"][2])
+    assert context.values["unsafe_renderers"][2].requests == []
 
 
 @then("the result records a validated source profile and two speakers")

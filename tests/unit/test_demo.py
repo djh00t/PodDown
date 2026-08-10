@@ -23,11 +23,24 @@ class FakeLocalSpeechRenderer:
     model = "host-local-tts-v1"
     mode = "local-system-tts-demo"
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        frames: int = 220_500,
+        sample: int = 500,
+        cost: Decimal = Decimal("0"),
+        provenance: dict[str, object] | None = None,
+    ) -> None:
         self.requests: list[RenderRequest] = []
+        self._frames = frames
+        self._sample = sample
+        self._cost = cost
+        self._provenance = provenance
 
     def provenance(self) -> dict[str, object]:
         """Return fixed local-engine evidence for the reference workflow."""
+        if self._provenance is not None:
+            return self._provenance
         return {"engine": "fake-local-speech", "mode": self.mode}
 
     async def render(self, request: RenderRequest) -> RenderedAudio:
@@ -38,7 +51,9 @@ class FakeLocalSpeechRenderer:
             output.setnchannels(1)
             output.setsampwidth(2)
             output.setframerate(request.sample_rate_hz)
-            output.writeframes((500).to_bytes(2, "little", signed=True) * 220_500)
+            output.writeframes(
+                self._sample.to_bytes(2, "little", signed=True) * self._frames
+            )
         audio_bytes = stream.getvalue()
         return RenderedAudio(
             audio_bytes=audio_bytes,
@@ -46,7 +61,7 @@ class FakeLocalSpeechRenderer:
             model=request.model,
             request_id=f"fake-{request.segment_id}-{request.take_index}",
             usage=ProviderUsage(len(request.expected_spoken_text), len(audio_bytes)),
-            cost=Decimal("0"),
+            cost=self._cost,
             output_format="wav",
             sample_rate_hz=request.sample_rate_hz,
         )
@@ -170,8 +185,82 @@ def test_resume_rejects_renderer_mode_or_identity_change(tmp_path: Path) -> None
     output = tmp_path / "output"
     run_reference_demo(output, renderer=FakeLocalSpeechRenderer())
 
-    with pytest.raises(ValueError, match="result evidence"):
+    with pytest.raises(ValueError, match="renderer identity"):
         run_reference_demo(output, resume=True)
+
+
+def test_resume_renderer_mismatch_fails_before_any_render_dispatch(
+    tmp_path: Path,
+) -> None:
+    """Persisted renderer identity must be checked before durable replay work."""
+    from poddown.demo import run_reference_demo
+
+    output = tmp_path / "output"
+    run_reference_demo(output, renderer=FakeLocalSpeechRenderer())
+    mismatched = FakeLocalSpeechRenderer(
+        provenance={"engine": "other-local-speech", "mode": "local-system-tts-demo"}
+    )
+
+    with pytest.raises(ValueError, match="renderer identity"):
+        run_reference_demo(output, resume=True, renderer=mismatched)
+
+    assert mismatched.requests == []
+
+
+def test_demo_rejects_non_offline_renderer_before_rendering(tmp_path: Path) -> None:
+    """A network-style renderer must not enter the local consent workflow."""
+    from poddown.demo import run_reference_demo
+
+    renderer = FakeLocalSpeechRenderer()
+    renderer.provider = "elevenlabs"
+    renderer.model = "eleven_multilingual_v2"
+    renderer.mode = "network-tts"
+
+    with pytest.raises(ValueError, match="approved offline renderer"):
+        run_reference_demo(tmp_path / "output", renderer=renderer)
+
+    assert renderer.requests == []
+
+
+def test_host_local_non_zero_cost_is_rejected_before_packaging(tmp_path: Path) -> None:
+    """The reference-demo host-local contract is strictly zero-cost."""
+    from poddown.demo import run_reference_demo
+
+    renderer = FakeLocalSpeechRenderer(cost=Decimal("0.01"))
+
+    with pytest.raises(ValueError, match="zero-cost"):
+        run_reference_demo(tmp_path / "output", renderer=renderer)
+
+    assert renderer.requests
+
+
+@pytest.mark.parametrize(
+    ("renderer", "message"),
+    [
+        (FakeLocalSpeechRenderer(frames=44_100), "media inspection"),
+        (FakeLocalSpeechRenderer(sample=32_767), "failed hard gates"),
+    ],
+)
+def test_local_speech_media_gates_reject_unsafe_audio(
+    tmp_path: Path, renderer: FakeLocalSpeechRenderer, message: str
+) -> None:
+    """Local speech masters must meet duration and peak safety gates."""
+    from poddown.demo import run_reference_demo
+
+    with pytest.raises(ValueError, match=message):
+        run_reference_demo(tmp_path / "output", renderer=renderer)
+
+
+def test_local_speech_missing_provenance_fails_before_rendering(tmp_path: Path) -> None:
+    """Host-local engine evidence is mandatory before consent construction."""
+    from poddown.demo import run_reference_demo
+
+    renderer = FakeLocalSpeechRenderer(provenance={})
+
+    with pytest.raises(ValueError, match="provenance"):
+        run_reference_demo(tmp_path / "output", renderer=renderer)
+
+    assert renderer.requests == []
 
 
 def test_demo_cli_defaults_to_local_speech_and_allows_deterministic_override(

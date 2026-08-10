@@ -164,27 +164,26 @@ class _FailOnceRenderer:
         self._failed_segment_id = failed_segment_id
         self._failed = False
         self._delegate = delegate
+        self._identity = _renderer_identity(delegate)
 
     @property
     def provider(self) -> str:
         """Return the delegate provider used in render requests."""
-        return cast(str, _renderer_identity(self._delegate)["provider"])
+        return cast(str, self._identity["provider"])
 
     @property
     def model(self) -> str:
         """Return the delegate model used in render requests."""
-        return cast(str, _renderer_identity(self._delegate)["model"])
+        return cast(str, self._identity["model"])
 
     @property
     def mode(self) -> str:
         """Return the delegate mode persisted in demo evidence."""
-        return cast(str, _renderer_identity(self._delegate)["mode"])
+        return cast(str, self._identity["mode"])
 
     def provenance(self) -> Mapping[str, object]:
         """Return the provenance declared by the delegate renderer."""
-        return cast(
-            Mapping[str, object], _renderer_identity(self._delegate)["provenance"]
-        )
+        return cast(Mapping[str, object], self._identity["provenance"])
 
     async def render(self, request: RenderRequest) -> RenderedAudio:
         if request.segment_id == self._failed_segment_id and not self._failed:
@@ -232,6 +231,12 @@ def _renderer_identity(renderer: AudioRenderer) -> Mapping[str, object]:
     }
     if not all(isinstance(value, str) and value for value in identity.values()):
         raise ValueError("renderer identity is incomplete")
+    if identity != {
+        "provider": "host-local",
+        "model": "host-local-tts-v1",
+        "mode": "local-system-tts-demo",
+    }:
+        raise ValueError("renderer is not an approved offline renderer")
     provenance = getattr(renderer, "provenance", None)
     if not callable(provenance):
         raise ValueError("renderer provenance is unavailable")
@@ -239,6 +244,31 @@ def _renderer_identity(renderer: AudioRenderer) -> Mapping[str, object]:
     if not isinstance(value, Mapping) or not value:
         raise ValueError("renderer provenance is unavailable")
     return {**identity, "provenance": dict(value)}
+
+
+def _validate_persisted_renderer_identity(
+    root: Path, value: Mapping[str, object], renderer: Mapping[str, object]
+) -> None:
+    """Reject incompatible persisted renderer evidence before any replay work."""
+    if value.get("mode") != renderer["mode"]:
+        raise ValueError("persisted renderer identity is unavailable or invalid")
+    package = EpisodePackageService(
+        PackageArtifactStore(root / "package-artifacts"), root / "packages"
+    ).get(_EPISODE_VERSION_ID)
+    if package is None:
+        raise ValueError("persisted package evidence is unavailable or invalid")
+    details = package.provenance.details
+    provider = details.get("provider")
+    workflow = details.get("workflow")
+    if (
+        package.provenance.renderer != renderer["model"]
+        or not isinstance(provider, Mapping)
+        or provider.get("provider") != renderer["provider"]
+        or provider.get("model") != renderer["model"]
+        or not isinstance(workflow, Mapping)
+        or workflow.get("renderer") != renderer
+    ):
+        raise ValueError("persisted renderer identity is unavailable or invalid")
 
 
 def _read_text(path: Path | Traversable) -> str:
@@ -475,6 +505,8 @@ def _validate_resume_evidence(
     fixture: _ReferenceFixture,
     selected: tuple[RenderOutcome, ...],
     renderer: Mapping[str, object],
+    render_requests: int,
+    render_cost: str,
 ) -> None:
     """Authenticate package, publication, and result evidence before replay."""
     manifest_path = root / "packages" / f"{_EPISODE_VERSION_ID}.json"
@@ -524,7 +556,7 @@ def _validate_resume_evidence(
             outcome.candidate.candidate_id for outcome in selected
         ],
         "take_count": 3,
-        "render_requests": len(selected) * 3 + 1,
+        "render_requests": render_requests,
         "voice_bindings": voice_bindings,
         "renderer": renderer,
     }
@@ -554,8 +586,8 @@ def _validate_resume_evidence(
         "critical_token_accuracy": package.provenance.critical_token_accuracy,
         "package_artifacts": list(REQUIRED_PACKAGE_ARTIFACTS),
         "package_manifest_sha256": expected_manifest_sha,
-        "usage": {"render_requests": expected_workflow["render_requests"]},
-        "cost": details.get("cost"),
+        "usage": {"render_requests": render_requests},
+        "cost": render_cost,
         "mcp_preview": _mcp_preview(fixture.source, prepared.profile.profile_id),
         "voice_bindings": expected_workflow["voice_bindings"],
     }
@@ -667,7 +699,9 @@ async def _render_segments(
     fixture: _ReferenceFixture,
     output_dir: Path,
     renderer: AudioRenderer,
-) -> tuple[tuple[RenderOutcome, ...], tuple[str, ...], tuple[str, ...], int]:
+) -> tuple[
+    tuple[RenderOutcome, ...], tuple[str, ...], tuple[str, ...], int, int, Decimal
+]:
     artifacts = FilesystemArtifactStore(output_dir / "artifacts")
     records = FilesystemRenderRecordStore(output_dir / "render-records", artifacts)
     service = DurableRenderService(artifacts, records)
@@ -686,6 +720,8 @@ async def _render_segments(
     failed: list[str] = []
     regenerated: list[str] = []
     replayed = 0
+    successful_requests = 0
+    render_cost = Decimal("0")
     for segment in prepared.segments:
         speaker = next(
             item
@@ -719,6 +755,13 @@ async def _render_segments(
                 request, consent, fail_once_renderer, take_count=3
             )
         replayed += sum(outcome.replayed for outcome in outcomes)
+        successful_requests += len(outcomes)
+        outcome_cost = sum(
+            (outcome.candidate.cost for outcome in outcomes), Decimal("0")
+        )
+        if outcome_cost != 0:
+            raise ValueError("offline local render candidates must be zero-cost")
+        render_cost += outcome_cost
         segment_transcript = " ".join(
             token.expected_spoken_form for token in segment.critical_tokens
         )
@@ -747,7 +790,14 @@ async def _render_segments(
                 if outcome.candidate.candidate_id == choice.candidate_id
             )
         )
-    return tuple(selected), tuple(failed), tuple(regenerated), replayed
+    return (
+        tuple(selected),
+        tuple(failed),
+        tuple(regenerated),
+        replayed,
+        successful_requests + len(failed),
+        render_cost,
+    )
 
 
 def run_reference_demo(
@@ -770,20 +820,41 @@ def run_reference_demo(
     _write_status(root, "prepared", {"manifest_sha256": prepared.manifest_sha256})
     selected_renderer = renderer or DeterministicLocalRenderer()
     renderer_identity = _renderer_identity(selected_renderer)
-    selected, failed, regenerated, replayed = asyncio.run(
+    previous: Mapping[str, object] | None = None
+    persisted_render_requests: int | None = None
+    if resume and (root / "result.json").is_file():
+        value = json.loads((root / "result.json").read_text(encoding="utf-8"))
+        if not isinstance(value, Mapping):
+            raise ValueError("persisted result evidence is malformed")
+        _validate_persisted_renderer_identity(root, value, renderer_identity)
+        usage = value.get("usage")
+        if (
+            not isinstance(usage, Mapping)
+            or type(usage.get("render_requests")) is not int
+        ):
+            raise ValueError("persisted result evidence is malformed")
+        previous = value
+        persisted_render_requests = cast(int, usage["render_requests"])
+    selected, failed, regenerated, replayed, render_requests, render_cost = asyncio.run(
         _render_segments(prepared, fixture, root, selected_renderer)
     )
+    if persisted_render_requests is not None:
+        render_requests = persisted_render_requests
     _write_status(
         root,
         "rendering",
         {"failed_segment_ids": list(failed), "replayed_takes": replayed},
     )
-    if resume and (root / "result.json").is_file():
-        previous = json.loads((root / "result.json").read_text(encoding="utf-8"))
-        if not isinstance(previous, Mapping):
-            raise ValueError("persisted result evidence is malformed")
+    if previous is not None:
         _validate_resume_evidence(
-            root, previous, prepared, fixture, selected, renderer_identity
+            root,
+            previous,
+            prepared,
+            fixture,
+            selected,
+            renderer_identity,
+            render_requests,
+            str(render_cost),
         )
         result = _result_from_dict(previous, replayed)
         _write_json(root / "result.json", result.to_dict())
@@ -852,7 +923,7 @@ def run_reference_demo(
             outcome.candidate.candidate_id for outcome in selected
         ],
         "take_count": 3,
-        "render_requests": len(selected) * 3 + 1,
+        "render_requests": render_requests,
         "voice_bindings": voice_bindings,
         "renderer": renderer_identity,
     }
@@ -892,10 +963,10 @@ def run_reference_demo(
                 _EPISODE_VERSION_ID,
                 outcome.candidate.request_id,
                 "render",
-                {"requests": 3},
+                {"requests": render_requests // len(selected)},
                 "USD",
-                Decimal("0"),
-                Decimal("0"),
+                outcome.candidate.cost,
+                outcome.candidate.cost,
                 datetime(2026, 8, 10, tzinfo=UTC),
             )
         )
@@ -926,7 +997,7 @@ def run_reference_demo(
     )
     _write_json(
         root / "usage.json",
-        {"render_requests": len(selected) * 3 + 1, "cost": "0"},
+        {"render_requests": render_requests, "cost": str(render_cost)},
     )
     _write_json(root / "publication.json", receipt.to_dict())
     _write_status(root, "published", {"publication_id": receipt.external_id})
@@ -945,8 +1016,8 @@ def run_reference_demo(
         tuple(artifact.name for artifact in artifacts),
         manifest_sha,
         receipt.external_id,
-        {"render_requests": len(selected) * 3 + 1},
-        "0",
+        {"render_requests": render_requests},
+        str(render_cost),
         replayed if resume else 0,
         _mcp_preview(fixture.source, prepared.profile.profile_id),
         voice_bindings,
