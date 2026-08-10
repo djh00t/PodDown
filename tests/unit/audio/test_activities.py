@@ -70,6 +70,21 @@ class RaisingFakeTranscriber:
         raise self.error
 
 
+class BlockingFakeTranscriber(FixedFakeTranscriber):
+    """Hold a deterministic provider response until concurrent callers arrive."""
+
+    def __init__(self, *, text: str):
+        super().__init__(text=text)
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def transcribe(self, audio: bytes) -> TranscriptResult:
+        assert audio
+        self.started.set()
+        await self.release.wait()
+        return await super().transcribe(audio)
+
+
 class FailOnceQualityRecordStore(FilesystemQualityRecordStore):
     """Simulate worker loss after the transcription record is committed."""
 
@@ -406,6 +421,43 @@ def test_activity_replays_atomic_transcription_record_after_quality_failure(tmp_
     assert transcriber.calls == 1
 
 
+def test_transcription_claim_serializes_concurrent_find_transcribe_save(tmp_path):
+    """Concurrent retries must share one paid transcription result."""
+    request = request_for()
+    rendered = asyncio.run(DeterministicLocalRenderer().render(request))
+    diagnostics = diagnose_wav(
+        rendered.audio_bytes,
+        expected_sample_rate_hz=request.sample_rate_hz,
+        expected_channels=1,
+    )
+    transcriber = BlockingFakeTranscriber(text=request.expected_spoken_text)
+    transcription_records = FilesystemTranscriptionRecordStore(
+        tmp_path / "transcriptions"
+    )
+    first_evaluator = build_transcription_quality_evaluator(
+        transcriber, transcription_records=transcription_records
+    )
+    second_evaluator = build_transcription_quality_evaluator(
+        transcriber, transcription_records=transcription_records
+    )
+
+    async def evaluate_concurrently():
+        first = asyncio.create_task(
+            first_evaluator(request, rendered.audio_bytes, diagnostics, ("Temporal",))
+        )
+        await transcriber.started.wait()
+        second = asyncio.create_task(
+            second_evaluator(request, rendered.audio_bytes, diagnostics, ("Temporal",))
+        )
+        transcriber.release.set()
+        return await asyncio.gather(first, second)
+
+    first, second = asyncio.run(evaluate_concurrently())
+
+    assert first.transcription == second.transcription
+    assert transcriber.calls == 1
+
+
 def test_quality_cache_keeps_ordered_critical_tokens_in_its_identity(tmp_path):
     """A changed token order must re-evaluate QA without rerendering audio."""
     artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
@@ -432,6 +484,31 @@ def test_quality_cache_keeps_ordered_critical_tokens_in_its_identity(tmp_path):
     assert first_result.candidate_id == second_result.candidate_id
     assert first_result.fidelity != second_result.fidelity
     assert len(renderer.calls) == 1
+
+
+def test_quality_cache_requires_authenticated_render_record_and_artifact(tmp_path):
+    """Cached QA must not bypass a missing immutable audio artifact."""
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
+    records = FilesystemRenderRecordStore(tmp_path / "records", artifacts)
+    quality_records = FilesystemQualityRecordStore(tmp_path / "quality")
+    renderer = DeterministicLocalRenderer()
+    activity = build_durable_render_activity(
+        DurableRenderService(artifacts, records),
+        renderer,
+        artifacts,
+        quality_records=quality_records,
+    )
+    episode = episode_for()
+
+    asyncio.run(activity(payload_for(episode)))
+    artifact = records.find(episode.segments[0].render_request.idempotency_key)
+    assert artifact is not None
+    (tmp_path / "artifacts" / artifact.candidate.artifact.relative_path).unlink()
+
+    with pytest.raises(ApplicationError) as error:
+        asyncio.run(activity(payload_for(episode)))
+
+    assert error.value.type == "MalformedAudioError"
 
 
 def test_quality_evaluator_rejects_empty_audio():

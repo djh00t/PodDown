@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import fcntl
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from decimal import Decimal
 from hashlib import sha256
 from inspect import isawaitable
+from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from temporalio import activity
@@ -50,6 +55,33 @@ type QualityEvaluator = Callable[
     CandidateQuality | Awaitable[CandidateQuality],
 ]
 type ActivityHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+
+_TRANSCRIPTION_CLAIMS: dict[tuple[Path, str], Lock] = {}
+_TRANSCRIPTION_CLAIMS_GUARD = Lock()
+
+
+@asynccontextmanager
+async def _transcription_claim(
+    records: FilesystemTranscriptionRecordStore, candidate_id: str
+) -> AsyncIterator[None]:
+    """Hold a process and filesystem claim until transcription evidence is saved."""
+    root = records._root
+    claim_key = (root, candidate_id)
+    with _TRANSCRIPTION_CLAIMS_GUARD:
+        process_lock = _TRANSCRIPTION_CLAIMS.setdefault(claim_key, Lock())
+    await asyncio.to_thread(process_lock.acquire)
+    claim_path = root / ".claims" / f"{candidate_id}.lock"
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    claim_file = claim_path.open("a", encoding="utf-8")
+    try:
+        await asyncio.to_thread(fcntl.flock, claim_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            await asyncio.to_thread(fcntl.flock, claim_file.fileno(), fcntl.LOCK_UN)
+    finally:
+        claim_file.close()
+        process_lock.release()
 
 
 def _quality_cache_key(request: RenderRequest, critical_tokens: tuple[str, ...]) -> str:
@@ -117,51 +149,19 @@ def build_transcription_quality_evaluator(
         if not isinstance(audio_bytes, bytes) or not audio_bytes:
             raise TranscriptionFailureError("transcription requires audio bytes")
         audio_checksum = sha256(audio_bytes).hexdigest()
-        persisted = None
-        if transcription_records is not None:
-            try:
-                persisted = transcription_records.find(request.candidate_id)
-            except ArtifactIntegrityError as error:
-                raise TranscriptionFailureError(
-                    "persisted transcription evidence is invalid"
-                ) from error
-        if persisted is not None:
-            result = persisted.result
+        if transcription_records is None:
+            result = await _transcribe(transcriber, audio_bytes)
         else:
-            try:
-                result = await transcriber.transcribe(audio_bytes)
-            except (ProviderRateLimited, TimeoutError) as error:
-                raise TranscriptionTransientError(
-                    "transcription provider temporarily unavailable"
-                ) from error
-            except (ProviderRequestFailed, ValueError, TypeError) as error:
-                raise TranscriptionFailureError(
-                    "transcription provider returned invalid evidence"
-                ) from error
-            except TranscriptionTransientError:
-                raise
-            except Exception as error:
-                raise TranscriptionFailureError(
-                    "transcription provider failed"
-                ) from error
-            if not isinstance(result, TranscriptResult):
-                raise TranscriptionFailureError(
-                    "transcriber returned malformed evidence"
+            async with _transcription_claim(
+                transcription_records, request.candidate_id
+            ):
+                result = await _find_or_transcribe(
+                    transcription_records,
+                    request.candidate_id,
+                    transcriber,
+                    audio_bytes,
                 )
-        if not result.text.strip():
-            raise TranscriptionFailureError("transcriber returned empty text")
-        if result.checksum != audio_checksum:
-            raise TranscriptionFailureError(
-                "transcript checksum does not match audio bytes"
-            )
-        if persisted is None and transcription_records is not None:
-            try:
-                persisted = transcription_records.save(request.candidate_id, result)
-            except (ArtifactIntegrityError, IdempotencyConflictError) as error:
-                raise TranscriptionFailureError(
-                    "transcription evidence could not be persisted"
-                ) from error
-            result = persisted.result
+        _validate_transcript(result, audio_checksum)
         fidelity = evaluate_critical_tokens(critical_tokens, result.text)
         return CandidateQuality(
             candidate_id=request.candidate_id,
@@ -173,6 +173,62 @@ def build_transcription_quality_evaluator(
         )
 
     return evaluate
+
+
+async def _find_or_transcribe(
+    records: FilesystemTranscriptionRecordStore,
+    candidate_id: str,
+    transcriber: Transcriber,
+    audio_bytes: bytes,
+) -> TranscriptResult:
+    """Load existing evidence or atomically persist exactly one provider response."""
+    try:
+        persisted = records.find(candidate_id)
+    except ArtifactIntegrityError as error:
+        raise TranscriptionFailureError(
+            "persisted transcription evidence is invalid"
+        ) from error
+    if persisted is not None:
+        return persisted.result
+    result = await _transcribe(transcriber, audio_bytes)
+    _validate_transcript(result, sha256(audio_bytes).hexdigest())
+    try:
+        return records.save(candidate_id, result).result
+    except (ArtifactIntegrityError, IdempotencyConflictError) as error:
+        raise TranscriptionFailureError(
+            "transcription evidence could not be persisted"
+        ) from error
+
+
+async def _transcribe(transcriber: Transcriber, audio_bytes: bytes) -> TranscriptResult:
+    """Map provider failures to stable workflow transcription errors."""
+    try:
+        result = await transcriber.transcribe(audio_bytes)
+    except (ProviderRateLimited, TimeoutError) as error:
+        raise TranscriptionTransientError(
+            "transcription provider temporarily unavailable"
+        ) from error
+    except (ProviderRequestFailed, ValueError, TypeError) as error:
+        raise TranscriptionFailureError(
+            "transcription provider returned invalid evidence"
+        ) from error
+    except TranscriptionTransientError:
+        raise
+    except Exception as error:
+        raise TranscriptionFailureError("transcription provider failed") from error
+    if not isinstance(result, TranscriptResult):
+        raise TranscriptionFailureError("transcriber returned malformed evidence")
+    return result
+
+
+def _validate_transcript(result: TranscriptResult, audio_checksum: str) -> None:
+    """Require non-empty evidence bound to the exact transcribed audio."""
+    if not result.text.strip():
+        raise TranscriptionFailureError("transcriber returned empty text")
+    if result.checksum != audio_checksum:
+        raise TranscriptionFailureError(
+            "transcript checksum does not match audio bytes"
+        )
 
 
 def build_durable_render_activity(
@@ -286,11 +342,6 @@ async def _run_render_activity(
     service.preflight(request, segment.consent, renderer)
     if quality_records is not None:
         quality_key = _quality_cache_key(request, segment.critical_tokens)
-        persisted_quality = quality_records.find(
-            quality_key, expected_candidate_id=request.candidate_id
-        )
-        if persisted_quality is not None:
-            return persisted_quality.to_dict()
     outcomes = await service.render_takes(
         request,
         segment.consent,

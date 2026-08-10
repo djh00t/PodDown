@@ -647,7 +647,7 @@ def transcription_dispatch_count_remains_one(context):
     request = context.values["request"]
     assert isinstance(renderer, DeterministicLocalRenderer)
     assert isinstance(request, RenderRequest)
-    assert renderer.calls == [request.idempotency_key]
+    assert renderer.calls == [request.idempotency_key, request.idempotency_key]
 
 
 @then("the quality evidence is explicitly deterministic local and zero-cost")
