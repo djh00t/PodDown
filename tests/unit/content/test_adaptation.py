@@ -239,6 +239,32 @@ def test_adapt_source_rejects_words_supported_only_by_broad_source_anchor():
     assert error.value.code == "unsupported_claim"
 
 
+def test_source_bound_gate_rejects_words_combined_from_unrelated_claims():
+    """Catch a contradictory sentence accepted by claim-wide word membership."""
+    from poddown.content.adaptation import AdaptationError, _assert_source_bound
+    from poddown.content.models import ScriptTurn
+
+    source = snapshot_source("Alice likes apples. Bob hates pears.")
+    block = source.blocks[0]
+    alice_start = source.source.index("Alice")
+    bob_start = source.source.index("Bob")
+    alice = SourceAnchor(
+        block.block_id, alice_start, alice_start + len("Alice likes apples.")
+    )
+    bob = SourceAnchor(block.block_id, bob_start, bob_start + len("Bob hates pears."))
+    turn = ScriptTurn(
+        "turn-contradiction",
+        "spk-archivist-1",
+        "Alice hates apples.",
+        "factual",
+        (alice, bob),
+        (alice, bob),
+    )
+
+    with pytest.raises(AdaptationError, match="unsupported_claim"):
+        _assert_source_bound(turn, source)
+
+
 def test_adapt_source_rejects_invalid_source_anchor():
     """Every declared source anchor must resolve even when claims are narrower."""
     from poddown.content.adaptation import AdaptationError

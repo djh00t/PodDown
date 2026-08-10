@@ -297,6 +297,16 @@ def _assert_source_bound(turn: ScriptTurn, source: SourceSnapshot) -> None:
     claim_text = "\n".join(
         _safe_anchor_text(source, anchor, turn.turn_id) for anchor in turn.claim_anchors
     )
+    normalized_turn = " ".join(turn.text.casefold().split())
+    if not any(
+        normalized_turn
+        in " ".join(_safe_anchor_text(source, anchor, turn.turn_id).casefold().split())
+        for anchor in turn.claim_anchors
+    ):
+        raise AdaptationError(
+            "unsupported_claim",
+            f"claim is not supported by one anchor in turn {turn.turn_id}",
+        )
     source_tokens = _token_counts(claim_text)
     script_tokens = _token_counts(turn.text)
     for token, count in script_tokens.items():
