@@ -3,16 +3,115 @@
 from __future__ import annotations
 
 import json
+import re
 import wave
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 
 import pytest
+import yaml
 
 from poddown.audio import DeterministicLocalRenderer
 from poddown.audio.contracts import RenderedAudio, RenderRequest
 from poddown.domain import ProviderUsage
+
+REFERENCE_FIXTURE = Path(__file__).parents[2] / "integrations" / "reference-demo" / "v1"
+
+
+def test_reference_demo_fixture_has_a_source_bound_local_dialogue() -> None:
+    """The listenable demo must retain its complete source and local voice proof."""
+    source = (REFERENCE_FIXTURE / "source.md").read_text(encoding="utf-8")
+    adaptation = json.loads(
+        (REFERENCE_FIXTURE / "adaptation.json").read_text(encoding="utf-8")
+    )
+    voices = yaml.safe_load(
+        (REFERENCE_FIXTURE / "voices.yaml").read_text(encoding="utf-8")
+    )
+
+    turns = adaptation["source_turns"]
+    claims = adaptation["claims"]
+    claims_by_anchor = {claim["claim_anchor"]: claim for claim in claims}
+
+    assert len(turns) >= 56
+    assert {turn["speaker_id"] for turn in turns} == {"ref-host", "ref-analyst"}
+    assert all(
+        turn["text"] == claims_by_anchor[turn["claim_anchor"]]["adapted_value"]
+        for turn in turns
+    )
+    assert all(
+        turn["source_block_anchor"]
+        == claims_by_anchor[turn["claim_anchor"]]["source_block_anchor"]
+        and claims_by_anchor[turn["claim_anchor"]]["source_value"] in source
+        for turn in turns
+    )
+    for token in (
+        "LiDAR",
+        "C1",
+        "2026-07-31",
+        "99.7%",
+        "1.2 km",
+        "not",
+        "uncertain",
+        "counter-thesis",
+        "disagree",
+    ):
+        assert token.casefold() in source.casefold()
+    assert source.casefold().count("c1") >= 2
+    assert source.casefold().count("not") >= 2
+
+    assets = voices["assets"]
+    assert all(
+        isinstance(asset.get("local_voice"), dict)
+        and isinstance(asset["local_voice"].get("macos_say_name"), str)
+        and asset["local_voice"]["macos_say_name"]
+        and isinstance(asset["local_voice"].get("espeak_name"), str)
+        and asset["local_voice"]["espeak_name"]
+        for asset in assets
+    )
+
+
+def test_reference_demo_declared_tokens_match_prepared_canonical_tokens() -> None:
+    """The fixture token evidence must match the prepared script exactly."""
+    from poddown.content.service import prepare_content
+    from poddown.demo import _build_content_request, _load_reference_fixture
+
+    fixture = _load_reference_fixture(REFERENCE_FIXTURE)
+    prepared = prepare_content(_build_content_request(fixture))
+
+    assert fixture.adaptation["expected_critical_tokens"] == [
+        {
+            "surface": prepared.snapshot.source[
+                token.source_span[0] : token.source_span[1]
+            ],
+            "source_form": prepared.snapshot.source[
+                token.source_span[0] : token.source_span[1]
+            ],
+            "spoken_form": token.expected_spoken_form,
+            "category": token.category,
+            "occurrence_id": token.occurrence_id,
+        }
+        for token in prepared.tokens
+    ]
+
+
+def test_reference_demo_prepared_dialogue_meets_target_length() -> None:
+    """Prepared fixture dialogue must be long enough for the twelve-minute target."""
+    from poddown.content.service import prepare_content
+    from poddown.demo import _build_content_request, _load_reference_fixture
+
+    fixture = _load_reference_fixture(REFERENCE_FIXTURE)
+    turns = prepare_content(_build_content_request(fixture)).script.turns
+    script_words = re.findall(
+        r"[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)?%?", " ".join(turn.text for turn in turns)
+    )
+    speaker_ids = [turn.speaker_id for turn in turns]
+
+    assert 1_600 <= len(script_words) <= 2_000
+    assert set(speaker_ids) == {"ref-host", "ref-analyst"}
+    assert all(
+        left != right for left, right in zip(speaker_ids, speaker_ids[1:], strict=False)
+    )
 
 
 class FakeLocalSpeechRenderer:
@@ -291,7 +390,8 @@ def test_demo_cli_defaults_to_local_speech_and_allows_deterministic_override(
     selected: list[object] = []
 
     class LocalRenderer:
-        pass
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
 
     class DeterministicRenderer:
         pass
