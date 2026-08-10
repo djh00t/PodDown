@@ -39,3 +39,19 @@ def test_compose_contract_declares_runtime_build_context_and_entrypoints() -> No
     assert services["worker"]["build"] == "."
     assert services["api"]["command"] == ["poddown-api"]
     assert services["worker"]["command"] == ["poddown-worker"]
+
+
+def test_api_declares_runtime_dependency_probe_endpoints_and_ready_healthcheck() -> (
+    None
+):
+    services = yaml.safe_load(COMPOSE.read_text())["services"]
+    assert services["api"]["environment"] == {
+        "PODDOWN_POSTGRES_HOST": "postgres",
+        "PODDOWN_TEMPORAL_ADDRESS": "temporal:7233",
+        "PODDOWN_NATS_HOST": "nats",
+        "PODDOWN_MINIO_ENDPOINT": "minio:9000",
+    }
+    assert services["api"]["healthcheck"]["test"] == [
+        "CMD-SHELL",
+        "curl -fsS http://localhost:8000/health/ready || exit 1",
+    ]
