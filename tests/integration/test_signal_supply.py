@@ -34,6 +34,14 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "integrations" / "signal-supply" / "v1"
 
 
+def _rendered_spoken_text(
+    segment_text: str, disclosure: dict[str, object], *, first_segment: bool
+) -> str:
+    if disclosure["spoken"] is True and first_segment:
+        return f"{disclosure['text']} {segment_text}"
+    return segment_text
+
+
 def _fixture_request():
     article = (FIXTURE / "article.md").read_text(encoding="utf-8")
     profile_yaml = (FIXTURE / "show-profile.yaml").read_text(encoding="utf-8")
@@ -100,7 +108,6 @@ def _fixture_request():
             row["category"],
         )
         for index, row in enumerate(lexicon_data["entries"], start=1)
-        if row["key"] in {"NVIDIA", "NVDA", "ASML", "TSMC", "7.5%", "3.2", "not"}
     )
     lexicon = PronunciationLexicon(
         "episode", "signal-supply-episode-lexicon-v1", entries
@@ -129,8 +136,11 @@ def _prepared_fixture():
     return prepared, proposal, voices
 
 
-def test_finance_article_uses_public_source_and_token_contracts_only():
-    request, proposal, _ = _fixture_request()
+def test_finance_article_prepares_every_shipped_lexicon_entry():
+    request, _, _ = _fixture_request()
+    lexicon_data = yaml.safe_load(
+        (FIXTURE / "lexicons.yaml").read_text(encoding="utf-8")
+    )
     prepared = prepare_content(request=request)
     nvidia = next(token for token in prepared.tokens if token.source_form == "NVIDIA")
     assert nvidia.expected_spoken_form == "en-VID-ee-uh"
@@ -143,14 +153,16 @@ def test_finance_article_uses_public_source_and_token_contracts_only():
         "spk-supply-analyst",
     }
     prepared_forms = {token.source_form for token in prepared.tokens}
-    declared_forms = {
-        item["source_form"] for item in proposal["expected_critical_tokens"]
-    }
+    declared_forms = {item["key"] for item in lexicon_data["entries"]}
     assert declared_forms <= prepared_forms
+    assert {"3.2 billion dollars", "not guaranteed", "Nasdaq"} <= prepared_forms
 
 
 def test_adapted_spoken_text_renders_locally_and_passes_public_fidelity_qa(tmp_path):
     prepared, _, voices = _prepared_fixture()
+    disclosure = yaml.safe_load(
+        (FIXTURE / "disclosure.yaml").read_text(encoding="utf-8")
+    )
     transcript = (FIXTURE / "spoken-transcript.txt").read_text(encoding="utf-8")
     tokens = tuple(token.expected_spoken_form for token in prepared.tokens)
     artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
@@ -159,7 +171,7 @@ def test_adapted_spoken_text_renders_locally_and_passes_public_fidelity_qa(tmp_p
         artifacts, FilesystemRenderRecordStore(tmp_path / "records", artifacts)
     )
     outcomes = []
-    for segment in prepared.segments:
+    for index, segment in enumerate(prepared.segments):
         speaker = next(
             item
             for item in prepared.profile.speakers
@@ -170,7 +182,9 @@ def test_adapted_spoken_text_renders_locally_and_passes_public_fidelity_qa(tmp_p
             episode_version="v1",
             segment_id=segment.segment_id,
             speaker_id=speaker.speaker_id,
-            expected_spoken_text=segment.text,
+            expected_spoken_text=_rendered_spoken_text(
+                segment.text, disclosure, first_segment=index == 0
+            ),
             voice_asset_id=speaker.voice_asset_id,
             provider="local",
             model="local-deterministic-v1",
@@ -195,6 +209,11 @@ def test_adapted_spoken_text_renders_locally_and_passes_public_fidelity_qa(tmp_p
     assert len(renderer.calls) == len(prepared.segments)
     assert fidelity.passed is True
     assert fidelity.accuracy == 1.0
+    assert disclosure["text"] in transcript
+    assert any(
+        disclosure["text"] in outcome.candidate.expected_spoken_text
+        for outcome in outcomes
+    )
 
 
 def test_robotics_fixture_digest_is_regression_baseline():

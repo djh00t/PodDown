@@ -19,7 +19,10 @@ from poddown.audio.storage import FilesystemArtifactStore, FilesystemRenderRecor
 from poddown.content.source import snapshot_source
 from poddown.qa.fidelity import evaluate_critical_tokens
 from tests.integration.test_content_pipeline import _request as robotics_request
-from tests.integration.test_signal_supply import _prepared_fixture
+from tests.integration.test_signal_supply import (
+    _prepared_fixture,
+    _rendered_spoken_text,
+)
 
 scenarios("../features/signal_supply.feature")
 
@@ -41,6 +44,9 @@ def _load(context):
             ),
             "disclosure": yaml.safe_load(
                 (FIXTURE / "disclosure.yaml").read_text(encoding="utf-8")
+            ),
+            "lexicon": yaml.safe_load(
+                (FIXTURE / "lexicons.yaml").read_text(encoding="utf-8")
             ),
             "evals": json.loads((FIXTURE / "evals.json").read_text(encoding="utf-8")),
             "proposal": json.loads(
@@ -64,10 +70,10 @@ def load_article(context):
 
 @when("critical tokens are extracted from the article")
 def extract_article_tokens(context):
-    prepared, proposal, _ = _prepared_fixture()
+    prepared, _, _ = _prepared_fixture()
     context.values["tokens"] = prepared.tokens
     context.values["declared_tokens"] = {
-        item["source_form"] for item in proposal["expected_critical_tokens"]
+        item["key"] for item in _load(context)["lexicon"]["entries"]
     }
     context.values["prepared"] = prepared
 
@@ -109,11 +115,15 @@ def critical_tokens_present(context):
     nvidia = next(token for token in prepared.tokens if token.source_form == "NVIDIA")
     assert nvidia.expected_spoken_form == "en-VID-ee-uh"
     assert nvidia.pronunciation_source.startswith("episode:")
+    assert {"3.2 billion dollars", "not guaranteed", "Nasdaq"} <= {
+        token.source_form for token in prepared.tokens
+    }
 
 
 @when("the adapted spoken text is rendered through the local PodDown contract")
 def render_spoken_text(context, tmp_path):
     prepared, _, voices = _prepared_fixture()
+    disclosure = _load(context)["disclosure"]
     artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
     renderer = DeterministicLocalRenderer()
     service = DurableRenderService(
@@ -122,7 +132,7 @@ def render_spoken_text(context, tmp_path):
     import asyncio
 
     outcomes = []
-    for segment in prepared.segments:
+    for index, segment in enumerate(prepared.segments):
         speaker = next(
             item
             for item in prepared.profile.speakers
@@ -133,7 +143,9 @@ def render_spoken_text(context, tmp_path):
             episode_version="v1",
             segment_id=segment.segment_id,
             speaker_id=speaker.speaker_id,
-            expected_spoken_text=segment.text,
+            expected_spoken_text=_rendered_spoken_text(
+                segment.text, disclosure, first_segment=index == 0
+            ),
             voice_asset_id=speaker.voice_asset_id,
             provider="local",
             model="local-deterministic-v1",
@@ -172,6 +184,18 @@ def transcript_passes_fidelity(context):
     fidelity = context.values["render"][3]
     assert fidelity.passed is True
     assert fidelity.accuracy == 1.0
+
+
+@then("the rendered request and transcript contain the synthetic-presenter disclosure")
+def rendered_output_contains_disclosure(context):
+    disclosure = _load(context)["disclosure"]
+    outcomes = context.values["render"][0]
+    transcript = (FIXTURE / "spoken-transcript.txt").read_text(encoding="utf-8")
+    assert disclosure["text"] in transcript
+    assert any(
+        disclosure["text"] in outcome.candidate.expected_spoken_text
+        for outcome in outcomes
+    )
 
 
 @then("the counter-thesis and uncertainty language remain present")
