@@ -162,6 +162,19 @@ class FilesystemRenderRecordStore:
         ) as error:
             raise ArtifactIntegrityError("render record is malformed") from error
 
+    def lock_path_for(self, idempotency_key: str) -> Path:
+        """Return the canonical per-key lock path below the record root."""
+        self._path_for(idempotency_key)
+        path = (self._root / ".locks" / f"{idempotency_key}.lock").resolve()
+        try:
+            path.relative_to(self._root)
+        except ValueError as error:
+            raise ArtifactIntegrityError(
+                "record lock path escapes storage root"
+            ) from error
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
     @staticmethod
     def _validate_durable_outcome(outcome: RenderOutcome, lookup_key: str) -> None:
         candidate = outcome.candidate

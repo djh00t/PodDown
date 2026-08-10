@@ -223,6 +223,30 @@ def test_service_rejects_malformed_wav_before_artifact_persistence(
     assert list((tmp_path / "artifacts").rglob("*")) == []
 
 
+def test_service_rejects_wav_with_a_truncated_riff_container(tmp_path):
+    """Catch a RIFF size that claims bytes beyond a complete PCM data chunk."""
+    durable_service, renderer = service(tmp_path)
+    original = renderer.render
+
+    async def truncated_container(render_request: RenderRequest) -> RenderedAudio:
+        valid = await original(render_request)
+        malformed_bytes = bytearray(valid.audio_bytes)
+        declared_size = int.from_bytes(malformed_bytes[4:8], "little")
+        malformed_bytes[4:8] = (declared_size + 1).to_bytes(4, "little")
+        rendered = replace(valid, audio_bytes=bytes(malformed_bytes))
+        return replace(
+            rendered,
+            usage=ProviderUsage(
+                len(render_request.expected_spoken_text), len(rendered.audio_bytes)
+            ),
+        )
+
+    renderer.render = truncated_container  # type: ignore[method-assign]
+
+    with pytest.raises(RenderRejectedError, match="WAV"):
+        render(durable_service, renderer)
+
+
 @pytest.mark.parametrize(
     "field,value",
     [

@@ -1,6 +1,11 @@
 """Replay-safe orchestration for immutable audio render candidates."""
 
+import asyncio
+import fcntl
+import os
 import wave
+from collections.abc import AsyncIterator
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import replace
 from io import BytesIO
 
@@ -53,23 +58,42 @@ class DurableRenderService:
             for offset in range(take_count)
         )
 
-        existing = tuple(self._records.find(item.idempotency_key) for item in requests)
-        for item, stored in zip(requests, existing, strict=True):
-            if stored is not None:
-                self._validate_persisted_outcome(item, stored)
-        outcomes: list[RenderOutcome] = []
-        for item, stored in zip(requests, existing, strict=True):
-            if stored is None:
-                outcomes.append(await self._new_outcome(item, renderer))
-            else:
-                outcomes.append(
-                    RenderOutcome(
-                        candidate=stored.candidate,
-                        cost_event=None,
-                        replayed=True,
+        async with AsyncExitStack() as claims:
+            for item in sorted(requests, key=lambda value: value.idempotency_key):
+                await claims.enter_async_context(self._claim(item.idempotency_key))
+            existing = tuple(
+                self._records.find(item.idempotency_key) for item in requests
+            )
+            for item, stored in zip(requests, existing, strict=True):
+                if stored is not None:
+                    self._validate_persisted_outcome(item, stored)
+            outcomes: list[RenderOutcome] = []
+            for item, stored in zip(requests, existing, strict=True):
+                if stored is None:
+                    outcomes.append(await self._new_outcome(item, renderer))
+                else:
+                    outcomes.append(
+                        RenderOutcome(
+                            candidate=stored.candidate,
+                            cost_event=None,
+                            replayed=True,
+                        )
                     )
-                )
-        return tuple(outcomes)
+            return tuple(outcomes)
+
+    @asynccontextmanager
+    async def _claim(self, idempotency_key: str) -> AsyncIterator[None]:
+        """Serialize one idempotency key across concurrent service instances."""
+        lock_path = self._records.lock_path_for(idempotency_key)
+        descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            await asyncio.to_thread(fcntl.flock, descriptor, fcntl.LOCK_EX)
+            yield
+        finally:
+            try:
+                await asyncio.to_thread(fcntl.flock, descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
 
     @staticmethod
     def _require_capabilities(request: RenderRequest, renderer: AudioRenderer) -> None:
@@ -152,6 +176,13 @@ class DurableRenderService:
     def _validate_wav(audio_bytes: bytes, sample_rate_hz: int) -> None:
         """Require complete mono 16-bit PCM frames in a valid WAV container."""
         try:
+            if (
+                len(audio_bytes) < 12
+                or audio_bytes[:4] != b"RIFF"
+                or audio_bytes[8:12] != b"WAVE"
+                or int.from_bytes(audio_bytes[4:8], "little") + 8 != len(audio_bytes)
+            ):
+                raise RenderRejectedError("renderer returned truncated WAV container")
             with wave.open(BytesIO(audio_bytes), "rb") as audio:
                 channels = audio.getnchannels()
                 sample_width = audio.getsampwidth()

@@ -95,6 +95,16 @@ def renderer_cannot_pin_requested_voice(audio_context):
     renderer.capabilities = replace(renderer.capabilities, voice_pinning=False)
 
 
+@given("a second service shares the render records")
+def second_service_shares_render_records(audio_context):
+    audio_context["second_service"] = DurableRenderService(
+        audio_context["artifacts"],
+        FilesystemRenderRecordStore(
+            audio_context["records_root"], audio_context["artifacts"]
+        ),
+    )
+
+
 @when("the request is rendered with three local takes")
 def render_three_local_takes(audio_context):
     audio_context["outcomes"] = _render(audio_context, take_count=3)
@@ -113,6 +123,25 @@ def render_one_local_take(audio_context):
 def render_same_request_twice(audio_context):
     audio_context["first_outcomes"] = _render(audio_context)
     audio_context["second_outcomes"] = _render(audio_context)
+
+
+@when("both services render the same local take concurrently")
+def render_concurrently_through_shared_records(audio_context):
+    async def render_both():
+        return await asyncio.gather(
+            audio_context["service"].render_takes(
+                audio_context["request"],
+                audio_context["consent"],
+                audio_context["renderer"],
+            ),
+            audio_context["second_service"].render_takes(
+                audio_context["request"],
+                audio_context["consent"],
+                audio_context["renderer"],
+            ),
+        )
+
+    audio_context["concurrent_outcomes"] = asyncio.run(render_both())
 
 
 @when("the request is rendered with two local takes")
@@ -186,6 +215,12 @@ def renderer_called_only_once(audio_context):
 def exactly_one_cost_event_exists(audio_context):
     outcomes = (*audio_context["first_outcomes"], *audio_context["second_outcomes"])
     assert sum(outcome.cost_event is not None for outcome in outcomes) == 1
+
+
+@then("exactly one concurrent result is replayed")
+def exactly_one_concurrent_result_is_replayed(audio_context):
+    first, second = audio_context["concurrent_outcomes"]
+    assert sorted(outcome.replayed for outcome in first + second) == [False, True]
 
 
 @then("the two candidates have different candidate identities")

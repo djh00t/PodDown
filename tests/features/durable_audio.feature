@@ -27,6 +27,13 @@ Feature: Durable single-segment rendering
     And the renderer is called only once
     And exactly one cost event exists
 
+  Scenario: Concurrent services claim one request before provider dispatch
+    Given a rights-cleared render request
+    And a second service shares the render records
+    When both services render the same local take concurrently
+    Then the renderer is called only once
+    And exactly one concurrent result is replayed
+
   Scenario: A new take has a distinct immutable identity
     Given a rights-cleared render request
     When the request is rendered with two local takes
