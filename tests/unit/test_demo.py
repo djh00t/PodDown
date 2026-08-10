@@ -110,6 +110,21 @@ def test_resume_rejects_corrupt_publication_evidence(tmp_path: Path) -> None:
         run_reference_demo(output, resume=True)
 
 
+def test_resume_rejects_tampered_result_evidence(tmp_path: Path) -> None:
+    """A replay cannot authenticate mutable result fields from their shape alone."""
+    from poddown.demo import run_reference_demo
+
+    output = tmp_path / "output"
+    run_reference_demo(output)
+    result_path = output / "result.json"
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    result["critical_token_accuracy"] = 0.5
+    result_path.write_text(json.dumps(result), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="result evidence"):
+        run_reference_demo(output, resume=True)
+
+
 def test_status_history_records_publication_before_completion(tmp_path: Path) -> None:
     """Resumable status evidence must expose the successful publication stage."""
     from poddown.demo import run_reference_demo

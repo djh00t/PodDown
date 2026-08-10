@@ -11,6 +11,12 @@ The local mastering adapter requires the `ffmpeg` package, which provides both
 `ffmpeg` and `ffprobe`. On macOS use `brew install ffmpeg`; on Debian/Ubuntu use
 `sudo apt-get update && sudo apt-get install --no-install-recommends -y ffmpeg`.
 
+The versioned fixtures are bundled into the wheel under
+`poddown/reference-demo/v1`; the installed-wheel CLI path is part of this
+verification. The demo publishes the disclosure text in `show-notes.md` and
+records `spoken: false`, `show_notes: true`, and `platform: false` because no
+spoken intro or external platform publication is performed.
+
 Run it with:
 
 ```bash
@@ -28,8 +34,10 @@ same source hash and profile ID; its result is side-effect-free.
 
 Fresh local evidence on 2026-08-10:
 
-- `make check`: 873 passed, 1 live-provider test deselected, 86.36% coverage;
+- `make check`: 875 passed, 1 live-provider test deselected, 86.31% coverage;
   Ruff format/check and strict mypy passed.
+- `make build` included `poddown/reference-demo/v1` and `poddown/demo.py` in the
+  wheel; an isolated installed-wheel run and `--resume` run both completed.
 - A fresh CLI run reported `critical_token_accuracy: 1.0`, one failed segment
   regenerated, three takes per segment, nine package artifacts, nine published
   files, and deterministic-local cost `0`.

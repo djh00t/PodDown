@@ -33,3 +33,7 @@ poddown:
 - speaker_id: ref-host
 - claim: |
     We should publish the source-bound result, state the uncertainty, and not claim a live-provider validation.
+
+## Publication disclosure
+
+This episode uses synthetic demo presenters and deterministic-local PodDown fixtures.

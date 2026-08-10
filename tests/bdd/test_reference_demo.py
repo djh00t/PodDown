@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from pytest_bdd import given, scenarios, then, when
 
 from poddown.packages import REQUIRED_PACKAGE_ARTIFACTS
@@ -69,6 +71,21 @@ def publication(context):
     assert result["publication_path"].startswith("filesystem:")
     assert result["usage"]["render_requests"] > 0
     assert result["cost"] == "0"
+    show_notes = next(
+        (context.values["output_dir"] / "published").rglob("show-notes.md")
+    ).read_text(encoding="utf-8")
+    assert (
+        "This episode uses synthetic demo presenters and deterministic-local "
+        "PodDown fixtures." in show_notes
+    )
+    publication = json.loads(
+        (context.values["output_dir"] / "publication.json").read_text(encoding="utf-8")
+    )
+    assert publication["disclosure"] == {
+        "spoken": False,
+        "show_notes": True,
+        "platform": False,
+    }
 
 
 @then("the MCP preview reports no side effect")
@@ -108,3 +125,31 @@ def stable_identities(context):
     resumed = context.values["result"].to_dict()
     assert resumed["package_manifest_sha256"] == first["package_manifest_sha256"]
     assert resumed["publication_path"] == first["publication_path"]
+
+
+@given("a completed reference episode demo with persisted evidence")
+def completed_demo_with_persisted_evidence(context, tmp_path):
+    from poddown.demo import run_reference_demo
+
+    context.values["output_dir"] = tmp_path / "reference-demo"
+    run_reference_demo(context.values["output_dir"])
+
+
+@when("the persisted result accuracy is changed")
+def tamper_result_accuracy(context):
+    import json
+
+    result_path = context.values["output_dir"] / "result.json"
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    result["critical_token_accuracy"] = 0.5
+    result_path.write_text(json.dumps(result), encoding="utf-8")
+
+
+@then("resuming the reference episode fails closed")
+def resume_fails_closed(context):
+    import pytest
+
+    from poddown.demo import run_reference_demo
+
+    with pytest.raises(ValueError, match="result evidence"):
+        run_reference_demo(context.values["output_dir"], resume=True)

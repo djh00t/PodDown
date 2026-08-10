@@ -33,5 +33,10 @@ evidence. The output directory contains `result.json`, `status.json`,
 required package files. The MCP preview evidence is side-effect-free:
 `{"result":{"side_effect":"none"}}`.
 
+The wheel bundles the versioned reference fixtures, so the same command works
+from an installed package as well as this checkout. This local demo publishes
+the synthetic-presenter disclosure in `show-notes.md`; it does not claim spoken
+or external-platform disclosure.
+
 For the existing MCP stdio interface, run `uv run poddown-mcp` and invoke the
 `poddown_preview` tool before any render or publication decision.
