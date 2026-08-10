@@ -181,6 +181,14 @@ def _validate_request(request: PackageGenerationInput) -> None:
 def _validate_segments(request: PackageGenerationInput) -> None:
     """Require segment evidence to match the current source-bound script."""
     script_turns = {turn.turn_id: turn for turn in request.script.turns}
+    expected_turn_ids = tuple(turn.turn_id for turn in request.script.turns)
+    segment_turn_ids = tuple(
+        turn_id for segment in request.segments for turn_id in segment.turn_ids
+    )
+    if segment_turn_ids != expected_turn_ids:
+        raise PackageGenerationError(
+            "segments must cover canonical script turns exactly once in order"
+        )
     source_bytes = request.source.source.encode("utf-8")
     for segment in request.segments:
         try:

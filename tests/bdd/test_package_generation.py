@@ -286,6 +286,15 @@ def request_with_detached_segment(context):
     )
 
 
+@given("a package-generation request with reordered canonical segments")
+def request_with_reordered_canonical_segments(context):
+    """Keep each segment valid while violating the script's canonical turn order."""
+    request = _request()
+    context.values["request"] = replace(
+        request, segments=(request.segments[1], request.segments[0])
+    )
+
+
 @given("a package-generation request with unverified show notes")
 def request_with_unverified_show_notes(context):
     request = _request()

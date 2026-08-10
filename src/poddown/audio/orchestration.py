@@ -119,14 +119,7 @@ class LocalEpisodeWorkflowService:
                 failure = WorkflowFailure(
                     segment_id=segment.segment_id,
                     attempt_count=decision.attempt,
-                    failed_gates=tuple(
-                        candidate_gate
-                        for candidate_gate in ("fidelity", "pronunciation")
-                        if not any(
-                            candidate.passes_hard_gates
-                            for candidate in decision.candidates
-                        )
-                    ),
+                    failed_gates=self._failed_gates(decision.candidates),
                     last_error_code=decision.failure_code or "QUALITY_GATES_EXHAUSTED",
                 )
                 result = EpisodeWorkflowResult(
@@ -197,11 +190,23 @@ class LocalEpisodeWorkflowService:
 
         return SegmentDecision(
             segment_id=segment.segment_id,
-            attempt=min(workflow_input.max_attempts, max(1, len(attempts))),
+            attempt=workflow_input.max_attempts,
             accepted_candidate_id=None,
             candidates=last_candidates,
             failure_code=last_error,
         )
+
+    @staticmethod
+    def _failed_gates(candidates: tuple[CandidateQuality, ...]) -> tuple[str, ...]:
+        """Return every observed hard-gate failure from the final local attempt."""
+        gates: list[str] = []
+        if any(not candidate.diagnostics.passes_hard_gates for candidate in candidates):
+            gates.append("audio")
+        if any(not candidate.fidelity.passed for candidate in candidates):
+            gates.append("fidelity")
+        if any(not candidate.pronunciation_passed for candidate in candidates):
+            gates.append("pronunciation")
+        return tuple(gates)
 
     def _attempts_for(self, segment_id: str) -> list[Any]:
         attempts = self._fixture.get("attempts", {}).get(segment_id)

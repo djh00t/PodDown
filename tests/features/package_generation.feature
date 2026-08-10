@@ -52,6 +52,11 @@ Feature: Generate deterministic episode package artifacts
     When package artifacts are built
     Then package generation fails closed
 
+  Scenario: Reject segments that reorder canonical script turns
+    Given a package-generation request with reordered canonical segments
+    When package artifacts are built
+    Then package generation fails closed
+
   Scenario: Reject show notes that are not source excerpts
     Given a package-generation request with unverified show notes
     When package artifacts are built
