@@ -30,7 +30,14 @@ from poddown.audio.workflow import RENDER_SEGMENT_ACTIVITY_NAME
 scenarios("../features/provider_temporal_render.feature")
 
 
-def _configure_local_activity(context, tmp_path, *, consent: VoiceConsent) -> None:
+def _configure_local_activity(
+    context,
+    tmp_path,
+    *,
+    consent: VoiceConsent,
+    provider: str = "local",
+    model: str = "local-deterministic-v1",
+) -> None:
     """Build one real deterministic-local activity with isolated durable stores."""
     request = RenderRequest(
         episode_id="temporal-activity-episode",
@@ -39,8 +46,8 @@ def _configure_local_activity(context, tmp_path, *, consent: VoiceConsent) -> No
         speaker_id="host",
         expected_spoken_text="Temporal local activity renders durable audio.",
         voice_asset_id="voice-host-v1",
-        provider="local",
-        model="local-deterministic-v1",
+        provider=provider,
+        model=model,
     )
     segment = SegmentWorkflowInput(
         segment_id=request.segment_id,
@@ -114,6 +121,20 @@ def unconsented_local_segment(context, tmp_path):
         context,
         tmp_path,
         consent=VoiceConsent("voice-host-v1", "consent-other-1", frozenset({"other"})),
+    )
+
+
+@given("a consented hosted render segment without a quality evaluator")
+def consented_hosted_segment_without_evaluator(context, tmp_path):
+    """Provide a hosted request that must not fall back to local QA evidence."""
+    _configure_local_activity(
+        context,
+        tmp_path,
+        consent=VoiceConsent(
+            "voice-host-v1", "consent-hosted-1", frozenset({"hosted"})
+        ),
+        provider="hosted",
+        model="hosted-renderer-v1",
     )
 
 
@@ -214,6 +235,15 @@ def activity_fails_with_rights_error(context):
     error = context.values["error"]
     assert isinstance(error, ApplicationError)
     assert error.type == "RightsFailureError"
+    assert error.non_retryable is True
+
+
+@then("the activity fails with a non-retryable workflow contract error")
+def activity_fails_with_workflow_contract_error(context):
+    """Require missing hosted QA evidence to fail before provider dispatch."""
+    error = context.values["error"]
+    assert isinstance(error, ApplicationError)
+    assert error.type == "WorkflowContractError"
     assert error.non_retryable is True
 
 

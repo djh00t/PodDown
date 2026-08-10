@@ -22,6 +22,12 @@ Feature: durable provider-bound Temporal render activity
     Then the activity fails with a non-retryable rights error
     And the renderer is never called
 
+  Scenario: hosted render without provider QA fails before dispatch
+    Given a consented hosted render segment without a quality evaluator
+    When the provider-bound Temporal activity runs
+    Then the activity fails with a non-retryable workflow contract error
+    And the renderer is never called
+
   Scenario: invalid consent terminates the episode without repair
     Given a deterministic local render segment without matching provider consent
     When the Temporal episode workflow runs with invalid consent

@@ -129,6 +129,30 @@ def test_activity_maps_mismatched_consent_before_renderer_dispatch(tmp_path):
     assert renderer.calls == []
 
 
+def test_activity_rejects_nonlocal_request_without_evaluator_before_dispatch(tmp_path):
+    """Require hosted renders to provide provider-backed quality evidence."""
+    renderer = DeterministicLocalRenderer()
+    local_episode = episode_for()
+    hosted_request = replace(
+        request_for(), provider="hosted", model="hosted-renderer-v1"
+    )
+    hosted_segment = replace(
+        local_episode.segments[0],
+        render_request=hosted_request,
+        consent=VoiceConsent(
+            "voice-host-v1", "consent-hosted-1", frozenset({"hosted"})
+        ),
+    )
+    episode = replace(local_episode, segments=(hosted_segment,))
+
+    with pytest.raises(ApplicationError) as error:
+        asyncio.run(activity_for(tmp_path, renderer)(payload_for(episode)))
+
+    assert error.value.non_retryable is True
+    assert error.value.type == "WorkflowContractError"
+    assert renderer.calls == []
+
+
 def test_deterministic_quality_evaluator_verifies_expected_critical_tokens():
     """Catch a local evaluator that omits expected-text critical-token fidelity."""
     request = request_for()

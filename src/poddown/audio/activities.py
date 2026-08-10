@@ -68,12 +68,11 @@ def build_durable_render_activity(
     *,
     quality_evaluator: QualityEvaluator | None = None,
 ) -> ActivityHandler:
-    """Build a Temporal activity bound to durable local or provider ports."""
+    """Build a Temporal activity; non-local requests require explicit QA."""
     if not isinstance(service, DurableRenderService):
         raise TypeError("service must be DurableRenderService")
     if not isinstance(artifacts, FilesystemArtifactStore):
         raise TypeError("artifacts must be FilesystemArtifactStore")
-    evaluator = quality_evaluator or deterministic_quality_evaluator
 
     @activity.defn(name=RENDER_SEGMENT_ACTIVITY_NAME)
     async def render_segment(payload: dict[str, Any]) -> dict[str, Any]:
@@ -83,7 +82,7 @@ def build_durable_render_activity(
                 service=service,
                 renderer=renderer,
                 artifacts=artifacts,
-                quality_evaluator=evaluator,
+                quality_evaluator=quality_evaluator,
             )
         except RightsDeniedError as error:
             raise ApplicationError(
@@ -117,7 +116,7 @@ async def _run_render_activity(
     service: DurableRenderService,
     renderer: AudioRenderer,
     artifacts: FilesystemArtifactStore,
-    quality_evaluator: QualityEvaluator,
+    quality_evaluator: QualityEvaluator | None,
 ) -> dict[str, Any]:
     episode_input, segment, attempt, take, activity_key = _parse_payload(payload)
     expected_key = activity_key_for(
@@ -131,6 +130,13 @@ async def _run_render_activity(
         raise WorkflowContractError("activity key does not match episode snapshot")
 
     request = replace(segment.render_request, attempt=attempt, take_index=take)
+    evaluator = quality_evaluator
+    if evaluator is None:
+        if request.provider != "local":
+            raise WorkflowContractError(
+                "non-local render requests require an explicit quality evaluator"
+            )
+        evaluator = deterministic_quality_evaluator
     outcomes = await service.render_takes(
         request,
         segment.consent,
@@ -146,7 +152,7 @@ async def _run_render_activity(
         expected_sample_rate_hz=request.sample_rate_hz,
         expected_channels=1,
     )
-    quality = quality_evaluator(
+    quality = evaluator(
         request,
         audio_bytes,
         diagnostics,
