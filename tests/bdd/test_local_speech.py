@@ -83,7 +83,10 @@ def available_host_local_speech_engine(speech_context):
 @then("local renderer provenance records resolved tool versions")
 def local_renderer_provenance_records_resolved_tool_versions(speech_context):
     provenance = speech_context["renderer"].provenance()
-    assert provenance["engine_version"] == "macOS say 26.6"
+    if provenance["engine"] == "say":
+        assert provenance["engine_version"] == "macOS say 26.6"
+    else:
+        assert provenance["engine_version"] == f"{provenance['engine']} 1.0"
     assert provenance["ffmpeg_version"] == "ffmpeg 1.0"
 
 
