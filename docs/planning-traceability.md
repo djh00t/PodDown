@@ -19,7 +19,7 @@
 | 13 | Critical-token verification | 001/002/003 | M0–M2 locally verified against provider transcript text with segment-only rerender evidence and independent final-master fidelity: [final-master BDD](../tests/features/final_master_qa.feature), [final-master unit tests](../tests/unit/qa/test_final_master.py), and [verification evidence](verification/final-master-qa.md) |
 | 14 | Audio quality gates | 003 | M2 locally verified for WAV diagnostics, clipping regression, provider-bound artifact checks, deterministic mastering input/output gates, and independent final-master media preflight: [diagnostic tests](../tests/unit/audio/test_diagnostics.py), [mastering verification](verification/deterministic-mastering.md), and [final-master verification](verification/final-master-qa.md); listening gates remain pending |
 | 15 | Mastering | 003 | M2 deterministic mastering and final-master QA boundaries locally verified for stable ordering, profile validation, injected ffmpeg/ffprobe boundaries, exact-byte transcription binding, WAV/MP3 inspection, and immutable provenance: [mastering BDD](../tests/features/mastering.feature), [final-master BDD](../tests/features/final_master_qa.feature), and [verification evidence](verification/final-master-qa.md) |
-| 16 | Package/provenance | 001/003 | M0–M2 locally verified for content-addressed immutable artifacts, nine-file manifest assembly, final checksum binding, replay, and conflict preservation: [package BDD](../tests/features/package.feature), [artifact unit tests](../tests/unit/test_artifacts.py), [package unit tests](../tests/unit/test_packages.py), and [verification evidence](verification/immutable-package.md); object-storage, Temporal workflow integration, and publication remain pending |
+| 16 | Package/provenance | 001/003 | M0–M2 locally verified for content-addressed immutable artifacts, deterministic nine-file generation, final checksum and critical-token binding, replay, and conflict preservation: [package BDD](../tests/features/package.feature), [package-generation BDD](../tests/features/package_generation.feature), [artifact unit tests](../tests/unit/test_artifacts.py), [package unit tests](../tests/unit/test_packages.py), [package-generation unit tests](../tests/unit/test_package_generation.py), [immutable package verification](verification/immutable-package.md), and [package-generation verification](verification/package-generation.md); object-storage, Temporal workflow integration, and publication remain pending |
 | 17 | Publishing adapters | 007 | M5 |
 | 18 | CLI | 005 | M4 |
 | 19 | MCP server | 006 | M5 |
@@ -68,7 +68,8 @@ not expand the MVP feature set; they make the approved service operable.
   injected ffprobe failure handling, read-only provenance/checksum evidence,
   exact-byte final-master transcription binding, critical-token scoring, and
   retry/terminal provider mapping. Immutable local artifact storage and
-  nine-file package manifest assembly now pass schema-compatible checks with
+  nine-file package manifest assembly and pure generation from verified
+  final-master evidence now pass schema-compatible checks with deterministic
   replay and conflict preservation; object-storage integration and publication
   remain pending.
 - Task-level implementation plan: intentionally produced just-in-time per
