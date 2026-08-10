@@ -4,6 +4,7 @@ from dataclasses import FrozenInstanceError, replace
 from hashlib import sha256
 
 import pytest
+
 from poddown.artifacts import (
     ArtifactRef,
     FilesystemArtifactStore,

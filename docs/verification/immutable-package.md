@@ -51,7 +51,7 @@ Focused quality:
     .venv/bin/mypy --strict src/poddown/artifacts.py src/poddown/packages.py
     Success: no issues found in 2 source files
 
-Changed-scope evidence: make check passed 546 tests with 1 live-provider test
+Changed-scope evidence: make check passed 549 tests with 1 live-provider test
 deselected and 86.75% total branch coverage; Ruff and strict mypy passed across
 37 source files. make build, make docs, uv lock --check, uv pip check,
 compileall, episode-package schema-field validation, credential audit, and
