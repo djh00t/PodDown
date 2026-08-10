@@ -5,6 +5,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 
 def test_stdio_supports_tools_list_and_tool_call_without_external_services():
     environment = {**os.environ, "PODDOWN_TENANT_ID": "tenant-a"}
@@ -74,6 +76,40 @@ def test_stdio_rejects_null_arguments_and_continues_session():
     assert process.returncode == 0
     assert responses[1]["result"]["isError"] is True
     assert responses[2]["result"]["structuredContent"]["side_effect"] == "none"
+
+
+@pytest.mark.parametrize(
+    ("invalid_line", "expected_error"),
+    [
+        (
+            '{"jsonrpc": ',
+            {"code": -32700, "message": "Parse error"},
+        ),
+        (
+            json.dumps(["not", "a", "request"]),
+            {"code": -32600, "message": "Invalid Request"},
+        ),
+    ],
+)
+def test_stdio_returns_framing_error_and_continues_with_valid_request(
+    invalid_line, expected_error
+):
+    environment = {**os.environ, "PODDOWN_TENANT_ID": "tenant-a"}
+    valid_request = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+    process = subprocess.run(
+        [sys.executable, "-m", "poddown.agent_mcp_stdio"],
+        input=invalid_line + "\n" + json.dumps(valid_request) + "\n",
+        text=True,
+        capture_output=True,
+        env=environment,
+        check=False,
+    )
+    responses = [json.loads(line) for line in process.stdout.splitlines()]
+    assert process.returncode == 0
+    assert process.stderr == ""
+    assert responses[0] == {"jsonrpc": "2.0", "id": None, "error": expected_error}
+    assert responses[1]["id"] == 1
+    assert responses[1]["result"]["protocolVersion"]
 
 
 def test_stdio_fails_closed_without_authenticated_tenant():
