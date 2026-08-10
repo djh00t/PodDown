@@ -1,5 +1,7 @@
 """Contract tests for deterministic local orchestration fixtures."""
 
+from dataclasses import replace
+
 import pytest
 
 from poddown.audio.contracts import RenderRequest
@@ -90,3 +92,32 @@ def test_local_candidate_fixture_rejects_malformed_quality(candidate):
 
     with pytest.raises(LocalOrchestrationError, match="candidate"):
         service.run_episode(episode_input())
+
+
+def test_local_failure_reports_each_failed_gate_and_exhausted_attempts():
+    """Missing fixture entries still consume repair budget and retain real failures."""
+    service = LocalEpisodeWorkflowService(
+        fixture(
+            [
+                [
+                    {
+                        "fidelity": {"passed": False},
+                        "diagnostics": {"passed": False},
+                        "pronunciation_passed": False,
+                    }
+                ]
+            ]
+        )
+    )
+
+    result = service.run_episode(replace(episode_input(), max_attempts=3))
+
+    assert result.status == "failed"
+    assert result.decisions[0].attempt == 3
+    assert result.terminal_failure is not None
+    assert result.terminal_failure.attempt_count == 3
+    assert result.terminal_failure.failed_gates == (
+        "audio",
+        "fidelity",
+        "pronunciation",
+    )

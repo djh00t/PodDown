@@ -412,6 +412,23 @@ def test_generation_rejects_segment_detached_from_current_script_and_source():
         generate_package_artifacts(replace(value, segments=(detached,)))
 
 
+@pytest.mark.parametrize(
+    "segments",
+    (
+        lambda value: (value.segments[1], value.segments[0]),
+        lambda value: (value.segments[0],),
+    ),
+)
+def test_generation_requires_segments_to_cover_script_turns_once_in_canonical_order(
+    segments,
+):
+    """Reordered or omitted valid segments cannot produce a partial package."""
+    value = _input()
+
+    with pytest.raises(PackageGenerationError, match="canonical script"):
+        generate_package_artifacts(replace(value, segments=segments(value)))
+
+
 def test_generation_rejects_segment_critical_token_outside_its_source_anchors():
     """Segment critical-token evidence must be contained by canonical source anchors."""
     value = _input()

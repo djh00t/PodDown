@@ -44,13 +44,11 @@ class OpenAITranscriber:
         """Return normalized transcript data without inventing absent fields."""
         if not audio:
             raise ValueError("audio must not be empty")
-        form = {"model": self._model, "response_format": "json"}
-        if self._model == "whisper-1":
-            form = {
-                "model": self._model,
-                "response_format": "verbose_json",
-                "timestamp_granularities[]": "word",
-            }
+        form = {
+            "model": self._model,
+            "response_format": "verbose_json",
+            "timestamp_granularities[]": "word",
+        }
         response = await self._transport.request(
             HttpRequest(
                 method="POST",
@@ -84,6 +82,8 @@ class OpenAITranscriber:
             )
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             raise ValueError("OpenAI returned malformed transcription data") from error
+        if self._model != "whisper-1" and not words:
+            raise ValueError("OpenAI returned no word timestamps")
         return TranscriptResult(
             text=text,
             words=words,

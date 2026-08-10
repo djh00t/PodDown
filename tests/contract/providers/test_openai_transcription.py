@@ -117,7 +117,13 @@ def test_normalizes_text_words_usage_and_checksum():
 
 
 def test_configured_cost_estimator_is_recorded_in_normalized_result():
-    transport = RecordingTransport(HttpResponse(200, {}, b'{"text":"hello"}'))
+    transport = RecordingTransport(
+        HttpResponse(
+            200,
+            {},
+            b'{"text":"hello","words":[{"word":"hello","start":0.0,"end":0.2}]}',
+        )
+    )
     transcriber = OpenAITranscriber(
         settings(),
         "gpt-4o-transcribe",
@@ -133,17 +139,34 @@ def test_configured_cost_estimator_is_recorded_in_normalized_result():
     assert result.cost == Decimal("0.0042")
 
 
-def test_gpt_transcription_uses_json_without_timestamps():
-    transport = RecordingTransport(HttpResponse(200, {}, b'{"text":"hello"}'))
+def test_gpt_transcription_requests_and_preserves_word_timestamps():
+    transport = RecordingTransport(
+        HttpResponse(
+            200,
+            {},
+            b'{"text":"hello","words":[{"word":"hello","start":0.0,"end":0.2}]}',
+        )
+    )
     transcriber = OpenAITranscriber(settings(), "gpt-4o-transcribe", transport)
 
     result = asyncio.run(transcriber.transcribe(b"RIFF-audio"))
 
     assert transport.requests[0].form == {
         "model": "gpt-4o-transcribe",
-        "response_format": "json",
+        "response_format": "verbose_json",
+        "timestamp_granularities[]": "word",
     }
-    assert result.words == ()
+    assert result.words == (TranscriptWord("hello", 0.0, 0.2),)
+
+
+@pytest.mark.parametrize("model", ("gpt-4o-transcribe", "gpt-4o-mini-transcribe"))
+def test_gpt_transcription_rejects_missing_word_timestamps(model):
+    """Package-capable GPT QA must fail before it can emit untimed artifacts."""
+    transport = RecordingTransport(HttpResponse(200, {}, b'{"text":"hello"}'))
+    transcriber = OpenAITranscriber(settings(), model, transport)
+
+    with pytest.raises(ValueError, match="word timestamps"):
+        asyncio.run(transcriber.transcribe(b"RIFF-audio"))
 
 
 def test_rejects_malformed_json_without_leaking_credentials():
