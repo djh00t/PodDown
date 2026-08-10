@@ -94,9 +94,7 @@ def runtime_dependency_probes() -> dict[str, Callable[[], bool]]:
 
 def _durable_render_activity() -> ActivityHandler:
     """Build the offline-safe durable activity registered by the worker."""
-    data_root = Path(
-        os.environ.get("PODDOWN_RENDER_DATA_DIR", "/tmp/poddown-render")
-    )
+    data_root = Path(os.environ.get("PODDOWN_RENDER_DATA_DIR", "/tmp/poddown-render"))
     artifacts = FilesystemArtifactStore(data_root / "artifacts")
     records = FilesystemRenderRecordStore(data_root / "render-records", artifacts)
     return build_durable_render_activity(
