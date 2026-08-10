@@ -68,7 +68,7 @@ def speech_context(monkeypatch):
 
 @given("an available host-local speech engine")
 def available_host_local_speech_engine(speech_context):
-    assert speech_context["renderer"].provenance()["engine"] == "say"
+    assert speech_context["renderer"].provenance()["engine"] in {"say", "espeak-ng"}
 
 
 @given("the requested local speech executable is unavailable")
@@ -106,9 +106,13 @@ def render_three_equivalent_takes(speech_context):
 @then("I receive canonical zero-cost speech WAV audio")
 def canonical_zero_cost_speech_wav(speech_context):
     rendered = speech_context["rendered"]
+    engine = speech_context["renderer"].provenance()["engine"]
+    engine_command = speech_context["runner"].commands[0]
     diagnostics = diagnose_wav(
         rendered.audio_bytes, expected_sample_rate_hz=44_100, expected_channels=1
     )
+    assert engine_command[0] == f"/fake/{engine}"
+    assert "-o" in engine_command if engine == "say" else "-w" in engine_command
     assert diagnostics.clipping_ratio == 0.0
     assert rendered.cost == 0
     assert rendered.provider == "host-local"

@@ -6,8 +6,10 @@ import platform
 import shutil
 import subprocess
 import tempfile
+import wave
 from collections.abc import Mapping
 from decimal import Decimal
+from io import BytesIO
 from pathlib import Path
 from types import MappingProxyType
 from typing import Protocol
@@ -64,7 +66,7 @@ class LocalSpeechRenderer:
         model_pinning=True,
         voice_pinning=True,
         timestamps=False,
-        provider_idempotency=False,
+        provider_idempotency=True,
     )
 
     def __init__(
@@ -179,6 +181,11 @@ class LocalSpeechRenderer:
             )
         except AudioDiagnosticsError as error:
             raise LocalSpeechError(f"invalid normalized WAV: {error}") from error
+        with wave.open(BytesIO(audio_bytes), "rb") as normalized_wav:
+            if normalized_wav.getsampwidth() != 2:
+                raise LocalSpeechError(
+                    "invalid normalized WAV: sample width must be 16-bit"
+                )
         if diagnostics.clipping_ratio != 0.0:
             raise LocalSpeechError("invalid normalized WAV: clipping detected")
         return audio_bytes

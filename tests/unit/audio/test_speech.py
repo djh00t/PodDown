@@ -9,17 +9,27 @@ from pathlib import Path
 import pytest
 
 from poddown.audio.contracts import RenderRequest
+from poddown.audio.render import DurableRenderService
+from poddown.audio.rights import VoiceConsent
 from poddown.audio.speech import LocalSpeechError, LocalSpeechRenderer
+from poddown.audio.storage import FilesystemArtifactStore, FilesystemRenderRecordStore
 
 
-def wav_bytes(*, frames: int = 4_410, sample: int = 1_000) -> bytes:
+def wav_bytes(
+    *, frames: int = 4_410, sample: int = 1_000, sample_width: int = 2
+) -> bytes:
     """Return a low-amplitude canonical PCM WAV fixture."""
     stream = BytesIO()
     with wave.open(stream, "wb") as output:
         output.setnchannels(1)
-        output.setsampwidth(2)
+        output.setsampwidth(sample_width)
         output.setframerate(44_100)
-        output.writeframes(sample.to_bytes(2, "little", signed=True) * frames)
+        payload = (
+            bytes((128,)) * frames
+            if sample_width == 1
+            else sample.to_bytes(sample_width, "little", signed=True) * frames
+        )
+        output.writeframes(payload)
     return stream.getvalue()
 
 
@@ -131,6 +141,29 @@ def test_renderer_rejects_clipped_normalized_output(monkeypatch):
                 monkeypatch, runner=FakeSpeechRunner(wav_bytes(sample=32_767))
             ).render(request())
         )
+
+
+def test_renderer_rejects_non_16_bit_normalized_output(monkeypatch):
+    with pytest.raises(LocalSpeechError, match="sample width"):
+        asyncio.run(
+            renderer(
+                monkeypatch, runner=FakeSpeechRunner(wav_bytes(sample_width=1))
+            ).render(request())
+        )
+
+
+def test_renderer_is_accepted_by_durable_preflight(monkeypatch, tmp_path):
+    local_renderer = renderer(monkeypatch)
+    service = DurableRenderService(
+        FilesystemArtifactStore(tmp_path / "artifacts"),
+        FilesystemRenderRecordStore(tmp_path / "records"),
+    )
+    consent = VoiceConsent("voice-host-v1", "consent-1", frozenset({"host-local"}))
+
+    outcomes = asyncio.run(service.render_takes(request(), consent, local_renderer))
+
+    assert len(outcomes) == 1
+    assert outcomes[0].candidate.provider == "host-local"
 
 
 def test_renderer_fails_closed_when_requested_executable_is_missing(monkeypatch):
