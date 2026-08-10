@@ -15,11 +15,24 @@ dependencies = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/poddown"]
 
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.coverage",
+  "/.mypy_cache",
+  "/.pytest_cache",
+  "/.ruff_cache",
+  "/.superpowers",
+  "/build",
+  "/dist",
+  "/htmlcov",
+  "/.venv",
+]
+
 [dependency-groups]
 dev = [
   "mypy>=1.17,<2",
   "pdoc>=15,<16",
-  "pytest>=8.4,<9",
+  "pytest>=9.1.1,<10",
   "pytest-bdd>=8.1,<9",
   "pytest-cov>=6.2,<7",
   "ruff>=0.12,<1",

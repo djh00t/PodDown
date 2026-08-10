@@ -16,7 +16,7 @@ Publishing, MCP and Signal & Supply then extend that proven pipeline.
 | Milestone | Deliverable | Exit evidence |
 |---|---|---|
 | M0 Foundation | Merged PR #1 contracts and adapters | 68 tests, provider contracts, branch coverage gate |
-| M1 Content intelligence | Treatment, canonical script, lexicons, token extraction, segmentation | Source-bound adversarial evals and `002` BDD pass |
+| M1 Content intelligence | Treatment, canonical script, lexicons, token extraction, segmentation | Complete locally: source-bound adversarial evals and `002` BDD pass; no provider or live-mode claim |
 | M2 Audio engine | Temporal render/takes/QA/repair/master/package | Real 10–15 minute robotics episode clears objective and listening gates |
 | M3 Episode service | PostgreSQL/S3 model, FastAPI async jobs, metering, Compose | API end-to-end, restart/idempotency and tenant-isolation tests |
 | M4 Developer experience | CLI and GitHub Action | Markdown commit can validate/render; package verifies locally |
@@ -67,6 +67,9 @@ focused verification, full-suite verification and a bounded Conventional Commit.
 
 ### M2 — Durable audio production
 
+Status: pending. Audio rendering, Temporal orchestration, provider-backed QA,
+and final-master evidence are not part of M1 verification.
+
 1. Define BDD for retries, fan-out, takes, partial repair, mastering and replay.
 2. Add Temporal workflow/activity contracts and local test environment.
 3. Add content-addressed artifact storage port and filesystem test adapter.
@@ -82,6 +85,9 @@ focused verification, full-suite verification and a bounded Conventional Commit.
 
 ### M3 — Episode service
 
+Status: pending. API, persistence, tenancy, metering, and service deployment
+remain outside M1.
+
 1. Define BDD for episode lifecycle, isolation, idempotency, status and metering.
 2. Implement SQLAlchemy 2 models and Alembic migrations for all required entities.
 3. Add tenant-scoped repositories and database isolation tests.
@@ -94,6 +100,8 @@ focused verification, full-suite verification and a bounded Conventional Commit.
 
 ### M4 — Developer experience
 
+Status: pending. CLI and GitHub Action delivery remain outside M1.
+
 1. Implement CLI BDD, config precedence and stable JSON/error contract.
 2. Add preview/render/status/publish commands as API clients.
 3. Add verified package download and `--wait` polling.
@@ -102,6 +110,9 @@ focused verification, full-suite verification and a bounded Conventional Commit.
 6. Run a repository fixture from commit through package artifact.
 
 ### M5 — Distribution
+
+Status: pending. Publishing adapters, MCP, and the PodDown skill remain outside
+M1.
 
 1. Implement publisher port and protected publication state machine.
 2. Deliver filesystem and S3 adapters first; verify exact checksums.
@@ -113,6 +124,8 @@ focused verification, full-suite verification and a bounded Conventional Commit.
 
 ### M6 — Signal & Supply
 
+Status: pending. Signal & Supply customer integration remains outside M1.
+
 1. Define customer profile and synthetic-presenter disclosure.
 2. Register voice assets/consents without embedding provider IDs in source.
 3. Curate versioned finance, markets, semiconductor and supply-chain lexicons.
@@ -122,6 +135,9 @@ focused verification, full-suite verification and a bounded Conventional Commit.
 7. Confirm non-finance fixture and core dependency audit remain clean.
 
 ### M7 — Production readiness
+
+Status: pending. Production readiness, launch operations, and live provider
+evidence remain outside M1.
 
 1. Add OpenTelemetry traces, structured logs, metrics, dashboards and alerts.
 2. Threat-model tenant, voice, provider, artifact, MCP and publishing boundaries.
@@ -160,4 +176,3 @@ focused verification, full-suite verification and a bounded Conventional Commit.
 
 These are controlled experiments or explicit product exclusions, not missing
 requirements.
-

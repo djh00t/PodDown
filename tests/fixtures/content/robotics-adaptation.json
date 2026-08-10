@@ -1,0 +1,119 @@
+{
+  "proposal_id": "m1-robotics-mapping-source-bound-v2",
+  "source_episode_id": "episode-robotics-mapping-v1",
+  "disagreement_turn_id": "t-robotics-004",
+  "source_speaker_ids": [
+    "spk-archivist-1",
+    "spk-controls-2"
+  ],
+  "expected_turn_order": [
+    "t-robotics-001",
+    "t-robotics-002",
+    "t-robotics-003",
+    "t-robotics-004"
+  ],
+  "expected_source_blocks": [
+    "block-robotics-overview",
+    "block-robotics-localization",
+    "block-robotics-controls",
+    "block-robotics-disagreement"
+  ],
+  "factual_anchor_ids": [
+    "claim-robotics-001",
+    "claim-lidar-frequency",
+    "claim-robotics-002",
+    "claim-robotics-004"
+  ],
+  "source_turns": [
+    {
+      "turn_id": "t-robotics-001",
+      "speaker_id": "spk-archivist-1",
+      "source_block_anchor": "block-robotics-overview",
+      "claim_anchor": "claim-robotics-001",
+      "text": "On 2026-07-31, the mapping rig references LiDAR and C1 and keeps obstacle fusion at 13.8 hertz.",
+      "supported_by_source": true
+    },
+    {
+      "turn_id": "t-robotics-002",
+      "speaker_id": "spk-controls-2",
+      "source_block_anchor": "block-robotics-localization",
+      "claim_anchor": "claim-lidar-frequency",
+      "text": "EKF localization reports 99.7% consistency and samples 1.2 km.",
+      "supported_by_source": true
+    },
+    {
+      "turn_id": "t-robotics-003",
+      "speaker_id": "spk-controls-2",
+      "source_block_anchor": "block-robotics-controls",
+      "claim_anchor": "claim-robotics-002",
+      "text": "The controller is not silent and not stable during vibration bursts.",
+      "supported_by_source": true
+    },
+    {
+      "turn_id": "t-robotics-004",
+      "speaker_id": "spk-archivist-1",
+      "source_block_anchor": "block-robotics-disagreement",
+      "claim_anchor": "claim-robotics-004",
+      "text": "I disagree that this architecture can split the render path into independent streams.",
+      "supported_by_source": true,
+      "is_disagreement": true
+    }
+  ],
+  "claims": [
+    {
+      "claim_anchor": "claim-robotics-001",
+      "source_block_anchor": "block-robotics-overview",
+      "source_value": "13.8 hertz",
+      "adapted_value": "13.8 hertz",
+      "speaker_id": "spk-archivist-1",
+      "turn_id": "t-robotics-001",
+      "supported": true
+    },
+    {
+      "claim_anchor": "claim-lidar-frequency",
+      "source_block_anchor": "block-robotics-localization",
+      "source_value": "99.7%",
+      "adapted_value": "99.7%",
+      "speaker_id": "spk-controls-2",
+      "turn_id": "t-robotics-002",
+      "supported": true
+    },
+    {
+      "claim_anchor": "claim-robotics-002",
+      "source_block_anchor": "block-robotics-controls",
+      "source_value": "not silent",
+      "adapted_value": "not silent",
+      "speaker_id": "spk-controls-2",
+      "turn_id": "t-robotics-003",
+      "supported": true
+    },
+    {
+      "claim_anchor": "claim-robotics-002",
+      "source_block_anchor": "block-robotics-controls",
+      "source_value": "not stable",
+      "adapted_value": "not stable",
+      "speaker_id": "spk-controls-2",
+      "turn_id": "t-robotics-003",
+      "supported": true
+    },
+    {
+      "claim_anchor": "claim-robotics-004",
+      "source_block_anchor": "block-robotics-disagreement",
+      "source_value": "split the render path into independent streams",
+      "adapted_value": "split the render path into independent streams",
+      "speaker_id": "spk-archivist-1",
+      "turn_id": "t-robotics-004",
+      "supported": true,
+      "is_disagreement": true
+    }
+  ],
+  "expected_critical_tokens": [
+    {"surface": "LiDAR", "source_form": "LiDAR", "spoken_form": "LIE-dar", "category": "technical_term", "occurrence_id": "tok-06"},
+    {"surface": "C1", "source_form": "C1", "spoken_form": "see one", "category": "acronym", "occurrence_id": "tok-07"},
+    {"surface": "13.8 hertz", "source_form": "13.8 hertz", "spoken_form": "13.8 hertz", "category": "unit", "occurrence_id": "tok-08"},
+    {"surface": "99.7%", "source_form": "99.7%", "spoken_form": "ninety-nine point seven percent", "category": "percentage", "occurrence_id": "tok-10"},
+    {"surface": "12", "source_form": "12", "spoken_form": "twelve", "category": "number", "occurrence_id": "tok-05"},
+    {"surface": "not", "source_form": "not", "spoken_form": "not", "category": "negation", "occurrence_id": "neg-01"},
+    {"surface": "not", "source_form": "not", "spoken_form": "not", "category": "negation", "occurrence_id": "neg-02"}
+  ]
+}

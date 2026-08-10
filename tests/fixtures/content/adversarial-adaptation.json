@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "source_fixture": "robotics-mapping.md",
+  "mutations": [
+    {
+      "id": "absent-plausible-claim",
+      "turn_id": "t-003",
+      "replace": "The controller is not silent and it is not stable in high-frequency tests. The controller is certified for public roads.",
+      "expected_code": "unsupported_claim"
+    },
+    {
+      "id": "changed-number",
+      "turn_id": "t-001",
+      "replace": "On 2026-07-31 at 09:00 UTC, the mobile platform maps a 12-minute field pass.\nThe mapping rig references LiDAR and C1 and keeps obstacle fusion at 13.9 hertz.",
+      "expected_code": "unsupported_claim"
+    },
+    {
+      "id": "changed-unit",
+      "turn_id": "t-002",
+      "replace": "During the test window, EKF localization reports 99.7% positional consistency.\nThe same pass also samples 1.2 miles and 0.4 meters vibration response.",
+      "expected_code": "unsupported_claim"
+    },
+    {
+      "id": "changed-date",
+      "turn_id": "t-001",
+      "replace": "On 2026-08-01 at 09:00 UTC, the mobile platform maps a 12-minute field pass.\nThe mapping rig references LiDAR and C1 and keeps obstacle fusion at 13.8 hertz.",
+      "expected_code": "unsupported_claim"
+    },
+    {
+      "id": "inserted-negation",
+      "turn_id": "t-003",
+      "replace": "The controller is not silent and it is not not stable in high-frequency tests.",
+      "expected_code": "unsupported_claim"
+    },
+    {
+      "id": "removed-negation",
+      "turn_id": "t-003",
+      "replace": "The controller is silent and it is not stable in high-frequency tests.",
+      "expected_code": "unsupported_claim"
+    }
+  ],
+  "homograph_text": "The lead engineer inspected the lead shield; it is not stable, and it is not silent."
+}

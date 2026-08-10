@@ -12,7 +12,8 @@ build:
 	uv build
 
 test:
-	uv run pytest -m "not live_provider" --cov=poddown --cov-branch --cov-report=term-missing
+	# Keep ambient distributions from changing the repository's pytest plugin set.
+	PYDANTIC_DISABLE_PLUGINS=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p pytest_bdd.plugin -p pytest_cov.plugin -m "not live_provider" --cov=poddown --cov-branch --cov-report=term-missing
 
 check: test lint
 
