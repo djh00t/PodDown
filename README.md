@@ -1,5 +1,16 @@
 # PodDown Studio
 
+The reference demo uses the deterministic local mastering adapter backed by
+`ffmpeg` and `ffprobe`. Install the media tooling before running it:
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Debian/Ubuntu
+sudo apt-get update && sudo apt-get install --no-install-recommends -y ffmpeg
+```
+
 ## Deterministic-local reference demo
 
 Run the complete offline reference episode without provider credentials, provider
