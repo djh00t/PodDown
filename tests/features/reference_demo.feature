@@ -40,3 +40,8 @@ Feature: Reference episode demo
       Given an empty local speech reference demo output directory
       When unsafe local speech renderers are run
       Then each unsafe local speech renderer fails before publication
+
+    Scenario: Reject malformed local-speech renderer output before publication
+      Given an empty local speech reference demo output directory
+      When malformed local speech renderer output is run
+      Then malformed local speech output fails before packaging and publication

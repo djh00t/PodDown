@@ -30,12 +30,14 @@ class FakeLocalSpeechRenderer:
         sample: int = 500,
         cost: Decimal = Decimal("0"),
         provenance: dict[str, object] | None = None,
+        audio_bytes: bytes | None = None,
     ) -> None:
         self.requests: list[RenderRequest] = []
         self._frames = frames
         self._sample = sample
         self._cost = cost
         self._provenance = provenance
+        self._audio_bytes = audio_bytes
 
     def provenance(self) -> dict[str, object]:
         """Return fixed local-engine evidence for the reference workflow."""
@@ -46,15 +48,17 @@ class FakeLocalSpeechRenderer:
     async def render(self, request: RenderRequest) -> RenderedAudio:
         """Return a quiet five-second WAV under the requested identity."""
         self.requests.append(request)
-        stream = BytesIO()
-        with wave.open(stream, "wb") as output:
-            output.setnchannels(1)
-            output.setsampwidth(2)
-            output.setframerate(request.sample_rate_hz)
-            output.writeframes(
-                self._sample.to_bytes(2, "little", signed=True) * self._frames
-            )
-        audio_bytes = stream.getvalue()
+        audio_bytes = self._audio_bytes
+        if audio_bytes is None:
+            stream = BytesIO()
+            with wave.open(stream, "wb") as output:
+                output.setnchannels(1)
+                output.setsampwidth(2)
+                output.setframerate(request.sample_rate_hz)
+                output.writeframes(
+                    self._sample.to_bytes(2, "little", signed=True) * self._frames
+                )
+            audio_bytes = stream.getvalue()
         return RenderedAudio(
             audio_bytes=audio_bytes,
             provider=request.provider,
@@ -261,6 +265,21 @@ def test_local_speech_missing_provenance_fails_before_rendering(tmp_path: Path) 
         run_reference_demo(tmp_path / "output", renderer=renderer)
 
     assert renderer.requests == []
+
+
+def test_demo_rejects_malformed_renderer_wav_before_packaging(tmp_path: Path) -> None:
+    """Malformed renderer audio must not advance the demo to package publication."""
+    from poddown.audio.render import RenderRejectedError
+    from poddown.demo import run_reference_demo
+
+    output = tmp_path / "output"
+    with pytest.raises(RenderRejectedError, match="truncated WAV container"):
+        run_reference_demo(
+            output, renderer=FakeLocalSpeechRenderer(audio_bytes=b"not-a-wav")
+        )
+
+    assert not (output / "packages").exists()
+    assert not (output / "published").exists()
 
 
 def test_demo_cli_defaults_to_local_speech_and_allows_deterministic_override(

@@ -32,11 +32,13 @@ class FakeLocalSpeechRenderer:
         frames: int = 220_500,
         sample: int = 500,
         provenance: dict[str, object] | None = None,
+        audio_bytes: bytes | None = None,
     ) -> None:
         self.requests: list[RenderRequest] = []
         self._frames = frames
         self._sample = sample
         self._provenance = provenance
+        self._audio_bytes = audio_bytes
 
     def provenance(self) -> dict[str, object]:
         """Return the stable fake engine evidence asserted by this feature."""
@@ -47,15 +49,17 @@ class FakeLocalSpeechRenderer:
     async def render(self, request: RenderRequest) -> RenderedAudio:
         """Return a quiet five-second WAV with the requested provider identity."""
         self.requests.append(request)
-        stream = BytesIO()
-        with wave.open(stream, "wb") as output:
-            output.setnchannels(1)
-            output.setsampwidth(2)
-            output.setframerate(request.sample_rate_hz)
-            output.writeframes(
-                self._sample.to_bytes(2, "little", signed=True) * self._frames
-            )
-        audio_bytes = stream.getvalue()
+        audio_bytes = self._audio_bytes
+        if audio_bytes is None:
+            stream = BytesIO()
+            with wave.open(stream, "wb") as output:
+                output.setnchannels(1)
+                output.setsampwidth(2)
+                output.setframerate(request.sample_rate_hz)
+                output.writeframes(
+                    self._sample.to_bytes(2, "little", signed=True) * self._frames
+                )
+            audio_bytes = stream.getvalue()
         return RenderedAudio(
             audio_bytes,
             request.provider,
@@ -169,6 +173,27 @@ def unsafe_local_speech_fails(context):
     assert "failed hard gates" in str(context.values["unsafe_errors"][1])
     assert "provenance" in str(context.values["unsafe_errors"][2])
     assert context.values["unsafe_renderers"][2].requests == []
+
+
+@when("malformed local speech renderer output is run")
+def run_malformed_local_speech_renderer(context):
+    from poddown.audio.render import RenderRejectedError
+    from poddown.demo import run_reference_demo
+
+    output = context.values["output_dir"]
+    with pytest.raises(RenderRejectedError) as error:
+        run_reference_demo(
+            output, renderer=FakeLocalSpeechRenderer(audio_bytes=b"not-a-wav")
+        )
+    context.values["malformed_output_error"] = error.value
+
+
+@then("malformed local speech output fails before packaging and publication")
+def malformed_local_speech_fails(context):
+    output = context.values["output_dir"]
+    assert "truncated WAV container" in str(context.values["malformed_output_error"])
+    assert not (output / "packages").exists()
+    assert not (output / "published").exists()
 
 
 @then("the result records a validated source profile and two speakers")
