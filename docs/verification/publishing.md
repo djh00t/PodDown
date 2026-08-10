@@ -44,16 +44,23 @@ uv run pytest -q \
   tests/bdd/test_publishing.py
 ```
 
-Final result after ObjectStore compensation: **50 passed**.
+Final result for the focused publishing regression set after the idempotency,
+manifest, mutation-receipt, and provenance-freezing fixes: **31 passed**.
+
+The new regressions cover concurrent same-key dispatch serialization, complete
+package/version/target replay identity, manifest rejection before adapter
+dispatch, identical update/delete mutation replay, and recursive receipt
+provenance immutability. The full changed-scope gate collected **811 tests**,
+deselected **1 live-provider test**, selected **810 tests**, and exited 0.
 
 Object-storage regressions cover scoped verified deletion, cross-scope rejection,
 reused-object preservation, no partial object after injected failure, and exact
 retry promotion.
 
-Final changed-scope `make check`: **779 passed, 1 live-provider test deselected**;
-branch-aware total coverage was **86.17%** against the 80% threshold.
-Build, docs generation, lock check, pip check, compileall, and diff check all
-passed. Credential scan found no credential values.
+The earlier publishing and combined-stack counts above are historical. Current
+validation also passed Ruff, strict mypy, build, docs, lock, pip, compileall,
+diff, and credential checks. The credential scan found no credential values;
+its only matches were code/documentation references to secret handling.
 
 ## Deferrals and residual risk
 

@@ -1,11 +1,18 @@
-from hashlib import sha256
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
+from threading import Lock
+from time import sleep
 from uuid import UUID
 
 import pytest
 
 from poddown.artifacts import FilesystemArtifactStore
-from poddown.packages import EpisodePackage, PackageProvenance
+from poddown.packages import (
+    REQUIRED_PACKAGE_ARTIFACTS,
+    EpisodePackage,
+    PackageProvenance,
+)
 from poddown.publishing import (
     DisclosurePolicy,
     FilesystemPublicationAdapter,
@@ -22,11 +29,18 @@ PROJECT = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b12")
 
 
 def make_package(store: FilesystemArtifactStore, *, qa: str = "pass") -> EpisodePackage:
-    data = b"episode bytes"
-    ref = store.put("episode.mp3", "audio/mpeg", data)
+    references = tuple(
+        store.put(
+            name,
+            "audio/mpeg" if name.endswith((".mp3", ".wav")) else "text/plain",
+            (b"episode bytes" if name == "episode.wav" else name.encode()),
+        )
+        for name in REQUIRED_PACKAGE_ARTIFACTS
+    )
+    wav = next(ref for ref in references if ref.name == "episode.wav")
     return EpisodePackage(
         episode_version_id="018f3c7d-9d04-7c25-8e20-9e8e0c4d3b11",
-        files=(ref,),
+        files=references,
         provenance=PackageProvenance(
             source_sha256="b" * 64,
             script_version=1,
@@ -34,7 +48,7 @@ def make_package(store: FilesystemArtifactStore, *, qa: str = "pass") -> Episode
             renderer="test",
             qa=qa,
             critical_token_accuracy=1.0,
-            final_sha256=sha256(data).hexdigest(),
+            final_sha256=wav.sha256,
         ),
     )
 
@@ -82,7 +96,7 @@ def test_service_replays_one_receipt_and_writes_checksum_bound_bytes(
         / str(PROJECT)
         / "target-1"
         / "episode.mp3"
-    ).read_bytes() == b"episode bytes"
+    ).read_bytes() == b"episode.mp3"
 
 
 def test_service_rejects_failed_qa_before_adapter(tmp_path: Path) -> None:
@@ -139,8 +153,6 @@ def test_receipt_provenance_contains_target_snapshot_without_secret_value(
         "visibility": "public",
         "update_policy": "immutable",
         "disclosure": {"spoken": False, "show_notes": False, "platform": False},
-        "package_sha256": package.provenance.final_sha256,
-        "package_identity": receipt.provenance["package_identity"],
     }
     assert "secret://test/publishing" not in str(receipt.to_dict())
 
@@ -195,3 +207,91 @@ def test_mutation_idempotency_is_operation_and_publication_bound(
         service.delete(receipt, auth("delete"), "mutation-key")
     with pytest.raises(PublicationConflictError):
         service.update(other, auth("update"), "mutation-key")
+
+
+def test_concurrent_publication_claims_dispatch_once(tmp_path: Path) -> None:
+    class CountingAdapter(FilesystemPublicationAdapter):
+        calls = 0
+        lock = Lock()
+
+        def publish(self, package, target, artifacts):
+            with self.lock:
+                self.calls += 1
+            sleep(0.05)
+            return super().publish(package, target, artifacts)
+
+    store = FilesystemArtifactStore(tmp_path / "artifacts")
+    package = make_package(store)
+    adapter = CountingAdapter(tmp_path / "published")
+    service = PublishingService(artifact_store=store, adapters={"filesystem": adapter})
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        receipts = list(
+            executor.map(
+                lambda _: service.publish(package, make_target(), auth(), "race-key"),
+                range(2),
+            )
+        )
+
+    assert receipts[0] == receipts[1]
+    assert adapter.calls == 1
+
+
+def test_replay_requires_complete_package_and_target_identity(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path / "artifacts")
+    package = make_package(store)
+    service = PublishingService(
+        artifact_store=store,
+        adapters={"filesystem": FilesystemPublicationAdapter(tmp_path / "published")},
+    )
+    service.publish(package, make_target(), auth(), "identity-key")
+
+    changed_provenance = replace(package.provenance, source_sha256="c" * 64)
+    changed_package = replace(package, provenance=changed_provenance)
+    changed_target = replace(make_target(), feed_url="https://changed.test/feed.xml")
+
+    with pytest.raises(PublicationConflictError):
+        service.publish(changed_package, make_target(), auth(), "identity-key")
+    with pytest.raises(PublicationConflictError):
+        service.publish(package, changed_target, auth(), "identity-key")
+
+
+def test_publish_rejects_incomplete_package_manifest_before_adapter(
+    tmp_path: Path,
+) -> None:
+    store = FilesystemArtifactStore(tmp_path / "artifacts")
+    package = make_package(store)
+    incomplete = replace(package, files=(package.files[0],))
+    service = PublishingService(
+        artifact_store=store,
+        adapters={"filesystem": FilesystemPublicationAdapter(tmp_path / "published")},
+    )
+
+    with pytest.raises(PublishingValidationError, match="manifest"):
+        service.publish(incomplete, make_target(), auth(), "manifest-key")
+
+
+def test_mutation_replay_uses_stored_mutation_provenance(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path / "artifacts")
+    package = make_package(store)
+    service = PublishingService(
+        artifact_store=store,
+        adapters={"filesystem": FilesystemPublicationAdapter(tmp_path / "published")},
+    )
+    receipt = service.publish(package, make_target(), auth(), "mutation-publish")
+    first = service.update(receipt, auth("update"), "mutation-replay")
+
+    assert service.update(receipt, auth("update"), "mutation-replay") == first
+
+
+def test_publication_receipt_provenance_is_deeply_immutable(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path / "artifacts")
+    package = make_package(store)
+    service = PublishingService(
+        artifact_store=store,
+        adapters={"filesystem": FilesystemPublicationAdapter(tmp_path / "published")},
+    )
+    receipt = service.publish(package, make_target(), auth(), "freeze-key")
+
+    with pytest.raises(TypeError):
+        receipt.provenance["target"]["show_id"] = "changed"  # type: ignore[index]
