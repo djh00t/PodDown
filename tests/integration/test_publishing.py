@@ -61,5 +61,6 @@ def test_filesystem_publication_is_restart_readable(tmp_path: Path) -> None:
         / "projects"
         / "018f3c7d-9d04-7c25-8e20-9e8e0c4d3b12"
         / "filesystem"
+        / "018f3c7d-9d04-7c25-8e20-9e8e0c4d3b11"
         / "episode.mp3"
     ).read_bytes() == b"episode.mp3"

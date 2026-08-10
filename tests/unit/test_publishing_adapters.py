@@ -88,7 +88,7 @@ def test_s3_attempt_namespace_promotes_only_after_all_artifacts(tmp_path: Path) 
     assert adapter.staged_references == {}
 
 
-def test_s3_failure_compensates_new_objects_but_preserves_reused_objects(
+def test_s3_failure_preserves_content_addressed_objects_without_publication_reference(
     tmp_path: Path,
 ) -> None:
     artifact_store = FilesystemArtifactStore(tmp_path / "artifacts")
@@ -108,9 +108,10 @@ def test_s3_failure_compensates_new_objects_but_preserves_reused_objects(
         adapter.publish(package, _target("s3"), artifacts)
     assert object_store.read(TENANT, PROJECT, reused) == artifacts["episode.mp3"]
     partial_digest = sha256(b"new partial").hexdigest()
-    assert not (
+    partial_path = (
         tmp_path / "objects" / storage_key_for(TENANT, PROJECT, partial_digest)
-    ).exists()
+    )
+    assert partial_path.exists()
     adapter.fail_after = None
     adapter.publish(package, _target("s3"), artifacts)
     assert len(adapter.final_references["target"]) == 2
@@ -142,6 +143,7 @@ def test_same_target_id_isolated_by_filesystem_scope(tmp_path: Path) -> None:
         / "projects"
         / str(PROJECT)
         / "target"
+        / package.episode_version_id
         / "episode.mp3"
     ).read_bytes() == artifacts["episode.mp3"]
     assert (
@@ -152,8 +154,39 @@ def test_same_target_id_isolated_by_filesystem_scope(tmp_path: Path) -> None:
         / "projects"
         / str(PROJECT)
         / "target"
+        / package.episode_version_id
         / "episode.mp3"
     ).read_bytes() == b"other bytes"
+
+
+def test_filesystem_target_keeps_distinct_episode_packages(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path / "artifacts")
+    first, artifacts = _package(store)
+    second = EpisodePackage(
+        "018f3c7d-9d04-7c25-8e20-9e8e0c4d3b13",
+        first.files,
+        first.provenance,
+    )
+    adapter = FilesystemPublicationAdapter(tmp_path / "published")
+
+    adapter.publish(first, _target("filesystem"), artifacts)
+    adapter.publish(second, _target("filesystem"), artifacts)
+
+    destination = (
+        tmp_path
+        / "published"
+        / "tenants"
+        / str(TENANT)
+        / "projects"
+        / str(PROJECT)
+        / "target"
+    )
+    assert (destination / first.episode_version_id / "episode.mp3").read_bytes() == (
+        b"adapter bytes"
+    )
+    assert (destination / second.episode_version_id / "episode.mp3").read_bytes() == (
+        b"adapter bytes"
+    )
 
 
 def test_rss_adapter_is_valid_and_byte_deterministic(tmp_path: Path) -> None:

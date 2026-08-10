@@ -1,8 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
-from threading import Lock
-from time import sleep
+from threading import Barrier, Event, Lock
 from uuid import UUID
 
 import pytest
@@ -95,6 +94,7 @@ def test_service_replays_one_receipt_and_writes_checksum_bound_bytes(
         / "projects"
         / str(PROJECT)
         / "target-1"
+        / package.episode_version_id
         / "episode.mp3"
     ).read_bytes() == b"episode.mp3"
 
@@ -187,7 +187,14 @@ def test_authorized_filesystem_update_and_delete_return_mutation_receipts(
     deleted = service.delete(receipt, auth("delete"), "delete-key")
     assert deleted.status == "deleted"
     assert not (
-        tmp_path / "published" / "tenants" / str(TENANT) / str(PROJECT) / "target-1"
+        tmp_path
+        / "published"
+        / "tenants"
+        / str(TENANT)
+        / "projects"
+        / str(PROJECT)
+        / "target-1"
+        / package.episode_version_id
     ).exists()
 
 
@@ -213,27 +220,103 @@ def test_concurrent_publication_claims_dispatch_once(tmp_path: Path) -> None:
     class CountingAdapter(FilesystemPublicationAdapter):
         calls = 0
         lock = Lock()
+        entered = Event()
+        release = Event()
 
         def publish(self, package, target, artifacts):
             with self.lock:
                 self.calls += 1
-            sleep(0.05)
+            self.entered.set()
+            assert self.release.wait(timeout=5)
             return super().publish(package, target, artifacts)
 
     store = FilesystemArtifactStore(tmp_path / "artifacts")
     package = make_package(store)
     adapter = CountingAdapter(tmp_path / "published")
     service = PublishingService(artifact_store=store, adapters={"filesystem": adapter})
+    start = Barrier(3)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        receipts = list(
-            executor.map(
-                lambda _: service.publish(package, make_target(), auth(), "race-key"),
-                range(2),
+        futures = [
+            executor.submit(
+                lambda: (
+                    start.wait(),
+                    service.publish(package, make_target(), auth(), "race-key"),
+                )[1]
             )
-        )
+            for _ in range(2)
+        ]
+        start.wait()
+        assert adapter.entered.wait(timeout=5)
+        adapter.release.set()
+        receipts = [future.result(timeout=5) for future in futures]
 
     assert receipts[0] == receipts[1]
+    assert adapter.calls == 1
+
+
+def test_concurrent_mutation_retries_dispatch_once(tmp_path: Path) -> None:
+    class BlockingAdapter(FilesystemPublicationAdapter):
+        calls = 0
+        lock = Lock()
+        entered = Event()
+        release = Event()
+
+        def update(self, receipt):
+            with self.lock:
+                self.calls += 1
+            self.entered.set()
+            assert self.release.wait(timeout=5)
+            return super().update(receipt)
+
+    store = FilesystemArtifactStore(tmp_path / "artifacts")
+    package = make_package(store)
+    adapter = BlockingAdapter(tmp_path / "published")
+    service = PublishingService(artifact_store=store, adapters={"filesystem": adapter})
+    receipt = service.publish(package, make_target(), auth(), "publish-key")
+    start = Barrier(3)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(
+                lambda: (
+                    start.wait(),
+                    service.update(receipt, auth("update"), "update-key"),
+                )[1]
+            )
+            for _ in range(2)
+        ]
+        start.wait()
+        assert adapter.entered.wait(timeout=5)
+        adapter.release.set()
+        mutations = [future.result(timeout=5) for future in futures]
+
+    assert mutations[0] == mutations[1]
+    assert mutations[0].status == "updated"
+    assert adapter.calls == 1
+
+
+def test_mutation_retry_fails_closed_after_an_uncertain_adapter_outcome(
+    tmp_path: Path,
+) -> None:
+    class UncertainAdapter(FilesystemPublicationAdapter):
+        calls = 0
+
+        def update(self, receipt):
+            self.calls += 1
+            raise RuntimeError("provider outcome is unknown")
+
+    store = FilesystemArtifactStore(tmp_path / "artifacts")
+    package = make_package(store)
+    adapter = UncertainAdapter(tmp_path / "published")
+    service = PublishingService(artifact_store=store, adapters={"filesystem": adapter})
+    receipt = service.publish(package, make_target(), auth(), "publish-key")
+
+    with pytest.raises(RuntimeError, match="outcome is unknown"):
+        service.update(receipt, auth("update"), "update-key")
+    with pytest.raises(PublicationConflictError, match="outcome is unknown"):
+        service.update(receipt, auth("update"), "update-key")
+
     assert adapter.calls == 1
 
 

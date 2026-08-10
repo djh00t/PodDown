@@ -14,6 +14,11 @@ Feature: Publish verified immutable episode packages
     When I publish the package twice with one idempotency key
     Then both calls return the same publication receipt
 
+  Scenario: Publish distinct episodes to one filesystem target
+    Given two verified QA-passed packages for one publishing target
+    When I publish both packages
+    Then each package is retained at its own filesystem destination
+
   Scenario: Render deterministic RSS without duplicate entries
     Given a verified QA-passed package and an authorized publishing target
     When I publish the package to RSS twice

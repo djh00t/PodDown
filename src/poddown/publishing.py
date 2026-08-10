@@ -318,7 +318,15 @@ class FilesystemPublicationAdapter:
         self.fail_after = fail_after
 
     @staticmethod
-    def _destination(root: Path, target: PublicationTarget) -> Path:
+    def _destination(
+        root: Path, target: PublicationTarget, episode_version_id: str
+    ) -> Path:
+        try:
+            episode_identity = str(UUID(episode_version_id))
+        except (TypeError, ValueError) as error:
+            raise PublishingValidationError(
+                "publication episode identity is invalid"
+            ) from error
         return (
             root
             / "tenants"
@@ -326,6 +334,7 @@ class FilesystemPublicationAdapter:
             / "projects"
             / str(target.project_id)
             / target.target_id
+            / episode_identity
         )
 
     def publish(
@@ -334,7 +343,7 @@ class FilesystemPublicationAdapter:
         target: PublicationTarget,
         artifacts: dict[str, bytes],
     ) -> str:
-        destination = self._destination(self.root, target)
+        destination = self._destination(self.root, target, package.episode_version_id)
         destination.parent.mkdir(parents=True, exist_ok=True)
         staging = Path(tempfile.mkdtemp(prefix=".publishing-", dir=destination.parent))
         try:
@@ -362,6 +371,8 @@ class FilesystemPublicationAdapter:
                 destination.parent.parent.parent.rmdir()
             with contextlib.suppress(OSError):
                 destination.parent.parent.parent.parent.rmdir()
+            with contextlib.suppress(OSError):
+                destination.parent.parent.parent.parent.parent.rmdir()
             raise
         return f"filesystem:{target.target_id}:{package.episode_version_id}"
 
@@ -378,6 +389,7 @@ class FilesystemPublicationAdapter:
                 "https://invalid",
                 DisclosurePolicy(),
             ),
+            receipt.episode_version_id,
         )
         if not destination.exists():
             raise PublishingValidationError("filesystem publication is unavailable")
@@ -399,6 +411,7 @@ class FilesystemPublicationAdapter:
                 "https://invalid",
                 DisclosurePolicy(),
             ),
+            receipt.episode_version_id,
         )
         shutil.rmtree(destination, ignore_errors=True)
         return f"filesystem-deleted:{receipt.publication_id}"
@@ -428,7 +441,6 @@ class S3CompatiblePublicationAdapter:
         )
         with self._lock:
             staged: dict[str, ObjectRef] = {}
-            new_refs: dict[str, ObjectRef] = {}
             self.staged_references[attempt_key] = staged
             try:
                 for index, (name, data) in enumerate(artifacts.items(), 1):
@@ -459,7 +471,6 @@ class S3CompatiblePublicationAdapter:
                             else "application/octet-stream",
                             data=data,
                         )
-                        new_refs[name] = reference
                     except ObjectIntegrityError:
                         raise
                     staged[name] = reference
@@ -471,23 +482,11 @@ class S3CompatiblePublicationAdapter:
                 )
                 self.completed.add(target.target_id)
             except Exception as error:
-                cleanup_error: Exception | None = None
-                for reference in new_refs.values():
-                    try:
-                        self.object_store.delete(
-                            target.tenant_id, target.project_id, reference
-                        )
-                    except Exception as cleanup:
-                        cleanup_error = cleanup
                 self.staged_references.pop(attempt_key, None)
                 self.final_references.pop(target.target_id, None)
                 self.completed.discard(target.target_id)
                 for name in artifacts:
                     self.references.pop((target.target_id, name), None)
-                if cleanup_error is not None:
-                    raise PublishingValidationError(
-                        "object publication cleanup failed"
-                    ) from cleanup_error
                 raise error
             self.staged_references.pop(attempt_key, None)
         return f"s3:{target.target_id}:{package.episode_version_id}"
@@ -610,12 +609,13 @@ class PublishingService:
         self._mutations: dict[
             tuple[UUID, UUID, str, str], PublicationMutationReceipt
         ] = {}
+        self._mutation_attempts: dict[tuple[UUID, UUID, str, str], str] = {}
         self._lock_guard = RLock()
-        self._publish_locks: dict[tuple[UUID, UUID, str], RLock] = {}
+        self._idempotency_locks: dict[tuple[UUID, UUID, str], RLock] = {}
 
-    def _publish_lock(self, key: tuple[UUID, UUID, str]) -> RLock:
+    def _idempotency_lock(self, key: tuple[UUID, UUID, str]) -> RLock:
         with self._lock_guard:
-            return self._publish_locks.setdefault(key, RLock())
+            return self._idempotency_locks.setdefault(key, RLock())
 
     def attempt(
         self, idempotency_key: str, tenant_id: UUID, project_id: UUID
@@ -636,7 +636,7 @@ class PublishingService:
         if not idempotency_key.strip():
             raise PublishingValidationError("publication idempotency key is required")
         key = (target.tenant_id, target.project_id, idempotency_key)
-        with self._publish_lock(key):
+        with self._idempotency_lock(key):
             attempt = self._attempts.setdefault(
                 key,
                 PublicationAttempt(
@@ -726,44 +726,57 @@ class PublishingService:
         idempotency_key: str,
         operation: str,
     ) -> PublicationMutationReceipt:
-        target = self._targets.get(receipt.publication_id)
-        if target is None:
-            raise PublishingValidationError("publication provenance is unavailable")
         key = (receipt.tenant_id, receipt.project_id, operation, idempotency_key)
-        existing = self._mutations.get(key)
-        if existing is not None:
-            if (
-                existing.publication_id != receipt.publication_id
-                or existing.target_id != receipt.target_id
-                or existing.provenance.get("target") != receipt.provenance.get("target")
-            ):
-                raise PublicationConflictError(
-                    "mutation idempotency key is bound to another publication"
+        lock_key = (receipt.tenant_id, receipt.project_id, idempotency_key)
+        with self._idempotency_lock(lock_key):
+            target = self._targets.get(receipt.publication_id)
+            if target is None:
+                raise PublishingValidationError("publication provenance is unavailable")
+            existing = self._mutations.get(key)
+            if existing is not None:
+                if (
+                    existing.publication_id != receipt.publication_id
+                    or existing.target_id != receipt.target_id
+                    or existing.provenance.get("target")
+                    != receipt.provenance.get("target")
+                ):
+                    raise PublicationConflictError(
+                        "mutation idempotency key is bound to another publication"
+                    )
+                return existing
+            for prior_key in self._mutation_attempts:
+                if prior_key[:2] == key[:2] and prior_key[3] == idempotency_key:
+                    if prior_key == key:
+                        raise PublicationConflictError(
+                            "mutation outcome is unknown; retry is unsafe"
+                        )
+                    raise PublicationConflictError(
+                        "mutation idempotency key is bound to another operation"
+                    )
+            adapter = self.adapters[target.kind]
+            self._mutation_attempts[key] = "in-flight"
+            try:
+                external_id = getattr(adapter, operation)(receipt)
+                mutation = PublicationMutationReceipt(
+                    publication_id=receipt.publication_id,
+                    tenant_id=receipt.tenant_id,
+                    project_id=receipt.project_id,
+                    target_id=receipt.target_id,
+                    operation=operation,
+                    idempotency_key=idempotency_key,
+                    status=f"{operation}d",
+                    authorization=authorization,
+                    provenance={
+                        "target": receipt.provenance["target"],
+                        "external_id": external_id,
+                    },
                 )
-            return existing
-        for prior_key, _prior in self._mutations.items():
-            if prior_key[:2] == key[:2] and prior_key[3] == idempotency_key:
-                raise PublicationConflictError(
-                    "mutation idempotency key is bound to another operation"
-                )
-        adapter = self.adapters[target.kind]
-        external_id = getattr(adapter, operation)(receipt)
-        mutation = PublicationMutationReceipt(
-            publication_id=receipt.publication_id,
-            tenant_id=receipt.tenant_id,
-            project_id=receipt.project_id,
-            target_id=receipt.target_id,
-            operation=operation,
-            idempotency_key=idempotency_key,
-            status=f"{operation}d",
-            authorization=authorization,
-            provenance={
-                "target": receipt.provenance["target"],
-                "external_id": external_id,
-            },
-        )
-        self._mutations[key] = mutation
-        return mutation
+                self._mutations[key] = mutation
+            except Exception:
+                self._mutation_attempts[key] = "unknown"
+                raise
+            self._mutation_attempts[key] = "completed"
+            return mutation
 
 
 __all__ = [

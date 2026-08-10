@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 from uuid import UUID
 
@@ -76,6 +77,19 @@ def failed(context, tmp_path):
     context.values["authorization"] = _auth()
 
 
+@given("two verified QA-passed packages for one publishing target")
+def two_verified(context, tmp_path):
+    _setup(context, tmp_path)
+    context.values["authorization"] = _auth()
+    context.values["packages"] = (
+        context.values["package"],
+        replace(
+            context.values["package"],
+            episode_version_id="018f3c7d-9d04-7c25-8e20-9e8e0c4d3b13",
+        ),
+    )
+
+
 @given("an existing publication")
 def existing(context, tmp_path):
     verified(context, tmp_path)
@@ -110,6 +124,19 @@ def replay(context):
         context.values["target"],
         context.values["authorization"],
         "bdd-key",
+    )
+
+
+@when("I publish both packages")
+def publish_both(context):
+    context.values["receipts"] = tuple(
+        context.values["service"].publish(
+            package,
+            context.values["target"],
+            context.values["authorization"],
+            f"bdd-key-{index}",
+        )
+        for index, package in enumerate(context.values["packages"], 1)
     )
 
 
@@ -184,6 +211,21 @@ def rejected(context):
 @then("both calls return the same publication receipt")
 def same(context):
     assert context.values["first"] == context.values["second"]
+
+
+@then("each package is retained at its own filesystem destination")
+def separate_filesystem_destinations(context, tmp_path):
+    destination = (
+        tmp_path
+        / "published"
+        / "tenants"
+        / str(TENANT)
+        / "projects"
+        / str(PROJECT)
+        / "bdd-target"
+    )
+    for package in context.values["packages"]:
+        assert (destination / package.episode_version_id / "episode.mp3").read_bytes()
 
 
 @then("the RSS bytes are valid and identical")
