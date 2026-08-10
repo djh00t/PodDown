@@ -308,11 +308,12 @@ class FilesystemQualityRecordStore:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
 
-    def save(self, quality: CandidateQuality) -> None:
+    def save(self, quality: CandidateQuality, *, cache_key: str | None = None) -> None:
         """Store quality once or reject conflicting evidence for its candidate."""
         if not isinstance(quality, CandidateQuality):
             raise TypeError("quality must be CandidateQuality")
-        path = self._path_for(quality.candidate_id)
+        key = quality.candidate_id if cache_key is None else cache_key
+        path = self._path_for(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(quality.to_dict(), sort_keys=True, separators=(",", ":"))
         with NamedTemporaryFile(
@@ -326,7 +327,7 @@ class FilesystemQualityRecordStore:
             try:
                 os.link(temporary_path, path)
             except FileExistsError:
-                if self.load(quality.candidate_id) != quality:
+                if self.load(key) != quality:
                     raise IdempotencyConflictError(
                         "candidate already has different quality evidence"
                     ) from None

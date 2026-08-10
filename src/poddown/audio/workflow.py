@@ -579,7 +579,13 @@ class EpisodeRenderWorkflow:
                         )
                     last_error = terminal_error
                     if not last_candidates:
-                        continue
+                        return SegmentDecision(
+                            segment_id=segment.segment_id,
+                            attempt=attempt,
+                            accepted_candidate_id=None,
+                            candidates=(),
+                            failure_code=terminal_error,
+                        )
             selected = select_candidate(last_candidates)
             if selected is not None:
                 return SegmentDecision(

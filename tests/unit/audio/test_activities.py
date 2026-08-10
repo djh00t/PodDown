@@ -77,11 +77,11 @@ class FailOnceQualityRecordStore(FilesystemQualityRecordStore):
         super().__init__(root)
         self.failed = False
 
-    def save(self, quality: CandidateQuality) -> None:
+    def save(self, quality: CandidateQuality, *, cache_key: str | None = None) -> None:
         if not self.failed:
             self.failed = True
             raise RuntimeError("simulated quality persistence failure")
-        super().save(quality)
+        super().save(quality, cache_key=cache_key)
 
 
 def request_for(*, attempt: int = 1, take: int = 0) -> RenderRequest:
@@ -404,6 +404,34 @@ def test_activity_replays_atomic_transcription_record_after_quality_failure(tmp_
 
     assert CandidateQuality.from_dict(result).passes_hard_gates is True
     assert transcriber.calls == 1
+
+
+def test_quality_cache_keeps_ordered_critical_tokens_in_its_identity(tmp_path):
+    """A changed token order must re-evaluate QA without rerendering audio."""
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
+    records = FilesystemRenderRecordStore(tmp_path / "records", artifacts)
+    quality_records = FilesystemQualityRecordStore(tmp_path / "quality")
+    renderer = DeterministicLocalRenderer()
+    activity = build_durable_render_activity(
+        DurableRenderService(artifacts, records),
+        renderer,
+        artifacts,
+        quality_records=quality_records,
+    )
+    first = episode_for()
+    second = replace(
+        first,
+        segments=(replace(first.segments[0], critical_tokens=("optional", "not")),),
+    )
+
+    first_result = CandidateQuality.from_dict(asyncio.run(activity(payload_for(first))))
+    second_result = CandidateQuality.from_dict(
+        asyncio.run(activity(payload_for(second)))
+    )
+
+    assert first_result.candidate_id == second_result.candidate_id
+    assert first_result.fidelity != second_result.fidelity
+    assert len(renderer.calls) == 1
 
 
 def test_quality_evaluator_rejects_empty_audio():

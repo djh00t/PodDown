@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from decimal import Decimal
@@ -49,6 +50,15 @@ type QualityEvaluator = Callable[
     CandidateQuality | Awaitable[CandidateQuality],
 ]
 type ActivityHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+
+
+def _quality_cache_key(request: RenderRequest, critical_tokens: tuple[str, ...]) -> str:
+    """Bind cached quality evidence to the ordered QA token inputs."""
+    payload = json.dumps(
+        {"candidate_id": request.candidate_id, "critical_tokens": critical_tokens},
+        separators=(",", ":"),
+    )
+    return f"candidate-{sha256(payload.encode()).hexdigest()}"
 
 
 def deterministic_quality_evaluator(
@@ -275,7 +285,8 @@ async def _run_render_activity(
         evaluator = deterministic_quality_evaluator
     service.preflight(request, segment.consent, renderer)
     if quality_records is not None:
-        persisted_quality = quality_records.find(request.candidate_id)
+        quality_key = _quality_cache_key(request, segment.critical_tokens)
+        persisted_quality = quality_records.find(quality_key)
         if persisted_quality is not None:
             return persisted_quality.to_dict()
     outcomes = await service.render_takes(
@@ -288,7 +299,7 @@ async def _run_render_activity(
         raise WorkflowContractError("render activity must produce one take")
     outcome = outcomes[0]
     if quality_records is not None:
-        persisted_quality = quality_records.find(outcome.candidate.candidate_id)
+        persisted_quality = quality_records.find(quality_key)
         if persisted_quality is not None:
             return persisted_quality.to_dict()
     audio_bytes = artifacts.read(outcome.candidate.artifact)
@@ -307,7 +318,7 @@ async def _run_render_activity(
     if quality.candidate_id != outcome.candidate.candidate_id:
         raise WorkflowContractError("quality candidate does not match render candidate")
     if quality_records is not None:
-        quality_records.save(quality)
+        quality_records.save(quality, cache_key=quality_key)
     return quality.to_dict()
 
 
