@@ -1,0 +1,12 @@
+name: PodDown preview validation
+description: Validate one Markdown source with provider-free PodDown preview
+inputs:
+  markdown:
+    description: Markdown file to validate
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Run provider-free preview
+      shell: bash
+      run: uv run poddown preview "${{ inputs.markdown }}" --json

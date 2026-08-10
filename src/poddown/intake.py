@@ -47,6 +47,7 @@ def validate_markdown(
     source: str,
     available_profiles: Collection[str],
     default_profile: str | None = None,
+    profile_override: str | None = None,
 ) -> SourceValidation:
     """Validate PodDown metadata without modifying the canonical source."""
     try:
@@ -66,7 +67,11 @@ def validate_markdown(
                 names = ", ".join(sorted(str(key) for key in extra_keys))
                 raise ValueError(f"Unknown PodDown key: {names}") from error
             raise ValueError(f"Invalid PodDown metadata: {error}") from error
-        profile = poddown.profile or default_profile
+        profile = (
+            profile_override
+            if profile_override is not None
+            else poddown.profile or default_profile
+        )
         if profile is None:
             raise ValueError("A profile is required after default resolution")
         if profile not in available_profiles:
