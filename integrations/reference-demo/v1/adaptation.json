@@ -1,0 +1,27 @@
+{
+  "proposal_id": "reference-demo-v1",
+  "source_episode_id": "reference-demo-episode-v1",
+  "source_speaker_ids": ["ref-host", "ref-analyst"],
+  "expected_turn_order": ["ref-turn-001", "ref-turn-002", "ref-turn-003"],
+  "expected_source_blocks": ["block-calibration", "block-disagreement", "block-decision"],
+  "factual_anchor_ids": ["claim-calibration-001", "claim-disagreement-001", "claim-decision-001"],
+  "source_turns": [
+    {"turn_id": "ref-turn-001", "speaker_id": "ref-host", "source_block_anchor": "block-calibration", "claim_anchor": "claim-calibration-001", "text": "On 2026-07-31, the LiDAR team measured a C1 calibration result of 99.7% across the 1.2 km test corridor.", "supported_by_source": true},
+    {"turn_id": "ref-turn-002", "speaker_id": "ref-analyst", "source_block_anchor": "block-disagreement", "claim_anchor": "claim-disagreement-001", "text": "I disagree: the C1 result is not a guarantee that the corridor is not affected by rain or reflective surfaces.", "supported_by_source": true, "is_disagreement": true},
+    {"turn_id": "ref-turn-003", "speaker_id": "ref-host", "source_block_anchor": "block-decision", "claim_anchor": "claim-decision-001", "text": "We should publish the source-bound result, state the uncertainty, and not claim a live-provider validation.", "supported_by_source": true}
+  ],
+  "claims": [
+    {"claim_anchor": "claim-calibration-001", "source_block_anchor": "block-calibration", "source_value": "On 2026-07-31, the LiDAR team measured a C1 calibration result of 99.7% across the 1.2 km test corridor.", "adapted_value": "On 2026-07-31, the LiDAR team measured a C1 calibration result of 99.7% across the 1.2 km test corridor.", "speaker_id": "ref-host", "turn_id": "ref-turn-001", "supported": true},
+    {"claim_anchor": "claim-disagreement-001", "source_block_anchor": "block-disagreement", "source_value": "I disagree: the C1 result is not a guarantee that the corridor is not affected by rain or reflective surfaces.", "adapted_value": "I disagree: the C1 result is not a guarantee that the corridor is not affected by rain or reflective surfaces.", "speaker_id": "ref-analyst", "turn_id": "ref-turn-002", "supported": true, "is_disagreement": true},
+    {"claim_anchor": "claim-decision-001", "source_block_anchor": "block-decision", "source_value": "We should publish the source-bound result, state the uncertainty, and not claim a live-provider validation.", "adapted_value": "We should publish the source-bound result, state the uncertainty, and not claim a live-provider validation.", "speaker_id": "ref-host", "turn_id": "ref-turn-003", "supported": true}
+  ],
+  "expected_critical_tokens": [
+    {"surface": "LiDAR", "source_form": "LiDAR", "spoken_form": "LIE-dar", "category": "name", "occurrence_id": "tok-lidar"},
+    {"surface": "C1", "source_form": "C1", "spoken_form": "see one", "category": "acronym", "occurrence_id": "tok-c1-1"},
+    {"surface": "C1", "source_form": "C1", "spoken_form": "see one", "category": "acronym", "occurrence_id": "tok-c1-2"},
+    {"surface": "99.7%", "source_form": "99.7%", "spoken_form": "ninety-nine point seven percent", "category": "percentage", "occurrence_id": "tok-percent"},
+    {"surface": "1.2 km", "source_form": "1.2 km", "spoken_form": "one point two kilometres", "category": "unit", "occurrence_id": "tok-distance"},
+    {"surface": "not", "source_form": "not", "spoken_form": "not", "category": "negation", "occurrence_id": "tok-not-1"},
+    {"surface": "not", "source_form": "not", "spoken_form": "not", "category": "negation", "occurrence_id": "tok-not-2"}
+  ]
+}

@@ -1,4 +1,6 @@
-.PHONY: clean install build test lint docs check check-full quality-gates publish
+.PHONY: clean install build test lint docs check check-full quality-gates publish demo
+
+DEMO_OUTPUT ?= /tmp/poddown-reference-demo
 
 clean:
 	rm -rf build dist htmlcov docs/api .coverage .pytest_cache
@@ -31,3 +33,6 @@ docs:
 
 publish: build
 	uv publish
+
+demo:
+	uv run poddown-demo --output "$(DEMO_OUTPUT)"
