@@ -36,3 +36,8 @@ Feature: Prepare source-bound technical content
     Given a canonical script with a turn longer than the renderer text limit
     When the script is segmented
     Then segmentation fails with a capability error
+
+  Scenario: Preserve a pipe-containing setext heading
+    Given a pipe-containing setext heading
+    When the source is snapshotted
+    Then the heading remains one heading block

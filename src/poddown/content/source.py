@@ -89,7 +89,25 @@ def _is_table_start(lines: list[tuple[int, str]], index: int) -> bool:
         return False
     current = lines[index][1].rstrip("\r\n")
     separator = lines[index + 1][1].rstrip("\r\n")
-    return "|" in current and bool(re.match(r"^\s*\|?\s*:?-{3,}", separator))
+    if "|" not in current:
+        return False
+    header_cells = _table_cells(current)
+    delimiter_cells = _table_cells(separator)
+    return bool(
+        header_cells
+        and len(header_cells) == len(delimiter_cells)
+        and all(re.fullmatch(r"\s*:?-{3,}:?\s*", cell) for cell in delimiter_cells)
+    )
+
+
+def _table_cells(line: str) -> list[str]:
+    """Return pipe-delimited cells without optional outer table borders."""
+    cells = line.strip().split("|")
+    if line.lstrip().startswith("|"):
+        cells = cells[1:]
+    if line.rstrip().endswith("|"):
+        cells = cells[:-1]
+    return cells
 
 
 def _is_setext_underline(line: str) -> bool:
