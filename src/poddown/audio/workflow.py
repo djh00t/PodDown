@@ -436,7 +436,9 @@ def _non_retryable_activity_code(error: ActivityError) -> str | None:
     return cause.type or "NON_RETRYABLE_ACTIVITY_FAILURE"
 
 
-def _failed_gates_for(failure_code: str) -> tuple[str, ...]:
+def _failed_gates_for(
+    failure_code: str, candidates: tuple[CandidateQuality, ...] = ()
+) -> tuple[str, ...]:
     """Map terminal activity classes to the gates that actually failed."""
     if failure_code == RightsFailureError.__name__:
         return ("rights",)
@@ -446,6 +448,25 @@ def _failed_gates_for(failure_code: str) -> tuple[str, ...]:
         return ("contract",)
     if failure_code in ACTIVITY_CONFIGURATION_ERROR_TYPES:
         return ("configuration",)
+    if failure_code == "QUALITY_GATES_EXHAUSTED":
+        failed = {
+            gate
+            for gate, failed_gate in (
+                ("fidelity", any(not item.fidelity.passed for item in candidates)),
+                (
+                    "pronunciation",
+                    any(not item.pronunciation_passed for item in candidates),
+                ),
+                (
+                    "audio",
+                    any(not item.diagnostics.passes_hard_gates for item in candidates),
+                ),
+            )
+            if failed_gate
+        }
+        return tuple(
+            gate for gate in ("fidelity", "pronunciation", "audio") if gate in failed
+        ) or ("activity",)
     return ("activity",)
 
 
@@ -481,11 +502,8 @@ class EpisodeRenderWorkflow:
                 terminal_failure = WorkflowFailure(
                     segment_id=segment.segment_id,
                     attempt_count=decision.attempt,
-                    failed_gates=_failed_gates_for(
-                        decision.failure_code or "QUALITY_GATES_EXHAUSTED",
-                        decision.candidates,
-                    ),
-                    last_error_code=decision.failure_code or "QUALITY_GATES_EXHAUSTED",
+                    failed_gates=_failed_gates_for(failure_code, decision.candidates),
+                    last_error_code=failure_code,
                 )
                 break
         result = EpisodeWorkflowResult(

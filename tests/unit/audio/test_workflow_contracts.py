@@ -19,6 +19,7 @@ from poddown.audio.workflow import (
     SegmentWorkflowInput,
     WorkflowContractError,
     WorkflowFailure,
+    _failed_gates_for,
     activity_key_for,
     render_segment_activity,
     workflow_id_for,
@@ -128,6 +129,19 @@ def test_workflow_contracts_are_frozen_and_terminal_failure_is_structured():
         "last_error_code": "QUALITY_GATES_EXHAUSTED",
         "segment_id": "segment-1",
     }
+
+
+def test_quality_exhaustion_reports_only_the_failed_audio_gate():
+    """Catch quality exhaustion being mislabeled as an activity failure."""
+    clipped = CandidateQuality(
+        candidate_id="candidate-clipped",
+        fidelity=FidelityResult(True, 1.0, "none"),
+        diagnostics=AudioDiagnostics(44_100, 1, 1.0, 1.0, 0.5, 0.0),
+        pronunciation_passed=True,
+        soft_score=Decimal("0.80"),
+    )
+
+    assert _failed_gates_for("QUALITY_GATES_EXHAUSTED", (clipped,)) == ("audio",)
 
 
 def test_workflow_result_round_trips_through_temporal_json_boundary():
