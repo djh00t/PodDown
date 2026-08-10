@@ -1,0 +1,236 @@
+"""Executable acceptance tests for durable single-segment audio rendering."""
+
+import asyncio
+from dataclasses import FrozenInstanceError, replace
+from decimal import Decimal
+
+import pytest
+from pytest_bdd import given, scenarios, then, when
+
+from poddown.audio.contracts import RenderRequest
+from poddown.audio.local import DeterministicLocalRenderer
+from poddown.audio.render import DurableRenderService, RenderRejectedError
+from poddown.audio.rights import RightsDeniedError, VoiceConsent
+from poddown.audio.storage import FilesystemArtifactStore, FilesystemRenderRecordStore
+
+scenarios("../features/durable_audio.feature")
+
+EXPECTED_SPOKEN_TEXT = "The rate is 13.9 hertz, not 14 hertz."
+
+
+@pytest.fixture
+def audio_context(tmp_path):
+    """Build one isolated durable render service and filesystem store per scenario."""
+    artifacts_root = tmp_path / "artifacts"
+    records_root = tmp_path / "records"
+    request = RenderRequest(
+        episode_id="demo-episode",
+        episode_version="v1",
+        segment_id="segment-001",
+        speaker_id="host",
+        expected_spoken_text=EXPECTED_SPOKEN_TEXT,
+        voice_asset_id="voice-host-v1",
+        provider="local",
+        model="local-deterministic-v1",
+    )
+    renderer = DeterministicLocalRenderer()
+    artifacts = FilesystemArtifactStore(artifacts_root)
+    records = FilesystemRenderRecordStore(records_root)
+    return {
+        "artifacts": artifacts,
+        "artifacts_root": artifacts_root,
+        "consent": VoiceConsent(
+            "voice-host-v1", "consent-demo-001", frozenset({"local"})
+        ),
+        "records_root": records_root,
+        "records": records,
+        "renderer": renderer,
+        "request": request,
+        "service": DurableRenderService(
+            artifacts,
+            records,
+        ),
+    }
+
+
+def _render(audio_context, *, take_count=1):
+    return asyncio.run(
+        audio_context["service"].render_takes(
+            audio_context["request"],
+            audio_context["consent"],
+            audio_context["renderer"],
+            take_count=take_count,
+        )
+    )
+
+
+def _assert_persisted_outcomes(audio_context, outcomes):
+    artifacts = audio_context["artifacts"]
+    records = audio_context["records"]
+    for outcome in outcomes:
+        stored = records.find(outcome.candidate.idempotency_key)
+        assert stored is not None
+        assert stored.candidate == outcome.candidate
+        assert stored.candidate.artifact == outcome.candidate.artifact
+        assert artifacts.read(outcome.candidate.artifact)
+        if outcome.cost_event is not None:
+            assert stored.cost_event == outcome.cost_event
+        else:
+            assert stored.cost_event is not None
+
+
+@given("a rights-cleared render request")
+def rights_cleared_render_request(audio_context):
+    assert audio_context["consent"].valid is True
+
+
+@given("a render request without voice consent")
+def render_request_without_voice_consent(audio_context):
+    audio_context["consent"] = None
+
+
+@given("the renderer cannot pin the requested voice")
+def renderer_cannot_pin_requested_voice(audio_context):
+    renderer = audio_context["renderer"]
+    renderer.capabilities = replace(renderer.capabilities, voice_pinning=False)
+
+
+@given("a second service shares the render records")
+def second_service_shares_render_records(audio_context):
+    audio_context["second_service"] = DurableRenderService(
+        audio_context["artifacts"],
+        FilesystemRenderRecordStore(
+            audio_context["records_root"], audio_context["artifacts"]
+        ),
+    )
+
+
+@when("the request is rendered with three local takes")
+def render_three_local_takes(audio_context):
+    audio_context["outcomes"] = _render(audio_context, take_count=3)
+
+
+@when("the request is rendered with one local take")
+def render_one_local_take(audio_context):
+    expected_error = (
+        RightsDeniedError if audio_context["consent"] is None else RenderRejectedError
+    )
+    with pytest.raises(expected_error):
+        _render(audio_context)
+
+
+@when("the same request is rendered twice with one local take")
+def render_same_request_twice(audio_context):
+    audio_context["first_outcomes"] = _render(audio_context)
+    audio_context["second_outcomes"] = _render(audio_context)
+
+
+@when("both services render the same local take concurrently")
+def render_concurrently_through_shared_records(audio_context):
+    async def render_both():
+        return await asyncio.gather(
+            audio_context["service"].render_takes(
+                audio_context["request"],
+                audio_context["consent"],
+                audio_context["renderer"],
+            ),
+            audio_context["second_service"].render_takes(
+                audio_context["request"],
+                audio_context["consent"],
+                audio_context["renderer"],
+            ),
+        )
+
+    audio_context["concurrent_outcomes"] = asyncio.run(render_both())
+
+
+@when("the request is rendered with two local takes")
+def render_two_local_takes(audio_context):
+    audio_context["outcomes"] = _render(audio_context, take_count=2)
+
+
+@then("three immutable candidates and artifacts are returned")
+def three_immutable_candidates_and_artifacts(audio_context):
+    outcomes = audio_context["outcomes"]
+    assert len(outcomes) == 3
+    _assert_persisted_outcomes(audio_context, outcomes)
+    for outcome in outcomes:
+        candidate = outcome.candidate
+        artifact = candidate.artifact
+        assert artifact.sha256
+        with pytest.raises(FrozenInstanceError):
+            candidate.segment_id = "changed"
+        with pytest.raises(FrozenInstanceError):
+            artifact.sha256 = "changed"
+
+
+@then("every candidate preserves the expected-spoken text")
+def candidates_preserve_expected_spoken_text(audio_context):
+    assert all(
+        outcome.candidate.expected_spoken_text == EXPECTED_SPOKEN_TEXT
+        for outcome in audio_context["outcomes"]
+    )
+
+
+@then("every candidate records zero-cost local usage")
+def candidates_record_zero_cost_local_usage(audio_context):
+    for outcome in audio_context["outcomes"]:
+        assert outcome.candidate.provider == "local"
+        assert outcome.candidate.cost == Decimal("0")
+        assert outcome.cost_event is not None
+        assert outcome.cost_event.cost == Decimal("0")
+
+
+@then("rendering is rejected before the renderer is called")
+def rendering_rejected_before_renderer_call(audio_context):
+    assert audio_context["renderer"].calls == []
+
+
+@then("no artifact or cost event is recorded")
+def no_artifact_or_cost_event_recorded(audio_context):
+    records = audio_context["records"]
+    request = audio_context["request"]
+    artifact_files = [
+        path for path in audio_context["artifacts_root"].rglob("*") if path.is_file()
+    ]
+    assert records.find(request.idempotency_key) is None
+    assert artifact_files == []
+
+
+@then("the second result is marked as replayed")
+def second_result_marked_replayed(audio_context):
+    (outcome,) = audio_context["second_outcomes"]
+    _assert_persisted_outcomes(audio_context, audio_context["first_outcomes"])
+    _assert_persisted_outcomes(audio_context, audio_context["second_outcomes"])
+    assert outcome.replayed is True
+    assert outcome.cost_event is None
+
+
+@then("the renderer is called only once")
+def renderer_called_only_once(audio_context):
+    assert len(audio_context["renderer"].calls) == 1
+
+
+@then("exactly one cost event exists")
+def exactly_one_cost_event_exists(audio_context):
+    outcomes = (*audio_context["first_outcomes"], *audio_context["second_outcomes"])
+    assert sum(outcome.cost_event is not None for outcome in outcomes) == 1
+
+
+@then("exactly one concurrent result is replayed")
+def exactly_one_concurrent_result_is_replayed(audio_context):
+    first, second = audio_context["concurrent_outcomes"]
+    assert sorted(outcome.replayed for outcome in first + second) == [False, True]
+
+
+@then("the two candidates have different candidate identities")
+def candidates_have_distinct_identities(audio_context):
+    first, second = audio_context["outcomes"]
+    _assert_persisted_outcomes(audio_context, audio_context["outcomes"])
+    assert first.candidate.candidate_id != second.candidate.candidate_id
+
+
+@then("the two artifacts have different content digests")
+def artifacts_have_distinct_content_digests(audio_context):
+    first, second = audio_context["outcomes"]
+    assert first.candidate.artifact.sha256 != second.candidate.artifact.sha256

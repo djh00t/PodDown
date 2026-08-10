@@ -2,8 +2,9 @@
 
 from dataclasses import dataclass
 from decimal import Decimal
-from pathlib import Path
 from typing import Protocol
+
+from poddown.domain import ProviderUsage
 
 
 @dataclass(frozen=True)
@@ -36,10 +37,24 @@ class TranscriptResult:
     """Normalized transcription output used by fidelity QA."""
 
     text: str
+    words: tuple["TranscriptWord", ...]
     provider: str
     model: str
-    confidence: float | None
+    usage: ProviderUsage
+    request_id: str
+    checksum: str  # SHA-256 of the exact audio bytes sent to the transcriber.
     cost: Decimal
+    confidence: float | None = None
+    mode: str = "provider"
+
+
+@dataclass(frozen=True)
+class TranscriptWord:
+    """Optional provider word timing retained when the adapter supplies it."""
+
+    word: str
+    start: float
+    end: float
 
 
 class VoiceRenderer(Protocol):
@@ -52,5 +67,5 @@ class VoiceRenderer(Protocol):
 class Transcriber(Protocol):
     """Transcribe candidate or mastered audio for fidelity checks."""
 
-    async def transcribe(self, audio_path: Path) -> TranscriptResult:
+    async def transcribe(self, audio: bytes) -> TranscriptResult:
         """Return normalized transcript text and metering metadata."""

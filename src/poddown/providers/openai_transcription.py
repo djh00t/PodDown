@@ -2,9 +2,11 @@
 
 import hashlib
 import json
-from dataclasses import dataclass
+from collections.abc import Callable
+from decimal import Decimal
 
 from poddown.domain import ProviderUsage
+from poddown.providers.contracts import TranscriptResult, TranscriptWord
 from poddown.providers.http import (
     AsyncHttpTransport,
     HttpRequest,
@@ -17,25 +19,8 @@ _SUPPORTED_MODELS = frozenset(
 )
 
 
-@dataclass(frozen=True)
-class TranscriptWord:
-    """One normalized transcript word with provider timestamps."""
-
-    word: str
-    start: float
-    end: float
-
-
-@dataclass(frozen=True)
-class TranscriptionResult:
-    """Normalized transcription output used by fidelity QA."""
-
-    text: str
-    words: tuple[TranscriptWord, ...]
-    usage: ProviderUsage
-    request_id: str
-    model: str
-    checksum: str
+# Preserve the original module-level name for callers of the initial adapter.
+TranscriptionResult = TranscriptResult
 
 
 class OpenAITranscriber:
@@ -46,24 +31,24 @@ class OpenAITranscriber:
         settings: ProviderSettings,
         model: str,
         transport: AsyncHttpTransport,
+        cost_estimator: Callable[[bytes, ProviderUsage], Decimal] | None = None,
     ):
         self._settings = settings
         if model not in _SUPPORTED_MODELS:
             raise ValueError(f"unsupported transcription model: {model}")
         self._model = model
         self._transport = transport
+        self._cost_estimator = cost_estimator or (lambda _audio, _usage: Decimal("0"))
 
     async def transcribe(self, audio: bytes) -> TranscriptionResult:
         """Return normalized transcript data without inventing absent fields."""
         if not audio:
             raise ValueError("audio must not be empty")
-        form = {"model": self._model, "response_format": "json"}
-        if self._model == "whisper-1":
-            form = {
-                "model": self._model,
-                "response_format": "verbose_json",
-                "timestamp_granularities[]": "word",
-            }
+        form = {
+            "model": self._model,
+            "response_format": "verbose_json",
+            "timestamp_granularities[]": "word",
+        }
         response = await self._transport.request(
             HttpRequest(
                 method="POST",
@@ -81,7 +66,9 @@ class OpenAITranscriber:
         require_success(response, "OpenAI")
         try:
             payload = json.loads(response.body)
-            text = str(payload["text"])
+            text = payload["text"]
+            if not isinstance(text, str):
+                raise TypeError("text must be a string")
             words = tuple(
                 TranscriptWord(
                     str(word["word"]), float(word["start"]), float(word["end"])
@@ -95,11 +82,20 @@ class OpenAITranscriber:
             )
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             raise ValueError("OpenAI returned malformed transcription data") from error
-        return TranscriptionResult(
+        if self._model != "whisper-1" and not words:
+            raise ValueError("OpenAI returned no word timestamps")
+        return TranscriptResult(
             text=text,
             words=words,
+            provider="openai",
             usage=normalized_usage,
             request_id=response.headers.get("x-request-id", "unavailable"),
             model=self._model,
-            checksum=hashlib.sha256(response.body).hexdigest(),
+            checksum=hashlib.sha256(audio).hexdigest(),
+            cost=self._cost_estimator(audio, normalized_usage),
+            confidence=(
+                float(payload["confidence"])
+                if payload.get("confidence") is not None
+                else None
+            ),
         )
