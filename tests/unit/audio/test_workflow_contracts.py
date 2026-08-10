@@ -168,6 +168,12 @@ def test_episode_input_round_trips_through_decoded_temporal_mapping():
     assert EpisodeWorkflowInput.from_dict(episode.to_dict()) == episode
 
 
+def test_episode_input_rejects_an_empty_segment_collection():
+    """Catch an empty snapshot being reported as a completed audio workflow."""
+    with pytest.raises(WorkflowContractError, match="at least one"):
+        EpisodeWorkflowInput("episode-1", "v1", ())
+
+
 @pytest.mark.parametrize("payload", ["{", "[]", '{"segments": [{}]}'])
 def test_malformed_temporal_input_fails_with_workflow_contract_error(payload: str):
     with pytest.raises(WorkflowContractError):
