@@ -66,6 +66,11 @@ services:
   worker:
     build: .
     command: ["poddown-worker"]
+    environment:
+      PODDOWN_TEMPORAL_ADDRESS: temporal:7233
+      PODDOWN_TEMPORAL_NAMESPACE: default
+      PODDOWN_TEMPORAL_TASK_QUEUE: poddown-default
+      PODDOWN_WORKER_READY_FILE: /tmp/poddown-worker-ready
     depends_on:
       temporal: {condition: service_healthy}
       nats: {condition: service_healthy}

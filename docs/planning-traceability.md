@@ -74,8 +74,15 @@ not expand the MVP feature set; they make the approved service operable.
   remain pending.
 - Task-level implementation plan: intentionally produced just-in-time per
   milestone so measured interfaces and audio quality inform the next plan.
-- Publishing, Signal & Supply, and production readiness remain pending in
+- Publishing and Signal & Supply remain pending in
   their assigned future milestones. The API, CLI, and agent integrations now
   have deterministic local HTTP/SQLite/stdio paths; live provider rendering,
   external publication, and production MCP transport remain explicit
   deployment-boundary work.
+- M7 production readiness is locally verified for the versioned non-Kubernetes
+  Compose/Dockerfile contract, packaged API/worker entrypoints, fail-closed
+  dependency probes and HTTP readiness status, recursively immutable/redacted
+  operational telemetry, and deterministic contract evidence: [production-
+  readiness verification](verification/production-readiness.md). Live Compose
+  E2E, hosted migrations, real backup/restore, outage/budget/load tests,
+  signing/SBOM, and deployment credentials remain deferred.

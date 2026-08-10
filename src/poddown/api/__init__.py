@@ -289,7 +289,10 @@ def create_app(
         snapshot = health_evaluator.evaluate(
             liveness=True, dependencies=dependency_states, probes=dependency_probes
         )
-        return {"status": snapshot.readiness, **snapshot.to_dict()}
+        content = {"status": snapshot.readiness, **snapshot.to_dict()}
+        if snapshot.readiness != "healthy":
+            return JSONResponse(status_code=503, content=content)  # type: ignore[return-value]
+        return content
 
     @app.get("/health/dependencies")
     def health_dependency_status() -> dict[str, object]:

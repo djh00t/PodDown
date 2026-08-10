@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -106,9 +107,9 @@ def _is_unsafe_key(key: str) -> bool:
 
 def _safe_value(value: object) -> object:
     if isinstance(value, Mapping):
-        return dict(_safe_attributes({str(key): item for key, item in value.items()}))
+        return _safe_attributes({str(key): item for key, item in value.items()})
     if isinstance(value, list):
-        return [_safe_value(item) for item in value]
+        return tuple(_safe_value(item) for item in value)
     if isinstance(value, tuple):
         return tuple(_safe_value(item) for item in value)
     if isinstance(value, (bytes, bytearray)):
@@ -160,12 +161,19 @@ class OperationalEvent:
         )
 
     def to_dict(self) -> dict[str, object]:
+        def json_safe(value: object) -> object:
+            if isinstance(value, Mapping):
+                return {str(key): json_safe(item) for key, item in value.items()}
+            if isinstance(value, tuple):
+                return [json_safe(item) for item in value]
+            return value
+
         return {
             "event_name": self.event_name,
             "tenant_id": self.tenant_id,
             "project_id": self.project_id,
             "correlation_id": self.correlation_id,
-            "attributes": dict(self.attributes),
+            "attributes": json_safe(self.attributes),
         }
 
 
@@ -198,6 +206,24 @@ class MetricSample:
             raise ValueError("metric labels must be redacted")
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ValueError("metric value must be numeric")
+        if not math.isfinite(float(value)):
+            raise ValueError("metric value must be finite")
+        if len(labels) > 12:
+            raise ValueError("metric labels are too many")
+        for key, label in labels.items():
+            if not isinstance(key, str) or not key.strip() or len(key) > 64:
+                raise ValueError("metric label keys must be bounded strings")
+            if not isinstance(label, str) or not label.strip() or len(label) > 128:
+                raise ValueError("metric label values must be bounded strings")
+            if any(ord(character) < 32 for character in label):
+                raise ValueError(
+                    "metric label values must not contain control characters"
+                )
+            if _is_unsafe_key(label) or any(
+                marker in label.casefold()
+                for marker in ("http://", "https://", "{", "}")
+            ):
+                raise ValueError("metric label values must be safe summaries")
         return cls(
             name,
             float(value),
