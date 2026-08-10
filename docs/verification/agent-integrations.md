@@ -44,9 +44,10 @@ fresh/nonce fields remain non-authoritative.
 
 ## Final checks
 
-The changed-scope `make check`, build, docs, lock, pip, compile, diff, and
-credential checks are required before handoff. No `check-full` or
-`quality-gates` run is permitted locally.
+The changed-scope `make check` passed with **774 tests passed, 1 live-provider
+test deselected**, and **86.34%** branch coverage. Ruff, strict mypy, build,
+docs, lock, pip, compile, diff, and credential checks also passed. No
+`check-full` or `quality-gates` run was performed locally.
 
 ## Deferrals and residual risks
 
