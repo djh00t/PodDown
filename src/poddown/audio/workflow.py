@@ -81,6 +81,40 @@ def _json_value(value: Any) -> Any:
     return value
 
 
+def _non_retryable_activity_code(error: ActivityError) -> str | None:
+    cause = error.cause
+    if not isinstance(cause, ApplicationError):
+        return None
+    if not cause.non_retryable and cause.type not in NON_RETRYABLE_ERROR_TYPES:
+        return None
+    return cause.type or "NON_RETRYABLE_ACTIVITY_FAILURE"
+
+
+def _failed_gates_for(
+    failure_code: str, candidates: tuple[CandidateQuality, ...]
+) -> tuple[str, ...]:
+    if failure_code == "QUALITY_GATES_EXHAUSTED":
+        gates = (
+            ("fidelity", any(not item.fidelity.passed for item in candidates)),
+            (
+                "pronunciation",
+                any(not item.pronunciation_passed for item in candidates),
+            ),
+            (
+                "audio",
+                any(not item.diagnostics.passes_hard_gates for item in candidates),
+            ),
+        )
+        return tuple(name for name, failed in gates if failed) or ("activity",)
+    if failure_code == RightsFailureError.__name__:
+        return ("rights",)
+    if failure_code == MalformedAudioError.__name__:
+        return ("audio",)
+    if failure_code == WorkflowContractError.__name__:
+        return ("contract",)
+    return ("activity",)
+
+
 def _canonical(value: Any) -> str:
     return json.dumps(_json_value(value), sort_keys=True, separators=(",", ":"))
 
@@ -419,7 +453,10 @@ class EpisodeRenderWorkflow:
                 terminal_failure = WorkflowFailure(
                     segment_id=segment.segment_id,
                     attempt_count=decision.attempt,
-                    failed_gates=("fidelity", "pronunciation", "audio"),
+                    failed_gates=_failed_gates_for(
+                        decision.failure_code or "QUALITY_GATES_EXHAUSTED",
+                        decision.candidates,
+                    ),
                     last_error_code=decision.failure_code or "QUALITY_GATES_EXHAUSTED",
                 )
                 break
@@ -467,14 +504,44 @@ class EpisodeRenderWorkflow:
                 for take in range(3)
             ]
             results = await asyncio.gather(*activity_calls, return_exceptions=True)
-            if any(isinstance(result, ActivityError) for result in results):
+            activity_errors = tuple(
+                result for result in results if isinstance(result, ActivityError)
+            )
+            try:
+                last_candidates = tuple(
+                    CandidateQuality.from_dict(result)
+                    for result in results
+                    if isinstance(result, dict)
+                )
+            except ValueError:
+                return SegmentDecision(
+                    segment_id=segment.segment_id,
+                    attempt=attempt,
+                    accepted_candidate_id=None,
+                    candidates=(),
+                    failure_code="MALFORMED_ACTIVITY_OUTPUT",
+                )
+            terminal_error = next(
+                (
+                    code
+                    for code in (
+                        _non_retryable_activity_code(error) for error in activity_errors
+                    )
+                    if code is not None
+                ),
+                None,
+            )
+            if terminal_error is not None:
+                return SegmentDecision(
+                    segment_id=segment.segment_id,
+                    attempt=attempt,
+                    accepted_candidate_id=None,
+                    candidates=last_candidates,
+                    failure_code=terminal_error,
+                )
+            if activity_errors and not last_candidates:
                 last_error = "ACTIVITY_RETRY_EXHAUSTED"
                 continue
-            last_candidates = tuple(
-                CandidateQuality.from_dict(result)
-                for result in results
-                if isinstance(result, dict)
-            )
             selected = select_candidate(last_candidates)
             if selected is not None:
                 return SegmentDecision(
