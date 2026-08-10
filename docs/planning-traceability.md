@@ -6,7 +6,7 @@
 |---:|---|---|---|
 | 1 | Markdown/frontmatter | 001 | M0 |
 | 2 | Profile configuration | 001 | M0/M1 |
-| 3 | Episode job API | 004 | M3 |
+| 3 | Episode job API | 004 | M3 lifecycle, deterministic offline HTTP transport, and restart-safe local SQLite API mode locally verified: [episode lifecycle BDD](../tests/features/episode_lifecycle.feature), [episode API BDD](../tests/features/episode_api.feature), [durable persistence BDD](../tests/features/durable_persistence.feature), [API integration tests](../tests/integration/test_episode_api.py), [durable persistence integration tests](../tests/integration/test_durable_persistence.py), and [verification evidence](verification/durable-persistence.md); PostgreSQL-backed production transport remains pending |
 | 4 | Source-bound adaptation | 002 | M1 complete locally; adversarial eval evidence recorded |
 | 5 | Dialogue/script model | 002 | M1 complete locally; source-bound canonical script verified |
 | 6 | Provider abstraction | 001 | M0 |
@@ -19,14 +19,14 @@
 | 13 | Critical-token verification | 001/002/003 | M0–M2 locally verified against provider transcript text with segment-only rerender evidence and independent final-master fidelity: [final-master BDD](../tests/features/final_master_qa.feature), [final-master unit tests](../tests/unit/qa/test_final_master.py), and [verification evidence](verification/final-master-qa.md) |
 | 14 | Audio quality gates | 003 | M2 locally verified for WAV diagnostics, clipping regression, provider-bound artifact checks, deterministic mastering input/output gates, and independent final-master media preflight: [diagnostic tests](../tests/unit/audio/test_diagnostics.py), [mastering verification](verification/deterministic-mastering.md), and [final-master verification](verification/final-master-qa.md); listening gates remain pending |
 | 15 | Mastering | 003 | M2 deterministic mastering and final-master QA boundaries locally verified for stable ordering, profile validation, injected ffmpeg/ffprobe boundaries, exact-byte transcription binding, WAV/MP3 inspection, and immutable provenance: [mastering BDD](../tests/features/mastering.feature), [final-master BDD](../tests/features/final_master_qa.feature), and [verification evidence](verification/final-master-qa.md) |
-| 16 | Package/provenance | 001/003 | M0–M2 locally verified for content-addressed immutable artifacts, deterministic nine-file generation, final checksum and critical-token binding, replay, and conflict preservation: [package BDD](../tests/features/package.feature), [package-generation BDD](../tests/features/package_generation.feature), [artifact unit tests](../tests/unit/test_artifacts.py), [package unit tests](../tests/unit/test_packages.py), [package-generation unit tests](../tests/unit/test_package_generation.py), [immutable package verification](verification/immutable-package.md), and [package-generation verification](verification/package-generation.md); object-storage, Temporal workflow integration, and publication remain pending |
+| 16 | Package/provenance | 001/003/004 | M0–M3 locally verified for content-addressed immutable artifacts, deterministic nine-file generation, final checksum and critical-token binding, replay, conflict preservation, and tenant/project-scoped filesystem object storage: [package BDD](../tests/features/package.feature), [package-generation BDD](../tests/features/package_generation.feature), [object-storage BDD](../tests/features/tenant_object_storage.feature), [artifact unit tests](../tests/unit/test_artifacts.py), [package unit tests](../tests/unit/test_packages.py), [object-storage integration tests](../tests/integration/test_tenant_object_storage.py), [immutable package verification](verification/immutable-package.md), [package-generation verification](verification/package-generation.md), and [tenant object-storage verification](verification/tenant-object-storage.md); S3 integration and publication remain pending |
 | 17 | Publishing adapters | 007 | M5 |
 | 18 | CLI | 005 | M4 |
 | 19 | MCP server | 006 | M5 |
 | 20 | PodDown skill | 006 | M5 |
 | 21 | GitHub Action | 005 | M4 |
-| 22 | Multitenancy | 004 | M3 |
-| 23 | Usage/cost metering | 004 | M3 |
+| 22 | Multitenancy | 004 | M3 tenant-scoped lifecycle repository, SQLite persistence, object keys, and HTTP boundary locally verified: [episode lifecycle BDD](../tests/features/episode_lifecycle.feature), [episode API BDD](../tests/features/episode_api.feature), [durable persistence BDD](../tests/features/durable_persistence.feature), [object-storage BDD](../tests/features/tenant_object_storage.feature), and [verification evidence](verification/durable-persistence.md); PostgreSQL row-level isolation and auth middleware remain pending |
+| 23 | Usage/cost metering | 004 | M3 append-only tenant-scoped SQLite usage/cost ledger locally verified with exact Decimal serialization, idempotent provider-request replay, and conflict protection: [persistence unit tests](../tests/unit/test_persistence.py), [persistence integration tests](../tests/integration/test_durable_persistence.py), and [verification evidence](verification/durable-persistence.md); provider-invoice reconciliation remains pending |
 | 24 | Signal & Supply integration | 008 | M6 |
 
 ## Additional requirements found by whole-product audit

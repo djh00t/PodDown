@@ -1,6 +1,11 @@
 Feature: Temporal episode render orchestration
   The local demo workflow selects durable candidates without contacting a provider.
 
+  Scenario: Empty episode input is rejected before any audio dispatch
+    Given an empty episode workflow input
+    When I validate the workflow input
+    Then the workflow input is rejected before audio activity
+
   Scenario: Fan out no more than three deterministic takes for every segment
     Given a deterministic two-segment episode with a three-take budget
     When the local episode workflow is run
