@@ -334,16 +334,20 @@ class FilesystemQualityRecordStore:
         finally:
             temporary_path.unlink(missing_ok=True)
 
-    def find(self, candidate_id: str) -> CandidateQuality | None:
+    def find(
+        self, cache_key: str, *, expected_candidate_id: str | None = None
+    ) -> CandidateQuality | None:
         """Return quality evidence when it has already been persisted."""
-        path = self._path_for(candidate_id)
+        path = self._path_for(cache_key)
         if not path.exists():
             return None
-        return self.load(candidate_id)
+        return self.load(cache_key, expected_candidate_id=expected_candidate_id)
 
-    def load(self, candidate_id: str) -> CandidateQuality:
+    def load(
+        self, cache_key: str, *, expected_candidate_id: str | None = None
+    ) -> CandidateQuality:
         """Load quality evidence or fail closed when it is malformed."""
-        path = self._path_for(candidate_id)
+        path = self._path_for(cache_key)
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
             quality = CandidateQuality.from_dict(payload)
@@ -355,6 +359,9 @@ class FilesystemQualityRecordStore:
             json.JSONDecodeError,
         ) as error:
             raise ArtifactIntegrityError("quality record is malformed") from error
+        candidate_id = (
+            cache_key if expected_candidate_id is None else expected_candidate_id
+        )
         if quality.candidate_id != candidate_id:
             raise ArtifactIntegrityError("quality record candidate does not match key")
         return quality

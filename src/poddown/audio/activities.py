@@ -286,7 +286,9 @@ async def _run_render_activity(
     service.preflight(request, segment.consent, renderer)
     if quality_records is not None:
         quality_key = _quality_cache_key(request, segment.critical_tokens)
-        persisted_quality = quality_records.find(quality_key)
+        persisted_quality = quality_records.find(
+            quality_key, expected_candidate_id=request.candidate_id
+        )
         if persisted_quality is not None:
             return persisted_quality.to_dict()
     outcomes = await service.render_takes(
@@ -299,7 +301,9 @@ async def _run_render_activity(
         raise WorkflowContractError("render activity must produce one take")
     outcome = outcomes[0]
     if quality_records is not None:
-        persisted_quality = quality_records.find(quality_key)
+        persisted_quality = quality_records.find(
+            quality_key, expected_candidate_id=request.candidate_id
+        )
         if persisted_quality is not None:
             return persisted_quality.to_dict()
     audio_bytes = artifacts.read(outcome.candidate.artifact)
