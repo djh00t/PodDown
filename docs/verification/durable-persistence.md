@@ -57,3 +57,11 @@ git diff --check
 
 The credential scan found no matches. All tests use temporary local SQLite files;
 no database server, provider, network, credential, or cloud spend is invoked.
+
+## PR19 review-feedback verification
+
+Focused durable-persistence integration first showed four non-object failure
+payloads loading without error and offset timestamps ordering lexically instead
+of chronologically. After the fix, `rtk proxy uv run pytest -q
+tests/integration/test_durable_persistence.py` passed **15 tests**. The branch
+also merges the updated PR18 parent without a force-pushed rebase.
