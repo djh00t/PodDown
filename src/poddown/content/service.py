@@ -354,13 +354,23 @@ def _source_bound_tokens(
             for start, end, turn in turn_offsets
             if start <= token.script_span[0] < end
         )
-        source_anchor = turn.claim_anchors[0]
-        source_text = anchor_text(snapshot, source_anchor)
-        key = (source_anchor.block_id, token.source_form)
-        start_at = used_offsets.get(key, 0)
-        character_index = source_text.find(token.source_form, start_at)
-        if character_index < 0:
+        match = next(
+            (
+                (anchor, source_text, character_index)
+                for anchor in turn.claim_anchors
+                for source_text in (anchor_text(snapshot, anchor),)
+                for key in ((anchor.block_id, token.source_form),)
+                for character_index in (
+                    source_text.find(token.source_form, used_offsets.get(key, 0)),
+                )
+                if character_index >= 0
+            ),
+            None,
+        )
+        if match is None:
             raise AdaptationError("unsupported_claim")
+        source_anchor, source_text, character_index = match
+        key = (source_anchor.block_id, token.source_form)
         used_offsets[key] = character_index + len(token.source_form)
         source_start = source_anchor.start + len(
             source_text[:character_index].encode("utf-8")
