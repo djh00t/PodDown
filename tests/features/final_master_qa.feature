@@ -31,6 +31,12 @@ Feature: Verify final-master transcription and fidelity
     When final-master QA is evaluated
     Then final-master QA rejects the master before transcription dispatch
 
+  Scenario: Accept clipping within the mastered profile threshold
+    Given a final master with clipping allowed by its profile
+    And its critical tokens are "C1"
+    When final-master QA is evaluated
+    Then the final-master QA record passes at stage "master"
+
   Scenario Outline: Map provider failures to stable final-master QA errors
     Given a valid final master and a transcriber that raises <provider failure>
     And its critical tokens are "C1"

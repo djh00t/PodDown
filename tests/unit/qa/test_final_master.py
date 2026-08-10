@@ -214,6 +214,32 @@ def test_invalid_profile_or_media_fails_before_transcriber_dispatch(master, prof
     assert transcriber.calls == []
 
 
+def test_preflight_honors_the_profile_clipping_threshold():
+    """Catch preflight rejecting clipping explicitly permitted by the profile."""
+    permitted_profile = MasteringProfile(
+        max_duration_seconds=10.0,
+        max_peak_amplitude=1.0,
+        max_clipping_ratio=1.0,
+    )
+    master = mastered_audio(
+        audio=wav_bytes(samples=(32_767,) * 882),
+        inspection_profile=permitted_profile,
+    )
+
+    result = evaluate(FakeTranscriber(), master=master, profile=permitted_profile)
+
+    assert result.passed is True
+    assert result.diagnostics.clipping_ratio == 1.0
+
+
+def test_malformed_provenance_is_a_terminal_preflight_error():
+    """Catch provenance dereferences that escape the stable QA error boundary."""
+    master = replace(mastered_audio(), provenance=object())
+
+    with pytest.raises(FinalMasterQaError, match="provenance"):
+        evaluate(FakeTranscriber(), master=master)
+
+
 @pytest.mark.parametrize(
     "provider_error",
     [TimeoutError("provider timeout"), ProviderRateLimited("provider rate limited")],

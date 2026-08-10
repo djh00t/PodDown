@@ -125,7 +125,7 @@ def _evaluate(context) -> None:
     context.values["result"] = asyncio.run(
         service.evaluate(
             mastered_audio=context.values["master"],
-            profile=PROFILE,
+            profile=context.values.get("profile", PROFILE),
             critical_tokens=context.values["critical_tokens"],
         )
     )
@@ -164,6 +164,25 @@ def malformed_final_master(context):
     )
     context.values["transcriber"] = FakeTranscriber(
         result=_transcript(text="C1", checksum=sha256(b"not a WAV file").hexdigest())
+    )
+
+
+@given("a final master with clipping allowed by its profile")
+def final_master_with_allowed_clipping(context):
+    profile = MasteringProfile(
+        sample_rate_hz=44_100,
+        channels=1,
+        min_duration_seconds=0.01,
+        max_duration_seconds=10.0,
+        max_peak_amplitude=1.0,
+        max_clipping_ratio=1.0,
+        version="spoken-word-v1",
+    )
+    master = _mastered_audio(_wav_bytes(sample=32_767))
+    context.values["master"] = master
+    context.values["profile"] = profile
+    context.values["transcriber"] = FakeTranscriber(
+        result=_transcript(text="C1", checksum=sha256(master.wav_bytes).hexdigest())
     )
 
 

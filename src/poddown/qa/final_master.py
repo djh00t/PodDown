@@ -14,7 +14,7 @@ from poddown.audio.diagnostics import (
     AudioDiagnosticsError,
     diagnose_wav,
 )
-from poddown.audio.mastering import MasteredAudio, MasteringProfile
+from poddown.audio.mastering import MasteredAudio, MasteringProfile, MasteringProvenance
 from poddown.audio.workflow import (
     TranscriptionFailureError,
     TranscriptionTransientError,
@@ -132,8 +132,7 @@ class FinalMasterQaService:
         gates = (
             FinalMasterGate(
                 name="audio",
-                passed=diagnostics.passes_hard_gates
-                and diagnostics.peak_amplitude <= profile.max_peak_amplitude
+                passed=diagnostics.peak_amplitude <= profile.max_peak_amplitude
                 and diagnostics.clipping_ratio <= profile.max_clipping_ratio,
                 evidence=cast(dict[str, object], diagnostics.to_dict()),
             ),
@@ -169,6 +168,8 @@ class FinalMasterQaService:
             not isinstance(token, str) or not token.strip() for token in critical_tokens
         ):
             raise FinalMasterQaError("final-master critical tokens are malformed")
+        if not isinstance(mastered_audio.provenance, MasteringProvenance):
+            raise FinalMasterQaError("final-master provenance is malformed")
         if mastered_audio.provenance.profile_version != profile.version:
             raise FinalMasterQaError(
                 "final-master profile version does not match master provenance"
@@ -195,8 +196,7 @@ class FinalMasterQaService:
                 "final-master media/profile preflight failed"
             ) from error
         if (
-            not diagnostics.passes_hard_gates
-            or diagnostics.peak_amplitude > profile.max_peak_amplitude
+            diagnostics.peak_amplitude > profile.max_peak_amplitude
             or diagnostics.clipping_ratio > profile.max_clipping_ratio
         ):
             raise FinalMasterQaError("final-master media quality gates failed")
