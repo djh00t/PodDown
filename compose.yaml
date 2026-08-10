@@ -1,0 +1,81 @@
+x-poddown:
+  contract_version: m7.v1
+  mode: local-contract-only
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: poddown
+      POSTGRES_USER: poddown
+      POSTGRES_PASSWORD: ${PODDOWN_POSTGRES_PASSWORD:?set a local-only password}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poddown -d poddown"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes: [postgres-data:/var/lib/postgresql/data]
+  temporal:
+    image: temporalio/auto-setup:1.25.0
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: poddown
+      POSTGRES_PWD: ${PODDOWN_POSTGRES_PASSWORD:?set a local-only password}
+      POSTGRES_SEEDS: postgres
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8233/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  nats:
+    image: nats:2.10.20-alpine
+    command: ["-js", "-m", "8222"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  minio:
+    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${PODDOWN_MINIO_ROOT_USER:?set a local-only user}
+      MINIO_ROOT_PASSWORD: ${PODDOWN_MINIO_ROOT_PASSWORD:?set a local-only password}
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes: [minio-data:/data]
+  api:
+    build: .
+    command: ["poddown-api"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      temporal: {condition: service_healthy}
+      nats: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/live || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  worker:
+    build: .
+    command: ["poddown-worker"]
+    depends_on:
+      temporal: {condition: service_healthy}
+      nats: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/poddown-worker-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
+  minio-data:

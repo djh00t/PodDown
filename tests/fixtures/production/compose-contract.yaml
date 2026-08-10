@@ -1,0 +1,18 @@
+contract_version: m7.v1
+required_services:
+  - postgres
+  - temporal
+  - nats
+  - minio
+  - api
+  - worker
+required_health_gates:
+  api:
+    - postgres
+    - temporal
+    - nats
+    - minio
+  worker:
+    - temporal
+    - nats
+    - minio
