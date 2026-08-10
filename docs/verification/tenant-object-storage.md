@@ -77,10 +77,10 @@ one of two identical concurrent puts failed, and the linked destination
 directory was never passed to `fsync`.
 
 After the fix, focused storage integration and BDD coverage passed **25 tests**.
-The final dependency-safe branch includes PR17 as merge commit `6536ead` rather
-than a force-pushed rebase. Fresh `make check` passed **710 tests** with one
-live-provider test deselected, total branch coverage **86.53%**, Ruff, and
-strict mypy. Additional validation is recorded with:
+That historical verification used the pre-rebase branch, which included PR17
+as merge commit `6536ead`. The rebased branch's exact SHA, CI run, and fresh
+validation are recorded in the PR evidence comment. Additional validation is
+recorded with:
 
 ```bash
 make check
