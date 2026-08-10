@@ -175,6 +175,11 @@ class DurableRenderService:
     @staticmethod
     def _validate_wav(audio_bytes: bytes, sample_rate_hz: int) -> None:
         """Require complete mono 16-bit PCM frames in a valid WAV container."""
+        if (
+            len(audio_bytes) < 8
+            or int.from_bytes(audio_bytes[4:8], "little") != len(audio_bytes) - 8
+        ):
+            raise RenderRejectedError("renderer returned truncated WAV container")
         try:
             with wave.open(BytesIO(audio_bytes), "rb") as audio:
                 channels = audio.getnchannels()
