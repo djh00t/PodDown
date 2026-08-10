@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from uuid import UUID
 
@@ -32,6 +32,7 @@ from poddown.episode_service import (
     StructuredFailure,
 )
 from poddown.persistence import SQLiteCommandDispatcher, SQLiteEpisodeRepository
+from poddown.production_readiness import DependencyState, HealthEvaluator
 
 _PROBLEM_MEDIA_TYPE = "application/problem+json"
 _DEFAULT_PROFILES = frozenset({"default", "technical-dialogue"})
@@ -242,6 +243,7 @@ def create_app(
     dispatcher: CommandDispatcher | None = None,
     available_profiles: Collection[str] | None = None,
     database_path: Path | str | None = None,
+    health_dependencies: Mapping[str, DependencyState] | None = None,
 ) -> FastAPI:
     """Create an offline or restart-safe app with injected lifecycle ports."""
     if service is not None and database_path is not None:
@@ -273,6 +275,25 @@ def create_app(
     app = FastAPI(
         title="PodDown Episode API", version="v1", docs_url=None, redoc_url=None
     )
+    health_evaluator = HealthEvaluator()
+    dependency_states = {} if health_dependencies is None else dict(health_dependencies)
+
+    @app.get("/health/live")
+    def health_live() -> dict[str, object]:
+        return {"status": "healthy"}
+
+    @app.get("/health/ready")
+    def health_ready() -> dict[str, object]:
+        snapshot = health_evaluator.evaluate(
+            liveness=True, dependencies=dependency_states
+        )
+        return {"status": snapshot.readiness, **snapshot.to_dict()}
+
+    @app.get("/health/dependencies")
+    def health_dependency_status() -> dict[str, object]:
+        return health_evaluator.evaluate(
+            liveness=True, dependencies=dependency_states
+        ).to_dict()
 
     @app.exception_handler(EpisodeServiceError)
     async def handle_service_error(
