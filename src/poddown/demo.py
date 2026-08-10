@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import platform
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -354,6 +355,59 @@ def _load_reference_fixture(fixture_root: Path | Traversable) -> _ReferenceFixtu
     )
 
 
+def _local_voice_bindings(
+    fixture: _ReferenceFixture, *, system_name: str | None = None
+) -> dict[str, str]:
+    """Resolve approved fixture voice assets to host-local voice names."""
+    speakers = fixture.profile.get("speakers")
+    assets = fixture.voices.get("assets")
+    if not isinstance(speakers, list) or not isinstance(assets, list):
+        raise ValueError("local voice bindings are unavailable")
+    assets_by_id = {
+        str(asset["asset_id"]): asset
+        for asset in assets
+        if isinstance(asset, Mapping) and isinstance(asset.get("asset_id"), str)
+    }
+    voice_key = (
+        "macos_say_name"
+        if (system_name or platform.system()) == "Darwin"
+        else "espeak_name"
+    )
+    bindings: dict[str, str] = {}
+    for speaker in speakers:
+        if not isinstance(speaker, Mapping):
+            raise ValueError("local voice binding is malformed")
+        speaker_id = speaker.get("speaker_id")
+        asset_id = speaker.get("voice_asset_id")
+        asset = assets_by_id.get(str(asset_id))
+        local_voice = asset.get("local_voice") if asset is not None else None
+        voice_name = (
+            local_voice.get(voice_key) if isinstance(local_voice, Mapping) else None
+        )
+        if not isinstance(speaker_id, str) or not speaker_id:
+            raise ValueError("local voice binding is malformed")
+        if not isinstance(voice_name, str) or not voice_name.strip():
+            raise ValueError(f"local voice name is missing for {speaker_id}")
+        bindings[speaker_id] = voice_name
+    if len(bindings) != len(speakers):
+        raise ValueError("local voice bindings are duplicated")
+    return bindings
+
+
+def _source_claim_excerpt(fixture: _ReferenceFixture, marker: str) -> str:
+    """Return a source-bound claim excerpt containing the requested marker."""
+    claims = fixture.adaptation.get("claims")
+    if not isinstance(claims, list):
+        raise ValueError("adaptation claims are unavailable")
+    for claim in claims:
+        if not isinstance(claim, Mapping):
+            continue
+        source_value = claim.get("source_value")
+        if isinstance(source_value, str) and marker in source_value:
+            return source_value
+    raise ValueError(f"source claim excerpt is missing marker: {marker}")
+
+
 def _anchor(snapshot: SourceSnapshot, text: str) -> SourceAnchor:
     encoded = text.encode("utf-8")
     start = snapshot.source.encode("utf-8").index(encoded)
@@ -485,8 +539,13 @@ def _spoken_text(text: str, prepared: ContentPreparationResult) -> str:
     tokens = sorted(
         prepared.tokens, key=lambda token: len(token.source_form), reverse=True
     )
-    for token in tokens:
-        spoken = spoken.replace(token.source_form, token.expected_spoken_form)
+    replacements: dict[str, str] = {}
+    for index, token in enumerate(tokens):
+        marker = f"\x00poddown-token-{index}\x00"
+        spoken = spoken.replace(token.source_form, marker)
+        replacements[marker] = token.expected_spoken_form
+    for marker, spoken_form in replacements.items():
+        spoken = spoken.replace(marker, spoken_form)
     return " ".join(spoken.split())
 
 
@@ -762,9 +821,7 @@ async def _render_segments(
         if outcome_cost != 0:
             raise ValueError("offline local render candidates must be zero-cost")
         render_cost += outcome_cost
-        segment_transcript = " ".join(
-            token.expected_spoken_form for token in segment.critical_tokens
-        )
+        segment_transcript = _spoken_text(segment.text, prepared)
         qualities = tuple(
             CandidateQuality(
                 outcome.candidate.candidate_id,
@@ -903,8 +960,7 @@ def run_reference_demo(
     content_manifest = dict(prepared.manifest)
     content_manifest["show_notes"] = (
         disclosure_text,
-        "On 2026-07-31, the LiDAR team measured a C1 calibration result of "
-        "99.7% across the 1.2 km test corridor.",
+        _source_claim_excerpt(fixture, "99.7%"),
     )
     voice_bindings = {
         segment.segment_id: next(
@@ -1040,7 +1096,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     renderer: AudioRenderer
     if args.audio_mode == "local-speech":
-        renderer = LocalSpeechRenderer()
+        fixture = _load_reference_fixture(_reference_fixture_root())
+        renderer = LocalSpeechRenderer(voices=_local_voice_bindings(fixture))
     else:
         renderer = DeterministicLocalRenderer()
     print(

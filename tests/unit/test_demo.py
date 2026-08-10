@@ -410,6 +410,8 @@ def test_demo_cli_defaults_to_local_speech_and_allows_deterministic_override(
 
     assert demo.main(["--output", str(tmp_path / "local")]) == 0
     assert isinstance(selected[-1], LocalRenderer)
+    fixture = demo._load_reference_fixture(demo._reference_fixture_root())
+    assert selected[-1].kwargs["voices"] == demo._local_voice_bindings(fixture)
     assert (
         demo.main(
             [
