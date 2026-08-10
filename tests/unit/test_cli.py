@@ -37,6 +37,22 @@ def test_resolve_config_uses_flag_then_frontmatter_then_project_then_user(
     assert config.endpoint == "http://project"
 
 
+def test_resolve_config_uses_api_endpoint_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Protected workflow configuration must not fall back to localhost."""
+    monkeypatch.setenv("PODDOWN_API_ENDPOINT", "https://api.example.test/")
+
+    config = cli.resolve_config(
+        "# Demo\n",
+        profile_flag=None,
+        endpoint_flag=None,
+        output_dir_flag=None,
+    )
+
+    assert config.endpoint == "https://api.example.test"
+
+
 def test_preview_json_is_sorted_and_contains_no_source_text(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

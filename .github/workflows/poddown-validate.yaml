@@ -92,7 +92,7 @@ jobs:
           test -n "$PODDOWN_API_TOKEN"
           test -n "$PODDOWN_TENANT_ID"
           test -n "$PODDOWN_PROJECT_ID"
-          uv run poddown render tests/fixtures/content/robotics-mapping.md --wait --json | tee render-result.json
+          uv run poddown render tests/fixtures/content/robotics-mapping.md --endpoint "$PODDOWN_API_ENDPOINT" --wait --json | tee render-result.json
           {
             echo "### Protected render"
             echo '```json'
@@ -135,7 +135,7 @@ jobs:
           test -n "$PODDOWN_API_TOKEN"
           test -n "$PODDOWN_TENANT_ID"
           test -n "$PODDOWN_PROJECT_ID"
-          uv run poddown publish "$PODDOWN_EPISODE_ID" --confirm --json | tee publish-result.json
+          uv run poddown publish "$PODDOWN_EPISODE_ID" --endpoint "$PODDOWN_API_ENDPOINT" --confirm --json | tee publish-result.json
           {
             echo "### Protected publication"
             echo '```json'

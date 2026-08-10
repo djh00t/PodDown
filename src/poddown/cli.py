@@ -32,9 +32,7 @@ EXIT_INTERRUPTED = 130
 _DEFAULT_ENDPOINT = "http://127.0.0.1:8000"
 _DEFAULT_PROFILES = frozenset({"default", "technical-dialogue"})
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_TERMINAL_STAGES = frozenset(
-    {"failed", "rendered", "qa_passed", "packaged", "published"}
-)
+_TERMINAL_STAGES = frozenset({"failed", "packaged", "published"})
 
 
 class CliError(RuntimeError):
@@ -159,7 +157,16 @@ def resolve_config(
     frontmatter = _frontmatter_config(source)
 
     def choose(name: str, flag: str | None, default: str) -> str:
-        for value in (flag, frontmatter.get(name), project.get(name), user.get(name)):
+        environment = (
+            os.environ.get("PODDOWN_API_ENDPOINT") if name == "endpoint" else None
+        )
+        for value in (
+            flag,
+            frontmatter.get(name),
+            project.get(name),
+            user.get(name),
+            environment,
+        ):
             if isinstance(value, str) and value.strip():
                 return value.strip()
         return default
@@ -385,7 +392,10 @@ def _render(args: argparse.Namespace) -> int:
     tenant, project = _context(args)
     key = (
         args.idempotency_key
-        or f"create-{hashlib.sha256(source.encode()).hexdigest()[:16]}"
+        or "create-"
+        + hashlib.sha256(
+            f"{tenant}\x00{project}\x00{config.profile}\x00{source}".encode()
+        ).hexdigest()[:16]
     )
     headers = {
         **_auth_headers(),
@@ -419,7 +429,12 @@ def _render(args: argparse.Namespace) -> int:
             args.poll_interval,
         )
     _emit(result, args.json)
-    return EXIT_OK
+    status = result.get("status")
+    return (
+        EXIT_WORKFLOW
+        if isinstance(status, Mapping) and status.get("stage") == "failed"
+        else EXIT_OK
+    )
 
 
 def _status(args: argparse.Namespace) -> int:
@@ -445,7 +460,7 @@ def _status(args: argparse.Namespace) -> int:
         )
     )
     _emit(result, args.json)
-    return EXIT_OK
+    return EXIT_WORKFLOW if result.get("stage") == "failed" else EXIT_OK
 
 
 def _publish(args: argparse.Namespace) -> int:
