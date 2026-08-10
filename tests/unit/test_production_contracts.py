@@ -1,5 +1,6 @@
 """Unit contracts for deterministic health and telemetry redaction."""
 
+import json
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -151,8 +152,29 @@ def test_operational_event_deep_freezes_input_and_safe_serialization() -> None:
         attributes=nested,
     )
     nested["safe"][0]["stage"] = "changed"
-    serialized = event.to_dict()
+    serialized = json.loads(json.dumps(event.to_dict()))
     serialized["attributes"]["safe"][0]["stage"] = "mutated-output"
     assert event.to_dict()["attributes"]["safe"][0]["stage"] == "qa"
+    assert json.dumps(event.to_dict())
     with pytest.raises(TypeError):
         event.attributes["safe"][0]["stage"] = "blocked"  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"tags": {"production", "ready"}},
+        {"nested": [{"tags": {"production", "ready"}}]},
+    ],
+)
+def test_operational_event_rejects_non_json_values_before_they_can_mutate_or_serialize(
+    value: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError, match="JSON-safe"):
+        OperationalEvent.create(
+            event_name="episode.qa",
+            tenant_id="tenant-1",
+            project_id="project-1",
+            correlation_id="corr-1",
+            attributes=value,
+        )

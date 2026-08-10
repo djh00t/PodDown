@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 
+import pytest
 import yaml
 from pytest_bdd import given, scenarios, then, when
 
@@ -98,3 +103,67 @@ def compose_services(context) -> None:
     assert (
         services["worker"]["depends_on"]["temporal"]["condition"] == "service_healthy"
     )
+
+
+@when("the API readiness probe is prepared from the Python image contract")
+def prepare_api_readiness_probe(context) -> None:
+    healthcheck = context.values["compose"]["services"]["api"]["healthcheck"]["test"]
+    assert healthcheck[:3] == ["CMD", "python", "-c"]
+    assert (
+        (Path(__file__).parents[2] / "Dockerfile")
+        .read_text()
+        .startswith("FROM python:3.13-slim")
+    )
+    context.values["probe"] = healthcheck[3]
+
+
+@then("the API readiness probe succeeds against a local ready endpoint")
+def execute_api_readiness_probe(context) -> None:
+    class ReadyHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), ReadyHandler)
+    thread = Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        probe = context.values["probe"].replace(
+            "http://localhost:8000", f"http://127.0.0.1:{server.server_port}"
+        )
+        context.values["probe_result"] = subprocess.run(
+            [sys.executable, "-c", probe], check=False, capture_output=True
+        )
+    finally:
+        server.shutdown()
+        thread.join()
+        server.server_close()
+
+    assert context.values["probe_result"].returncode == 0
+
+
+@given("an unsupported mutable operational event attribute")
+def unsupported_event_attribute(context) -> None:
+    context.values["attributes"] = {"tags": {"production", "ready"}}
+
+
+@when("operational event creation is attempted")
+def create_unsupported_event(context) -> None:
+    with pytest.raises(ValueError, match="JSON-safe") as error:
+        OperationalEvent.create(
+            event_name="episode.qa",
+            tenant_id=TENANT,
+            project_id=PROJECT,
+            correlation_id="corr-1",
+            attributes=context.values["attributes"],
+        )
+    context.values["error"] = error.value
+
+
+@then("the unsupported event value is rejected before it can mutate or serialize")
+def unsupported_event_is_rejected(context) -> None:
+    context.values["attributes"]["tags"].add("mutated")
+    assert "JSON-safe" in str(context.values["error"])

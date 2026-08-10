@@ -114,7 +114,11 @@ def _safe_value(value: object) -> object:
         return tuple(_safe_value(item) for item in value)
     if isinstance(value, (bytes, bytearray)):
         return _REDACTED
-    return value
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    if isinstance(value, float) and math.isfinite(value):
+        return value
+    raise ValueError("operational event attributes must be JSON-safe")
 
 
 def _safe_attributes(attributes: Mapping[str, object]) -> Mapping[str, object]:

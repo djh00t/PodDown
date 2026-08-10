@@ -15,3 +15,13 @@ Feature: Offline production-readiness contracts
     Given the versioned local Compose contract
     When the Compose YAML is parsed
     Then it contains the six required runtime services and health-gated dependencies
+
+  Scenario: Run the API readiness probe without a live Compose stack
+    Given the versioned local Compose contract
+    When the API readiness probe is prepared from the Python image contract
+    Then the API readiness probe succeeds against a local ready endpoint
+
+  Scenario: Reject unsupported operational event values before serialization
+    Given an unsupported mutable operational event attribute
+    When operational event creation is attempted
+    Then the unsupported event value is rejected before it can mutate or serialize
