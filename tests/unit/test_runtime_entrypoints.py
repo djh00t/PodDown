@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from temporalio.exceptions import ApplicationError
 
 import poddown.runtime as runtime
 from poddown.runtime import RuntimeConfigurationError, worker_settings
@@ -75,6 +76,7 @@ def test_worker_readiness_marker_tracks_started_worker_and_cleanup(
     monkeypatch.setenv("PODDOWN_TEMPORAL_ADDRESS", "temporal:7233")
     monkeypatch.setenv("PODDOWN_TEMPORAL_TASK_QUEUE", "poddown-default")
     monkeypatch.setenv("PODDOWN_WORKER_READY_FILE", str(marker))
+    monkeypatch.setenv("PODDOWN_RENDER_DATA_DIR", str(tmp_path / "render-data"))
 
     class FakeClient:
         @classmethod
@@ -83,9 +85,11 @@ def test_worker_readiness_marker_tracks_started_worker_and_cleanup(
 
     class FakeWorker:
         is_running = False
+        registered_activities: tuple[object, ...] = ()
 
-        def __init__(self, *_args, **_kwargs) -> None:
+        def __init__(self, *_args, **kwargs) -> None:
             self.is_running = False
+            type(self).registered_activities = tuple(kwargs["activities"])
 
         async def __aenter__(self):
             self.is_running = True
@@ -111,3 +115,11 @@ def test_worker_readiness_marker_tracks_started_worker_and_cleanup(
         assert not marker.exists()
 
     asyncio.run(exercise())
+    assert len(FakeWorker.registered_activities) == 1
+
+    async def activity_requires_the_durable_workflow_payload() -> None:
+        with pytest.raises(ApplicationError) as error:
+            await FakeWorker.registered_activities[0]({})  # type: ignore[operator]
+        assert getattr(error.value, "type", None) == "WorkflowContractError"
+
+    asyncio.run(activity_requires_the_durable_workflow_payload())

@@ -14,7 +14,14 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 from poddown.api import create_app
-from poddown.audio.workflow import EpisodeRenderWorkflow, render_segment_activity
+from poddown.audio import (
+    ActivityHandler,
+    DeterministicLocalRenderer,
+    DurableRenderService,
+    EpisodeRenderWorkflow,
+    build_durable_render_activity,
+)
+from poddown.audio.storage import FilesystemArtifactStore, FilesystemRenderRecordStore
 
 
 class RuntimeConfigurationError(ValueError):
@@ -85,6 +92,20 @@ def runtime_dependency_probes() -> dict[str, Callable[[], bool]]:
     }
 
 
+def _durable_render_activity() -> ActivityHandler:
+    """Build the offline-safe durable activity registered by the worker."""
+    data_root = Path(
+        os.environ.get("PODDOWN_RENDER_DATA_DIR", "/tmp/poddown-render")
+    )
+    artifacts = FilesystemArtifactStore(data_root / "artifacts")
+    records = FilesystemRenderRecordStore(data_root / "render-records", artifacts)
+    return build_durable_render_activity(
+        DurableRenderService(artifacts, records),
+        DeterministicLocalRenderer(),
+        artifacts,
+    )
+
+
 def api_main() -> None:
     """Serve the existing FastAPI app through uvicorn."""
 
@@ -106,7 +127,7 @@ async def _run_worker() -> None:
         client,
         task_queue=settings.task_queue,
         workflows=[EpisodeRenderWorkflow],
-        activities=[render_segment_activity],
+        activities=[_durable_render_activity()],
     )
     try:
         async with worker:

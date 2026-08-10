@@ -74,6 +74,21 @@ def test_result_serializes_to_json(tmp_path: Path) -> None:
     assert json.loads(json.dumps(result.to_dict(), sort_keys=True))["cost"] == "0"
 
 
+def test_usage_counts_the_deliberate_failed_render_invocation(tmp_path: Path) -> None:
+    """Removing the fail-once call from usage would understate demo provenance."""
+    from poddown.demo import run_reference_demo
+
+    output = tmp_path / "output"
+    result = run_reference_demo(output)
+    expected_requests = len(result.selected_candidate_ids) * 3 + 1
+
+    assert result.usage == {"render_requests": expected_requests}
+    assert json.loads((output / "usage.json").read_text(encoding="utf-8")) == {
+        "cost": "0",
+        "render_requests": expected_requests,
+    }
+
+
 def test_output_file_is_rejected(tmp_path: Path) -> None:
     """A file cannot safely contain the demo's staged evidence directories."""
     from poddown.demo import run_reference_demo

@@ -6,6 +6,7 @@ Feature: Reference episode demo
     Then the result records a validated source profile and two speakers
     And three takes are rendered for every segment with stable voice bindings
     And one failed segment is regenerated before QA
+    And usage records the deliberate failed render invocation
     And final critical-token accuracy is 1.0
     And the package contains the nine required artifacts
     And publication is a filesystem demo publication

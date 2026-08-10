@@ -477,7 +477,7 @@ def _validate_resume_evidence(
             outcome.candidate.candidate_id for outcome in selected
         ],
         "take_count": 3,
-        "render_requests": len(selected) * 3,
+        "render_requests": len(selected) * 3 + 1,
         "voice_bindings": voice_bindings,
     }
     if any(
@@ -784,7 +784,7 @@ def run_reference_demo(
             outcome.candidate.candidate_id for outcome in selected
         ],
         "take_count": 3,
-        "render_requests": len(selected) * 3,
+        "render_requests": len(selected) * 3 + 1,
         "voice_bindings": voice_bindings,
     }
     package_input = PackageGenerationInput(
@@ -856,7 +856,8 @@ def run_reference_demo(
         "reference-demo-publication-v1",
     )
     _write_json(
-        root / "usage.json", {"render_requests": len(selected) * 3, "cost": "0"}
+        root / "usage.json",
+        {"render_requests": len(selected) * 3 + 1, "cost": "0"},
     )
     _write_json(root / "publication.json", receipt.to_dict())
     _write_status(root, "published", {"publication_id": receipt.external_id})
@@ -875,7 +876,7 @@ def run_reference_demo(
         tuple(artifact.name for artifact in artifacts),
         manifest_sha,
         receipt.external_id,
-        {"render_requests": len(selected) * 3},
+        {"render_requests": len(selected) * 3 + 1},
         "0",
         replayed if resume else 0,
         _mcp_preview(fixture.source, prepared.profile.profile_id),

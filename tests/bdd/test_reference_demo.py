@@ -53,6 +53,12 @@ def regeneration(context):
     assert result["failed_segment_ids"] == result["regenerated_segment_ids"]
 
 
+@then("usage records the deliberate failed render invocation")
+def metered_regeneration(context):
+    result = context.values["result"].to_dict()
+    assert result["usage"]["render_requests"] == len(result["segment_ids"]) * 3 + 1
+
+
 @then("final critical-token accuracy is 1.0")
 def fidelity(context):
     assert context.values["result"].critical_token_accuracy == 1.0
