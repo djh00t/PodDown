@@ -62,12 +62,17 @@ def test_preview_json_is_sorted_and_contains_no_source_text(
         "---\npoddown:\n  profile: technical-dialogue\n---\n# Demo\n",
         encoding="utf-8",
     )
+    config = tmp_path / "poddown.toml"
+    config.write_text('profiles = ["technical-dialogue"]\n', encoding="utf-8")
 
-    assert cli.main(["preview", str(source), "--json"]) == cli.EXIT_OK
+    assert (
+        cli.main(["preview", str(source), "--config", str(config), "--json"])
+        == cli.EXIT_OK
+    )
     output = capsys.readouterr().out
     payload = json.loads(output)
     assert list(payload) == sorted(payload)
-    assert payload["profile"] == "technical-dialogue"
+    assert payload["profile_id"] == "technical-dialogue"
     assert "# Demo" not in output
 
 

@@ -7,7 +7,9 @@ import hashlib
 import json
 import os
 import re
+import sys
 import time
+import tomllib
 import urllib.error
 import urllib.request
 from collections.abc import Mapping, Sequence
@@ -21,6 +23,11 @@ import yaml
 
 from poddown.content.source import snapshot_source
 from poddown.intake import validate_markdown
+from poddown.preview import (
+    PreviewValidationError,
+    preview_markdown,
+    render_preview_json,
+)
 
 EXIT_OK = 0
 EXIT_VALIDATION = 2
@@ -231,10 +238,12 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="poddown")
     commands = parser.add_subparsers(dest="command", required=True)
 
-    preview = commands.add_parser("preview")
+    preview = commands.add_parser("preview", help="validate Markdown locally")
     preview.add_argument("markdown", type=Path)
+    preview.add_argument("--profile")
+    preview.add_argument("--config", type=Path)
     preview.add_argument("--endpoint")
-    _add_source_options(preview)
+    preview.add_argument("--json", action="store_true")
 
     render = commands.add_parser("render")
     render.add_argument("markdown", type=Path)
@@ -358,25 +367,62 @@ def _wait_for_status(
         time.sleep(max(0.0, poll_interval))
 
 
-def _preview(args: argparse.Namespace) -> int:
-    source = _read_source(args.markdown)
-    config = resolve_config(
-        source,
-        profile_flag=args.profile,
-        endpoint_flag=args.endpoint,
-        output_dir_flag=args.output_dir,
-    )
-    byte_count, digest = _validate_source(source, config.profile)
-    _emit(
-        {
-            "accepted": True,
-            "endpoint": config.endpoint,
-            "profile": config.profile,
-            "source_bytes": byte_count,
-            "source_sha256": digest,
-        },
-        args.json,
-    )
+def _load_preview_config(path: Path | None) -> Mapping[str, object] | None:
+    if path is None or not path.exists():
+        return None
+    try:
+        parsed = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        raise PreviewValidationError(("Invalid configuration",)) from error
+    if not isinstance(parsed, dict):
+        raise PreviewValidationError(("Invalid configuration",))
+    return parsed
+
+
+def _user_preview_config_path() -> Path:
+    config_home = os.environ.get("XDG_CONFIG_HOME")
+    if config_home:
+        return Path(config_home) / "poddown" / "config.toml"
+    return Path.home() / ".config" / "poddown" / "config.toml"
+
+
+def _project_preview_config_path(source_path: Path) -> Path:
+    sibling = source_path.parent / "poddown.toml"
+    if sibling.exists():
+        return sibling
+    return Path.cwd() / "poddown.toml"
+
+
+def _run_preview(args: argparse.Namespace) -> int:
+    try:
+        source = args.markdown.read_bytes()
+        project_path = args.config or _project_preview_config_path(args.markdown)
+        project = _load_preview_config(project_path)
+        user = _load_preview_config(_user_preview_config_path())
+        result = preview_markdown(
+            source,
+            source_name=str(args.markdown),
+            flag_profile=args.profile,
+            project_config=project,
+            user_config=user,
+        )
+    except OSError as error:
+        print(f"Unable to read source: {error}", file=sys.stderr)
+        return EXIT_VALIDATION
+    except PreviewValidationError as error:
+        print(str(error), file=sys.stderr)
+        return EXIT_VALIDATION
+
+    if args.json:
+        sys.stdout.write(render_preview_json(result).decode("utf-8") + "\n")
+    else:
+        sys.stdout.write(
+            f"Profile: {result.profile_id}\n"
+            f"Source SHA-256: {result.source_sha256}\n"
+            f"Source bytes: {result.source_bytes}\n"
+            f"Blocks: {result.block_count}\n"
+            f"Provider calls: {result.provider_calls}\n"
+        )
     return EXIT_OK
 
 
@@ -509,7 +555,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "preview":
-            return _preview(args)
+            return _run_preview(args)
         if args.command == "render":
             return _render(args)
         if args.command == "status":

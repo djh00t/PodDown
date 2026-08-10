@@ -14,7 +14,7 @@ Feature: PodDown CLI and GitHub automation
   Scenario: Preview accepts an explicit endpoint without HTTP calls
     Given a valid Markdown source file
     When I preview with an explicit endpoint as JSON
-    Then preview reports the endpoint without HTTP calls
+    Then preview ignores the endpoint without HTTP calls
 
   Scenario: Render submits an idempotent asynchronous command
     Given a valid Markdown source file

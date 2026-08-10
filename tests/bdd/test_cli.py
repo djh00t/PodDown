@@ -58,7 +58,7 @@ def preview_json(
 @then("preview succeeds with resolved profile and no HTTP calls")
 def preview_success(cli_context: dict[str, object]) -> None:
     assert cli_context["exit_code"] == cli.EXIT_OK
-    assert '"profile":"default"' in cli_context["output"]
+    assert '"profile_id":"default"' in cli_context["output"]
     assert cli_context["http_calls"] == 0
 
 
@@ -93,7 +93,7 @@ def preview_with_flag(
 @then("the flag profile wins in stable JSON output")
 def flag_profile_wins(cli_context: dict[str, object]) -> None:
     assert cli_context["exit_code"] == cli.EXIT_OK
-    assert '"profile":"technical-dialogue"' in cli_context["output"]
+    assert '"profile_id":"technical-dialogue"' in cli_context["output"]
 
 
 @when("I preview with an explicit endpoint as JSON")
@@ -112,10 +112,10 @@ def preview_with_endpoint(
     cli_context["output"] = capsys.readouterr().out
 
 
-@then("preview reports the endpoint without HTTP calls")
+@then("preview ignores the endpoint without HTTP calls")
 def preview_endpoint_success(cli_context: dict[str, object]) -> None:
     assert cli_context["exit_code"] == cli.EXIT_OK
-    assert json.loads(cli_context["output"])["endpoint"] == "http://api.test"
+    assert json.loads(cli_context["output"])["profile_id"] == "default"
     assert cli_context["http_calls"] == 0
 
 
