@@ -13,7 +13,9 @@ Focused contract tests:
 
 ```text
 rtk uv run pytest -q tests/unit/test_production_contracts.py tests/unit/test_compose_contract.py tests/integration/test_health_boundary.py tests/unit/test_runtime_entrypoints.py tests/bdd/test_production_readiness.py
-26 passed, including the worker runtime-entrypoint lifecycle contract.
+The pre-existing focused stack was 26 passed; this review adds one Compose
+regression, so the exact rerun of the command below is 27 passed, including
+the worker lifecycle and API environment/readiness contracts.
 ```
 
 The first correction run was intentionally RED during test-first development:
@@ -37,18 +39,18 @@ Temporal worker reports `is_running`, and removed in the shutdown path. Static
 Compose/Dockerfile assertions and the lifecycle test cover PATH, non-secret
 Temporal environment, marker healthcheck, and cleanup wiring.
 
-The changed-scope `rtk make check` completed with 831 selected tests and one
-live-provider test deselected; its full output is local command evidence, not
-Compose E2E evidence.
+The final stacked changed-scope `rtk make check` completed with 860 passed,
+one live-provider test deselected, and 86.43% coverage; its full output is
+local command evidence, not Compose E2E evidence.
 
 `rtk make build`, `rtk make docs`, `rtk uv lock --check`, `rtk uv pip check`,
 `rtk uv run python -m compileall -q src tests`, and `rtk git diff --check`
 completed successfully. The changed-file credential scan found no credential
 values. Ruff formatting and focused Ruff checks also passed.
 
-With Docker available, `docker build --tag poddown-m7-production-readiness:contract .`
-completed successfully and installed `uvicorn==0.51.0`. No Compose services were
-started, so Compose E2E and service restart evidence remain unclaimed.
+With Docker available, `docker build --tag poddown-m7-verify:local .` completed
+successfully and installed `uvicorn==0.51.0`. No Compose services were started,
+so Compose E2E and service restart evidence remain unclaimed.
 
 The Compose YAML, Dockerfile, packaged scripts, and commands are statically
 validated only. Docker/Compose E2E was not run locally, so no clean Compose E2E
