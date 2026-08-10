@@ -19,7 +19,7 @@
 | 13 | Critical-token verification | 001/002/003 | M0–M2 locally verified against provider transcript text with segment-only rerender evidence and independent final-master fidelity: [final-master BDD](../tests/features/final_master_qa.feature), [final-master unit tests](../tests/unit/qa/test_final_master.py), and [verification evidence](verification/final-master-qa.md) |
 | 14 | Audio quality gates | 003 | M2 locally verified for WAV diagnostics, clipping regression, provider-bound artifact checks, deterministic mastering input/output gates, and independent final-master media preflight: [diagnostic tests](../tests/unit/audio/test_diagnostics.py), [mastering verification](verification/deterministic-mastering.md), and [final-master verification](verification/final-master-qa.md); listening gates remain pending |
 | 15 | Mastering | 003 | M2 deterministic mastering and final-master QA boundaries locally verified for stable ordering, profile validation, injected ffmpeg/ffprobe boundaries, exact-byte transcription binding, WAV/MP3 inspection, and immutable provenance: [mastering BDD](../tests/features/mastering.feature), [final-master BDD](../tests/features/final_master_qa.feature), and [verification evidence](verification/final-master-qa.md) |
-| 16 | Package/provenance | 001/003 | M0/M2 mastering and final-master provenance evidence is locally verified in [final-master verification](verification/final-master-qa.md); immutable nine-file package and final hash remain pending |
+| 16 | Package/provenance | 001/003 | M0–M2 locally verified for content-addressed immutable artifacts, nine-file manifest assembly, final checksum binding, replay, and conflict preservation: [package BDD](../tests/features/package.feature), [artifact unit tests](../tests/unit/test_artifacts.py), [package unit tests](../tests/unit/test_packages.py), and [verification evidence](verification/immutable-package.md); object-storage, Temporal workflow integration, and publication remain pending |
 | 17 | Publishing adapters | 007 | M5 |
 | 18 | CLI | 005 | M4 |
 | 19 | MCP server | 006 | M5 |
@@ -67,8 +67,10 @@ not expand the MVP feature set; they make the approved service operable.
   assembly, profile-bound WAV/MP3 media inspection, mandatory MP3 metadata,
   injected ffprobe failure handling, read-only provenance/checksum evidence,
   exact-byte final-master transcription binding, critical-token scoring, and
-  retry/terminal provider mapping. Package assembly and publication remain
-  pending.
+  retry/terminal provider mapping. Immutable local artifact storage and
+  nine-file package manifest assembly now pass schema-compatible checks with
+  replay and conflict preservation; object-storage integration and publication
+  remain pending.
 - Task-level implementation plan: intentionally produced just-in-time per
   milestone so measured interfaces and audio quality inform the next plan.
 - Audio rendering, Temporal, API, CLI, publishing, MCP, Signal & Supply, and
