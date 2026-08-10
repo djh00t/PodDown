@@ -1,0 +1,280 @@
+"""SQLite integration contracts for restart-safe episode persistence."""
+
+from __future__ import annotations
+
+import sqlite3
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
+from decimal import Decimal
+from pathlib import Path
+from uuid import UUID
+
+import pytest
+
+from poddown.api import create_app
+from poddown.episode_service import (
+    EpisodeNotFound,
+    EpisodeRecord,
+    EpisodeState,
+    IdempotencyConflict,
+    VersionConflict,
+)
+from poddown.persistence import (
+    PersistenceIntegrityError,
+    SQLiteCommandDispatcher,
+    SQLiteEpisodeRepository,
+    SQLiteUsageLedger,
+    UsageConflict,
+    UsageEvent,
+    UsageNotFound,
+)
+
+TENANT_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b10")
+OTHER_TENANT_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b11")
+PROJECT_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b12")
+OTHER_PROJECT_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b13")
+EPISODE_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b14")
+JOB_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b15")
+CREATED_AT = datetime(2026, 8, 10, 4, 0, tzinfo=UTC)
+
+
+def episode_record(
+    *,
+    tenant_id: UUID = TENANT_ID,
+    project_id: UUID = PROJECT_ID,
+    episode_id: UUID = EPISODE_ID,
+    idempotency_key: str = "create-1",
+    request_fingerprint: str = "a" * 64,
+    state: EpisodeState = EpisodeState.VALIDATED,
+    version: int = 1,
+) -> EpisodeRecord:
+    return EpisodeRecord(
+        tenant_id=tenant_id,
+        project_id=project_id,
+        episode_id=episode_id,
+        idempotency_key=idempotency_key,
+        profile_name="technical-dialogue",
+        source_sha256="b" * 64,
+        source_bytes=48,
+        request_fingerprint=request_fingerprint,
+        state=state,
+        version=version,
+        created_at=CREATED_AT,
+        updated_at=CREATED_AT,
+    )
+
+
+def usage_event(
+    *,
+    tenant_id: UUID = TENANT_ID,
+    provider_request_id: str = "provider-request-1",
+    estimated_cost: Decimal = Decimal("0.0040"),
+) -> UsageEvent:
+    return UsageEvent(
+        tenant_id=tenant_id,
+        project_id=PROJECT_ID,
+        job_id=JOB_ID,
+        provider_request_id=provider_request_id,
+        operation="render",
+        units={"input_tokens": 12, "output_bytes": 48},
+        currency="USD",
+        estimated_cost=estimated_cost,
+        reconciled_cost=Decimal("0.0035"),
+        created_at=CREATED_AT,
+    )
+
+
+def test_episode_survives_restart_and_hides_other_tenants(tmp_path: Path) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    first = SQLiteEpisodeRepository(database)
+    record = first.create(episode_record())
+
+    second = SQLiteEpisodeRepository(database)
+    assert second.get(TENANT_ID, EPISODE_ID) == record
+    with pytest.raises(EpisodeNotFound):
+        second.get(OTHER_TENANT_ID, EPISODE_ID)
+    with pytest.raises(EpisodeNotFound):
+        second.get(TENANT_ID, UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b16"))
+
+
+def test_database_initializes_wal_mode(tmp_path: Path) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    SQLiteEpisodeRepository(database)
+    connection = sqlite3.connect(database)
+    try:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    finally:
+        connection.close()
+
+
+def test_episode_idempotency_replays_and_conflicts(tmp_path: Path) -> None:
+    repository = SQLiteEpisodeRepository(tmp_path / "poddown.sqlite3")
+    record = episode_record()
+
+    assert repository.create(record) == record
+    assert repository.create(record) == record
+    with pytest.raises(IdempotencyConflict):
+        repository.create(
+            episode_record(request_fingerprint="c" * 64, episode_id=JOB_ID)
+        )
+
+
+def test_concurrent_episode_creation_is_idempotent(tmp_path: Path) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    repository = SQLiteEpisodeRepository(database)
+    record = episode_record()
+
+    def create() -> EpisodeRecord:
+        return repository.create(record)
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(lambda _: create(), range(4)))
+
+    assert results == [record] * 4
+    assert SQLiteEpisodeRepository(database).get(TENANT_ID, EPISODE_ID) == record
+
+
+def test_stale_version_update_fails_atomically(tmp_path: Path) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    repository = SQLiteEpisodeRepository(database)
+    record = repository.create(episode_record())
+    updated = episode_record(state=EpisodeState.SCRIPTED, version=2)
+
+    assert (
+        repository.replace(
+            TENANT_ID,
+            updated,
+            expected_version=record.version,
+        )
+        == updated
+    )
+    with pytest.raises(VersionConflict):
+        repository.replace(TENANT_ID, updated, expected_version=record.version)
+    assert repository.get(TENANT_ID, EPISODE_ID) == updated
+
+
+def test_command_receipt_survives_restart_and_conflicts(tmp_path: Path) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    first = SQLiteCommandDispatcher(database)
+    receipt = first.submit(
+        tenant_id=TENANT_ID,
+        project_id=PROJECT_ID,
+        episode_id=EPISODE_ID,
+        command="render",
+        idempotency_key="render-1",
+    )
+
+    second = SQLiteCommandDispatcher(database)
+    assert (
+        second.submit(
+            tenant_id=TENANT_ID,
+            project_id=PROJECT_ID,
+            episode_id=EPISODE_ID,
+            command="render",
+            idempotency_key="render-1",
+        )
+        == receipt
+    )
+    with pytest.raises(IdempotencyConflict):
+        second.submit(
+            tenant_id=TENANT_ID,
+            project_id=OTHER_PROJECT_ID,
+            episode_id=EPISODE_ID,
+            command="publish",
+            idempotency_key="render-1",
+        )
+
+
+def test_usage_ledger_is_immutable_restart_safe_and_tenant_scoped(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    first = SQLiteUsageLedger(database)
+    event = first.record(usage_event())
+
+    second = SQLiteUsageLedger(database)
+    assert second.record(event) == event
+    assert second.get(TENANT_ID, event.provider_request_id) == event
+    with pytest.raises(UsageConflict):
+        second.record(usage_event(estimated_cost=Decimal("0.0050")))
+    with pytest.raises(UsageNotFound):
+        second.get(OTHER_TENANT_ID, event.provider_request_id)
+    assert second.list_for_job(TENANT_ID, JOB_ID) == (event,)
+
+
+def test_malformed_persisted_episode_fails_closed(tmp_path: Path) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    SQLiteEpisodeRepository(database).create(episode_record())
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute(
+            "UPDATE episodes SET state = ? WHERE episode_id = ?",
+            ("not-a-state", str(EPISODE_ID)),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    with pytest.raises(PersistenceIntegrityError):
+        SQLiteEpisodeRepository(database).get(TENANT_ID, EPISODE_ID)
+
+
+def test_malformed_persisted_usage_cost_fails_closed(tmp_path: Path) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    event = SQLiteUsageLedger(database).record(usage_event())
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute(
+            "UPDATE usage_events SET estimated_cost = ? "
+            "WHERE tenant_id = ? AND provider_request_id = ?",
+            ("not-a-decimal", str(TENANT_ID), event.provider_request_id),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    with pytest.raises(PersistenceIntegrityError):
+        SQLiteUsageLedger(database).get(TENANT_ID, event.provider_request_id)
+
+
+def test_api_persistence_mode_survives_app_restart(tmp_path: Path) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    headers = {
+        "X-Tenant-ID": str(TENANT_ID),
+        "X-Project-ID": str(PROJECT_ID),
+        "Idempotency-Key": "create-api-1",
+    }
+    payload = {
+        "source": "---\npoddown:\n  profile: default\n---\n# Demo\n\nHello.\n",
+        "profile": "default",
+    }
+
+    from fastapi.testclient import TestClient
+
+    first = TestClient(create_app(database_path=database))
+    created = first.post("/v1/episodes", headers=headers, json=payload)
+    assert created.status_code == 202
+    episode_id = created.json()["episode"]["id"]
+    command_headers = {
+        **headers,
+        "Idempotency-Key": "render-api-1",
+    }
+    receipt = first.post(
+        f"/v1/episodes/{episode_id}/render",
+        headers=command_headers,
+    )
+    assert receipt.status_code == 202
+
+    second = TestClient(create_app(database_path=database))
+    restored = second.get(
+        f"/v1/episodes/{episode_id}",
+        headers={**headers, "Idempotency-Key": "read-only"},
+    )
+    replayed = second.post(
+        f"/v1/episodes/{episode_id}/render",
+        headers=command_headers,
+    )
+    assert restored.status_code == 200
+    assert restored.json()["id"] == episode_id
+    assert replayed.status_code == 202
+    assert replayed.json()["command_id"] == receipt.json()["command_id"]

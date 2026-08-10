@@ -6,7 +6,7 @@
 |---:|---|---|---|
 | 1 | Markdown/frontmatter | 001 | M0 |
 | 2 | Profile configuration | 001 | M0/M1 |
-| 3 | Episode job API | 004 | M3 lifecycle and deterministic offline HTTP transport locally verified: [episode lifecycle BDD](../tests/features/episode_lifecycle.feature), [episode API BDD](../tests/features/episode_api.feature), [API integration tests](../tests/integration/test_episode_api.py), [API model tests](../tests/unit/test_api_models.py), and [verification evidence](verification/episode-api.md); durable production transport remains pending |
+| 3 | Episode job API | 004 | M3 lifecycle, deterministic offline HTTP transport, and restart-safe local SQLite API mode locally verified: [episode lifecycle BDD](../tests/features/episode_lifecycle.feature), [episode API BDD](../tests/features/episode_api.feature), [durable persistence BDD](../tests/features/durable_persistence.feature), [API integration tests](../tests/integration/test_episode_api.py), [durable persistence integration tests](../tests/integration/test_durable_persistence.py), and [verification evidence](verification/durable-persistence.md); PostgreSQL-backed production transport remains pending |
 | 4 | Source-bound adaptation | 002 | M1 complete locally; adversarial eval evidence recorded |
 | 5 | Dialogue/script model | 002 | M1 complete locally; source-bound canonical script verified |
 | 6 | Provider abstraction | 001 | M0 |
@@ -25,8 +25,8 @@
 | 19 | MCP server | 006 | M5 |
 | 20 | PodDown skill | 006 | M5 |
 | 21 | GitHub Action | 005 | M4 |
-| 22 | Multitenancy | 004 | M3 tenant-scoped lifecycle repository and HTTP boundary locally verified: [episode lifecycle BDD](../tests/features/episode_lifecycle.feature), [episode API BDD](../tests/features/episode_api.feature), and [verification evidence](verification/episode-api.md); database row-level isolation/auth middleware remains pending |
-| 23 | Usage/cost metering | 004 | M3 |
+| 22 | Multitenancy | 004 | M3 tenant-scoped lifecycle repository, SQLite persistence, object keys, and HTTP boundary locally verified: [episode lifecycle BDD](../tests/features/episode_lifecycle.feature), [episode API BDD](../tests/features/episode_api.feature), [durable persistence BDD](../tests/features/durable_persistence.feature), [object-storage BDD](../tests/features/tenant_object_storage.feature), and [verification evidence](verification/durable-persistence.md); PostgreSQL row-level isolation and auth middleware remain pending |
+| 23 | Usage/cost metering | 004 | M3 append-only tenant-scoped SQLite usage/cost ledger locally verified with exact Decimal serialization, idempotent provider-request replay, and conflict protection: [persistence unit tests](../tests/unit/test_persistence.py), [persistence integration tests](../tests/integration/test_durable_persistence.py), and [verification evidence](verification/durable-persistence.md); provider-invoice reconciliation remains pending |
 | 24 | Signal & Supply integration | 008 | M6 |
 
 ## Additional requirements found by whole-product audit

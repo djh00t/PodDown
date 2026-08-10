@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Collection
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import FastAPI, Header, Request
@@ -30,6 +31,7 @@ from poddown.episode_service import (
     InvalidEpisodeTransition,
     StructuredFailure,
 )
+from poddown.persistence import SQLiteCommandDispatcher, SQLiteEpisodeRepository
 
 _PROBLEM_MEDIA_TYPE = "application/problem+json"
 _DEFAULT_PROFILES = frozenset({"default", "technical-dialogue"})
@@ -239,17 +241,34 @@ def create_app(
     *,
     dispatcher: CommandDispatcher | None = None,
     available_profiles: Collection[str] | None = None,
+    database_path: Path | str | None = None,
 ) -> FastAPI:
-    """Create an offline app with injected lifecycle and command ports."""
+    """Create an offline or restart-safe app with injected lifecycle ports."""
+    if service is not None and database_path is not None:
+        raise ValueError("service and database_path are mutually exclusive")
     profiles = frozenset(
         _DEFAULT_PROFILES if available_profiles is None else available_profiles
     )
-    application_service = service or EpisodeApplicationService(
-        repository=InMemoryEpisodeRepository(),
-        available_profiles=profiles,
-    )
+    if service is not None:
+        application_service = service
+    elif database_path is not None:
+        application_service = EpisodeApplicationService(
+            repository=SQLiteEpisodeRepository(database_path),
+            available_profiles=profiles,
+        )
+    else:
+        application_service = EpisodeApplicationService(
+            repository=InMemoryEpisodeRepository(),
+            available_profiles=profiles,
+        )
     command_dispatcher = (
-        InMemoryCommandDispatcher() if dispatcher is None else dispatcher
+        dispatcher
+        if dispatcher is not None
+        else (
+            SQLiteCommandDispatcher(database_path)
+            if database_path is not None
+            else InMemoryCommandDispatcher()
+        )
     )
     app = FastAPI(
         title="PodDown Episode API", version="v1", docs_url=None, redoc_url=None
