@@ -13,10 +13,21 @@ Focused contract tests:
 
 ```text
 rtk uv run pytest -q tests/unit/test_production_contracts.py tests/unit/test_compose_contract.py tests/integration/test_health_boundary.py tests/bdd/test_production_readiness.py
-11 passed
+17 passed after the runtime/probe/redaction regression slice.
 ```
 
-The changed-scope `rtk make check` completed with 816 selected tests and one
+The dependency-advisor decision for the direct API server dependency was
+`uvicorn==0.51.0` under the Python conservative policy with a 720-hour minimum
+package age. `uv.lock` was regenerated and `uv pip check` passed.
+
+The packaged entrypoints are `poddown-api` and `poddown-worker`. The API uses
+the existing `create_app()` through uvicorn. The worker reads
+`PODDOWN_TEMPORAL_ADDRESS`, `PODDOWN_TEMPORAL_NAMESPACE`, and
+`PODDOWN_TEMPORAL_TASK_QUEUE`, then registers the existing
+`EpisodeRenderWorkflow` and `render_segment_activity` contracts. Missing
+required worker configuration fails before a network connection.
+
+The changed-scope `rtk make check` completed with 822 selected tests and one
 live-provider test deselected; its full output is local command evidence, not
 Compose E2E evidence.
 
@@ -25,8 +36,13 @@ Compose E2E evidence.
 completed successfully. The changed-file credential scan found no credential
 values. Ruff formatting and focused Ruff checks also passed.
 
-The Compose YAML is statically parsed only. A clean Compose E2E test is not
-claimed unless Docker and every service are actually available.
+With Docker available, `docker build --tag poddown-m7-production-readiness:contract .`
+completed successfully and installed `uvicorn==0.51.0`. No Compose services were
+started, so Compose E2E and service restart evidence remain unclaimed.
+
+The Compose YAML, Dockerfile, packaged scripts, and commands are statically
+validated only. Docker/Compose E2E was not run locally, so no clean Compose E2E
+or live-service readiness claim is made.
 
 ## Explicit deferrals
 

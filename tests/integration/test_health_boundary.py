@@ -28,3 +28,19 @@ def test_health_readiness_reports_injected_dependency_degradation() -> None:
     assert live.json() == {"status": "healthy"}
     assert ready.json()["status"] == "degraded"
     assert ready.json()["dependencies"]["postgres"] == "unavailable"
+
+
+def test_health_probe_is_evaluated_on_each_request_and_exceptions_degrade() -> None:
+    available = True
+
+    def probe() -> bool:
+        if not available:
+            raise RuntimeError("database unavailable")
+        return True
+
+    with TestClient(create_app(health_probes={"postgres": probe})) as client:
+        assert client.get("/health/ready").json()["status"] == "healthy"
+        available = False
+        response = client.get("/health/ready")
+    assert response.json()["status"] == "degraded"
+    assert response.json()["dependencies"]["postgres"] == "unavailable"

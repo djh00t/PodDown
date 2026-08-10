@@ -33,8 +33,8 @@
 - Tests will import `poddown.production_readiness` contracts and `poddown.api.create_app`.
 - Tests will load `compose.yaml` and assert the required service names, healthchecks, dependency conditions, and no Kubernetes manifests.
 
-- [ ] Write scenarios for deterministic liveness/readiness/dependency degradation, tenant-safe event redaction, Compose topology validation, and explicit deferred live evidence.
-- [ ] Run the focused tests and record the expected RED failure because `poddown.production_readiness` and the Compose contract are absent.
+- [x] Write scenarios for deterministic liveness/readiness/dependency degradation, tenant-safe event redaction, Compose topology validation, and explicit deferred live evidence.
+- [x] Run the focused tests and record the expected RED failure because `poddown.production_readiness` and the Compose contract were initially absent.
 
 ### Task 2: Implement health and operational contracts
 
@@ -50,9 +50,9 @@
 - `MetricSample.create(name, value, tenant_id, project_id, labels) -> MetricSample`.
 - Redaction rejects keys matching source/script/audio/credential/token/provider-payload names and replaces unsafe values with `[REDACTED]`.
 
-- [ ] Implement the smallest immutable contracts that make the RED tests pass.
-- [ ] Add health route responses without touching episode, publishing, CLI, MCP, Signal, or audio behavior.
-- [ ] Keep dependency checks injected and offline; no probes or network calls in the default factory.
+- [x] Implement the smallest immutable contracts that make the RED tests pass.
+- [x] Add health route responses without touching episode, publishing, CLI, MCP, Signal, or audio behavior.
+- [x] Keep dependency checks injected and offline; no probes or network calls in the default factory.
 
 ### Task 3: Add the versioned local Compose contract and deterministic fixtures
 
@@ -66,9 +66,9 @@
 - Services: `postgres`, `temporal`, `nats`, `minio`, `api`, `worker`.
 - API and worker depend on health-gated infrastructure services; no credentials are committed, only environment variable names and local development placeholders that are explicitly non-secret.
 
-- [ ] Add the minimal Compose topology with healthchecks and named local volumes.
-- [ ] Add schema/contract tests for service names, ports, healthchecks, dependency conditions, JetStream command, MinIO S3 endpoint, and absence of Kubernetes claims.
-- [ ] Run focused Compose tests and confirm deterministic parsing.
+- [x] Add the minimal Compose topology with healthchecks and named local volumes.
+- [x] Add schema/contract tests for service names, ports, healthchecks, dependency conditions, JetStream command, MinIO S3 endpoint, and absence of Kubernetes claims.
+- [x] Run focused Compose tests and confirm deterministic parsing.
 
 ### Task 4: Document operational controls, deferrals, and evidence
 
@@ -76,17 +76,31 @@
 - Create: `docs/verification/production-readiness.md`
 - Create: `docs/operations/security-retention-backup.md`
 
-- [ ] Document tenant-safe logging/metrics, secret injection/rotation, retention classes, deletion/audit boundaries, backup/restore runbook expectations, reproducibility, and release evidence.
-- [ ] Record exact offline commands and results only after they are run.
-- [ ] Explicitly mark hosted migrations, real restore, outage/budget/load testing, signing/SBOM, deployment credentials, and clean Compose E2E as deferred or unrun.
+- [x] Document tenant-safe logging/metrics, secret injection/rotation, retention classes, deletion/audit boundaries, backup/restore runbook expectations, reproducibility, and release evidence.
+- [x] Record exact offline commands and results only after they are run.
+- [x] Explicitly mark hosted migrations, real restore, outage/budget/load testing, signing/SBOM, deployment credentials, and clean Compose E2E as deferred or unrun.
 
 ### Task 5: Validate and hand off
 
-- [ ] Run focused BDD/unit/integration/Compose tests.
-- [ ] Run changed-scope `make check` only.
-- [ ] Run `make build`, `make docs`, `uv lock --check`, `uv pip check`, `uv run python -m compileall -q src tests`, `git diff --check`, and a credential scan over changed files.
-- [ ] Inspect `git status`, ensure no forbidden files changed, and record worktree state.
+- [x] Run focused BDD/unit/integration/Compose tests.
+- [x] Run changed-scope `make check` only.
+- [x] Run `make build`, `make docs`, `uv lock --check`, `uv pip check`, `uv run python -m compileall -q src tests`, `git diff --check`, and a credential scan over changed files.
+- [x] Inspect `git status`, ensure no forbidden files changed, and record worktree state.
 - [ ] Create one local Conventional Commit only after all required evidence is fresh; do not push, create a PR, merge, or approve.
+
+### Follow-up correction slice: runtime, probes, and recursive redaction
+
+**Files:**
+- Create: `Dockerfile`
+- Create: `src/poddown/runtime.py`
+- Create: `tests/unit/test_runtime_entrypoints.py`
+- Modify: `pyproject.toml`, `uv.lock`, `compose.yaml`, `src/poddown/api/__init__.py`, `src/poddown/production_readiness.py`, and focused production-readiness tests.
+
+- [x] Write regression tests first and capture RED for the missing runtime module, dynamic probe contract, recursive sequence redaction, and Compose entrypoint alignment.
+- [x] Add `uvicorn==0.51.0`, selected by dependency-advisor under the Python conservative policy with a 720-hour minimum age, and regenerate `uv.lock`.
+- [x] Add real API and Temporal worker entrypoints; worker configuration fails closed before connecting and registers the existing workflow/activity contracts.
+- [x] Evaluate injected health probes on every request, map probe false/exception to unavailable, preserve empty-default health behavior, and redact nested mappings/lists/tuples across source/script/audio/transcript/voice/credential/secret/token/provider/payload/path/URI variants.
+- [x] Document runtime/Compose limitations and exact final evidence without claiming Docker E2E.
 
 ## Self-review
 

@@ -31,3 +31,11 @@ def test_compose_contract_has_healthchecks_and_dependency_gates() -> None:
     assert (
         services["worker"]["depends_on"]["temporal"]["condition"] == "service_healthy"
     )
+
+
+def test_compose_contract_declares_runtime_build_context_and_entrypoints() -> None:
+    services = yaml.safe_load(COMPOSE.read_text())["services"]
+    assert services["api"]["build"] == "."
+    assert services["worker"]["build"] == "."
+    assert services["api"]["command"] == ["poddown-api"]
+    assert services["worker"]["command"] == ["poddown-worker"]
