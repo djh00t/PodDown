@@ -7,6 +7,7 @@ from pytest_bdd import given, scenarios, then, when
 
 from poddown.audio.contracts import RenderRequest
 from poddown.audio.rights import VoiceConsent
+from poddown.audio.workflow import EpisodeWorkflowInput, WorkflowContractError
 
 scenarios("../features/temporal_orchestration.feature")
 
@@ -73,6 +74,27 @@ def temporal_context(context):
         "accepted_cost_events": [],
     }
     return context
+
+
+@given("an empty episode workflow input")
+def empty_episode_workflow_input(temporal_context):
+    temporal_context.values["empty_workflow_input"] = {
+        "episode_id": "demo-temporal-episode",
+        "episode_version": "v1",
+        "segments": (),
+    }
+
+
+@when("I validate the workflow input")
+def validate_empty_workflow_input(temporal_context):
+    with pytest.raises(WorkflowContractError) as error:
+        EpisodeWorkflowInput(**temporal_context.values["empty_workflow_input"])
+    temporal_context.values["empty_workflow_error"] = error.value
+
+
+@then("the workflow input is rejected before audio activity")
+def empty_workflow_input_is_rejected(temporal_context):
+    assert "at least one" in str(temporal_context.values["empty_workflow_error"])
 
 
 @given("a deterministic two-segment episode with a three-take budget")

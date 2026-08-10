@@ -203,6 +203,24 @@ CREATE TABLE IF NOT EXISTS episodes (
 );
 CREATE INDEX IF NOT EXISTS episodes_tenant_project_idx
     ON episodes (tenant_id, project_id, episode_id);
+"""
+
+_COMMAND_RECEIPTS_SCHEMA = """
+CREATE TABLE command_receipts (
+    tenant_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    episode_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    command_id TEXT PRIMARY KEY,
+    command TEXT NOT NULL,
+    accepted INTEGER NOT NULL,
+    state TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (tenant_id, project_id, episode_id, command, idempotency_key)
+);
+"""
+
+_SCHEMA += """
 CREATE TABLE IF NOT EXISTS command_receipts (
     tenant_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
@@ -213,7 +231,7 @@ CREATE TABLE IF NOT EXISTS command_receipts (
     accepted INTEGER NOT NULL,
     state TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    UNIQUE (tenant_id, idempotency_key)
+    UNIQUE (tenant_id, project_id, episode_id, command, idempotency_key)
 );
 CREATE TABLE IF NOT EXISTS usage_events (
     tenant_id TEXT NOT NULL,
@@ -233,12 +251,42 @@ CREATE INDEX IF NOT EXISTS usage_events_job_idx
 """
 
 
+def _command_receipt_unique_indexes(
+    connection: sqlite3.Connection,
+) -> set[tuple[str, ...]]:
+    return {
+        tuple(row[2] for row in connection.execute(f"PRAGMA index_info({index[1]})"))
+        for index in connection.execute("PRAGMA index_list(command_receipts)")
+        if index[2]
+    }
+
+
+def _migrate_command_receipts_schema(connection: sqlite3.Connection) -> None:
+    legacy_identity = ("tenant_id", "idempotency_key")
+    if legacy_identity not in _command_receipt_unique_indexes(connection):
+        return
+    connection.execute("ALTER TABLE command_receipts RENAME TO command_receipts_legacy")
+    connection.executescript(_COMMAND_RECEIPTS_SCHEMA)
+    connection.execute(
+        """INSERT INTO command_receipts (
+            tenant_id, project_id, episode_id, idempotency_key, command_id,
+            command, accepted, state, created_at
+        ) SELECT
+            tenant_id, project_id, episode_id, idempotency_key, command_id,
+            command, accepted, state, created_at
+        FROM command_receipts_legacy"""
+    )
+    connection.execute("DROP TABLE command_receipts_legacy")
+
+
 def _initialize_database(path: Path) -> None:
-    connection = sqlite3.connect(path)
+    connection = sqlite3.connect(path, timeout=10.0)
     try:
+        connection.execute("PRAGMA busy_timeout = 10000")
         connection.execute("PRAGMA journal_mode = WAL")
         connection.execute("PRAGMA foreign_keys = ON")
         connection.executescript(_SCHEMA)
+        _migrate_command_receipts_schema(connection)
         connection.commit()
     finally:
         connection.close()
@@ -501,18 +549,25 @@ class SQLiteCommandDispatcher:
         with _write_connection(self._database) as connection:
             row = connection.execute(
                 "SELECT * FROM command_receipts "
+                "WHERE tenant_id = ? AND project_id = ? AND episode_id = ? "
+                "AND command = ? AND idempotency_key = ?",
+                (
+                    str(tenant_id),
+                    str(project_id),
+                    str(episode_id),
+                    command_value,
+                    idempotency_key,
+                ),
+            ).fetchone()
+            if row is not None:
+                return _receipt_from_row(row)
+            rebound = connection.execute(
+                "SELECT 1 FROM command_receipts "
                 "WHERE tenant_id = ? AND idempotency_key = ?",
                 (str(tenant_id), idempotency_key),
             ).fetchone()
-            identity = (str(project_id), str(episode_id), command)
-            if row is not None:
-                if (
-                    row["project_id"],
-                    row["episode_id"],
-                    row["command"],
-                ) != identity:
-                    raise IdempotencyConflict()
-                return _receipt_from_row(row)
+            if rebound is not None:
+                raise IdempotencyConflict()
             created_at = self._clock()
             receipt = CommandReceipt(
                 command_id=uuid7(),

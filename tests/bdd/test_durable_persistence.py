@@ -28,7 +28,9 @@ from poddown.persistence import (
 
 TENANT_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b10")
 PROJECT_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b12")
+OTHER_PROJECT_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b13")
 EPISODE_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b14")
+OTHER_EPISODE_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b16")
 JOB_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b15")
 CREATED_AT = datetime(2026, 8, 10, 4, 0, tzinfo=UTC)
 
@@ -180,14 +182,19 @@ def replay_conflicting_identity(durable_context: dict[str, object]) -> None:
     dispatcher = SQLiteCommandDispatcher(database)
     with pytest.raises(IdempotencyConflict):
         repository.create(replace(_episode(), request_fingerprint="c" * 64))
-    with pytest.raises(IdempotencyConflict):
-        dispatcher.submit(
-            tenant_id=TENANT_ID,
-            project_id=PROJECT_ID,
-            episode_id=EPISODE_ID,
-            command="publish",
-            idempotency_key="render-1",
-        )
+    for project_id, episode_id, command in (
+        (OTHER_PROJECT_ID, EPISODE_ID, "render"),
+        (PROJECT_ID, OTHER_EPISODE_ID, "render"),
+        (PROJECT_ID, EPISODE_ID, "publish"),
+    ):
+        with pytest.raises(IdempotencyConflict):
+            dispatcher.submit(
+                tenant_id=TENANT_ID,
+                project_id=project_id,
+                episode_id=episode_id,
+                command=command,
+                idempotency_key="render-1",
+            )
     durable_context["conflicts_checked"] = True
 
 

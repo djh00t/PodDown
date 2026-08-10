@@ -186,6 +186,127 @@ def test_command_receipt_survives_restart_and_conflicts(tmp_path: Path) -> None:
         )
 
 
+def test_command_receipt_schema_uniquely_identifies_the_full_command(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    SQLiteCommandDispatcher(database)
+    connection = sqlite3.connect(database)
+    try:
+        unique_indexes = {
+            tuple(
+                column[2]
+                for column in connection.execute(f"PRAGMA index_info({index[1]})")
+            )
+            for index in connection.execute("PRAGMA index_list(command_receipts)")
+            if index[2]
+        }
+    finally:
+        connection.close()
+
+    assert (
+        "tenant_id",
+        "project_id",
+        "episode_id",
+        "command",
+        "idempotency_key",
+    ) in unique_indexes
+    assert ("tenant_id", "idempotency_key") not in unique_indexes
+
+
+def test_legacy_command_receipt_table_migrates_without_losing_a_replay(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    connection = sqlite3.connect(database)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE command_receipts (
+                tenant_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                episode_id TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                command_id TEXT PRIMARY KEY,
+                command TEXT NOT NULL,
+                accepted INTEGER NOT NULL,
+                state TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE (tenant_id, idempotency_key)
+            );
+            """
+        )
+        connection.execute(
+            """INSERT INTO command_receipts (
+                tenant_id, project_id, episode_id, idempotency_key,
+                command_id, command, accepted, state, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                str(TENANT_ID),
+                str(PROJECT_ID),
+                str(EPISODE_ID),
+                "render-1",
+                str(JOB_ID),
+                "render",
+                1,
+                "queued",
+                CREATED_AT.isoformat(),
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    receipt = SQLiteCommandDispatcher(database).submit(
+        tenant_id=TENANT_ID,
+        project_id=PROJECT_ID,
+        episode_id=EPISODE_ID,
+        command="render",
+        idempotency_key="render-1",
+    )
+
+    assert receipt.command_id == JOB_ID
+    connection = sqlite3.connect(database)
+    try:
+        unique_indexes = {
+            tuple(
+                column[2]
+                for column in connection.execute(f"PRAGMA index_info({index[1]})")
+            )
+            for index in connection.execute("PRAGMA index_list(command_receipts)")
+            if index[2]
+        }
+    finally:
+        connection.close()
+    assert (
+        "tenant_id",
+        "project_id",
+        "episode_id",
+        "command",
+        "idempotency_key",
+    ) in unique_indexes
+
+
+def test_concurrent_command_receipt_creation_replays_one_stable_receipt(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "poddown.sqlite3"
+
+    def submit():
+        return SQLiteCommandDispatcher(database).submit(
+            tenant_id=TENANT_ID,
+            project_id=PROJECT_ID,
+            episode_id=EPISODE_ID,
+            command="render",
+            idempotency_key="render-1",
+        )
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        receipts = tuple(executor.map(lambda _: submit(), range(4)))
+
+    assert receipts == (receipts[0],) * 4
+
+
 def test_usage_ledger_is_immutable_restart_safe_and_tenant_scoped(
     tmp_path: Path,
 ) -> None:

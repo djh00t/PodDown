@@ -178,6 +178,8 @@ class EpisodeWorkflowInput:
             raise WorkflowContractError(
                 "segments must be a tuple of SegmentWorkflowInput values"
             )
+        if not self.segments:
+            raise WorkflowContractError("segments must contain at least one value")
         _require_positive("max_attempts", self.max_attempts)
 
     def to_dict(self) -> dict[str, Any]:
