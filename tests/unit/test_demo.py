@@ -3,9 +3,53 @@
 from __future__ import annotations
 
 import json
+import wave
+from decimal import Decimal
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+
+from poddown.audio import DeterministicLocalRenderer
+from poddown.audio.contracts import RenderedAudio, RenderRequest
+from poddown.domain import ProviderUsage
+
+
+class FakeLocalSpeechRenderer:
+    """Produce listenable-sized local speech fixtures without host TTS."""
+
+    capabilities = DeterministicLocalRenderer.capabilities
+    provider = "host-local"
+    model = "host-local-tts-v1"
+    mode = "local-system-tts-demo"
+
+    def __init__(self) -> None:
+        self.requests: list[RenderRequest] = []
+
+    def provenance(self) -> dict[str, object]:
+        """Return fixed local-engine evidence for the reference workflow."""
+        return {"engine": "fake-local-speech", "mode": self.mode}
+
+    async def render(self, request: RenderRequest) -> RenderedAudio:
+        """Return a quiet five-second WAV under the requested identity."""
+        self.requests.append(request)
+        stream = BytesIO()
+        with wave.open(stream, "wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(request.sample_rate_hz)
+            output.writeframes((500).to_bytes(2, "little", signed=True) * 220_500)
+        audio_bytes = stream.getvalue()
+        return RenderedAudio(
+            audio_bytes=audio_bytes,
+            provider=request.provider,
+            model=request.model,
+            request_id=f"fake-{request.segment_id}-{request.take_index}",
+            usage=ProviderUsage(len(request.expected_spoken_text), len(audio_bytes)),
+            cost=Decimal("0"),
+            output_format="wav",
+            sample_rate_hz=request.sample_rate_hz,
+        )
 
 
 def test_missing_fixture_files_fail_closed(tmp_path: Path) -> None:
@@ -87,6 +131,89 @@ def test_usage_counts_the_deliberate_failed_render_invocation(tmp_path: Path) ->
         "cost": "0",
         "render_requests": expected_requests,
     }
+
+
+def test_injected_local_speech_renderer_records_identity_and_provenance(
+    tmp_path: Path,
+) -> None:
+    """The listenable workflow must retain its renderer identity end to end."""
+    from poddown.demo import run_reference_demo
+
+    renderer = FakeLocalSpeechRenderer()
+    output = tmp_path / "output"
+    result = run_reference_demo(output, renderer=renderer)
+    package = json.loads(next((output / "packages").glob("*.json")).read_text())
+    details = package["provenance"]["details"]
+
+    assert result.mode == "local-system-tts-demo"
+    assert all(request.provider == "host-local" for request in renderer.requests)
+    assert all(request.model == "host-local-tts-v1" for request in renderer.requests)
+    assert len(result.failed_segment_ids) == 1
+    assert result.failed_segment_ids == result.regenerated_segment_ids
+    assert details["provider"] == {
+        "model": "host-local-tts-v1",
+        "provider": "host-local",
+        "request_id": "local-reference-demo-transcript-v1",
+    }
+    assert details["workflow"]["renderer"] == {
+        "mode": "local-system-tts-demo",
+        "model": "host-local-tts-v1",
+        "provider": "host-local",
+        "provenance": {"engine": "fake-local-speech", "mode": result.mode},
+    }
+
+
+def test_resume_rejects_renderer_mode_or_identity_change(tmp_path: Path) -> None:
+    """Replay must not accept evidence created by a different renderer."""
+    from poddown.demo import run_reference_demo
+
+    output = tmp_path / "output"
+    run_reference_demo(output, renderer=FakeLocalSpeechRenderer())
+
+    with pytest.raises(ValueError, match="result evidence"):
+        run_reference_demo(output, resume=True)
+
+
+def test_demo_cli_defaults_to_local_speech_and_allows_deterministic_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The command exposes an explicit test-safe deterministic selection."""
+    import poddown.demo as demo
+
+    selected: list[object] = []
+
+    class LocalRenderer:
+        pass
+
+    class DeterministicRenderer:
+        pass
+
+    class Result:
+        def to_dict(self) -> dict[str, str]:
+            return {"mode": "test"}
+
+    def fake_run(output: Path, **kwargs: object) -> Result:
+        selected.append(kwargs["renderer"])
+        return Result()
+
+    monkeypatch.setattr(demo, "LocalSpeechRenderer", LocalRenderer)
+    monkeypatch.setattr(demo, "DeterministicLocalRenderer", DeterministicRenderer)
+    monkeypatch.setattr(demo, "run_reference_demo", fake_run)
+
+    assert demo.main(["--output", str(tmp_path / "local")]) == 0
+    assert isinstance(selected[-1], LocalRenderer)
+    assert (
+        demo.main(
+            [
+                "--output",
+                str(tmp_path / "deterministic"),
+                "--audio-mode",
+                "deterministic",
+            ]
+        )
+        == 0
+    )
+    assert isinstance(selected[-1], DeterministicRenderer)
 
 
 def test_output_file_is_rejected(tmp_path: Path) -> None:

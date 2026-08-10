@@ -23,3 +23,10 @@ Feature: Reference episode demo
       Given a completed reference episode demo with persisted evidence
       When the persisted result accuracy is changed
       Then resuming the reference episode fails closed
+
+    Scenario: Complete the difficult technical dialogue with injected local speech
+      Given an empty local speech reference demo output directory
+      When the local speech reference episode demo is run
+      Then the result records host-local speech provenance
+      And three takes are rendered for every segment with stable voice bindings
+      And one failed segment is regenerated before QA

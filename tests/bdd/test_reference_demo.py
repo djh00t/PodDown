@@ -3,12 +3,51 @@
 from __future__ import annotations
 
 import json
+import wave
+from decimal import Decimal
+from io import BytesIO
 
 from pytest_bdd import given, scenarios, then, when
 
+from poddown.audio import DeterministicLocalRenderer
+from poddown.audio.contracts import RenderedAudio, RenderRequest
+from poddown.domain import ProviderUsage
 from poddown.packages import REQUIRED_PACKAGE_ARTIFACTS
 
 scenarios("../features/reference_demo.feature")
+
+
+class FakeLocalSpeechRenderer:
+    """Render local-speech BDD fixtures without invoking a host speech engine."""
+
+    capabilities = DeterministicLocalRenderer.capabilities
+    provider = "host-local"
+    model = "host-local-tts-v1"
+    mode = "local-system-tts-demo"
+
+    def provenance(self):
+        """Return the stable fake engine evidence asserted by this feature."""
+        return {"engine": "fake-local-speech", "mode": self.mode}
+
+    async def render(self, request: RenderRequest) -> RenderedAudio:
+        """Return a quiet five-second WAV with the requested provider identity."""
+        stream = BytesIO()
+        with wave.open(stream, "wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(request.sample_rate_hz)
+            output.writeframes((500).to_bytes(2, "little", signed=True) * 220_500)
+        audio_bytes = stream.getvalue()
+        return RenderedAudio(
+            audio_bytes,
+            request.provider,
+            request.model,
+            f"fake-{request.segment_id}-{request.take_index}",
+            ProviderUsage(len(request.expected_spoken_text), len(audio_bytes)),
+            Decimal("0"),
+            "wav",
+            request.sample_rate_hz,
+        )
 
 
 @given("an empty reference demo output directory")
@@ -21,6 +60,38 @@ def run_demo(context):
     from poddown.demo import run_reference_demo
 
     context.values["result"] = run_reference_demo(context.values["output_dir"])
+
+
+@given("an empty local speech reference demo output directory")
+def empty_local_speech_output(context, tmp_path):
+    context.values["output_dir"] = tmp_path / "reference-demo-local-speech"
+
+
+@when("the local speech reference episode demo is run")
+def run_local_speech_demo(context):
+    from poddown.demo import run_reference_demo
+
+    context.values["result"] = run_reference_demo(
+        context.values["output_dir"], renderer=FakeLocalSpeechRenderer()
+    )
+
+
+@then("the result records host-local speech provenance")
+def local_speech_provenance(context):
+    result = context.values["result"].to_dict()
+    package = json.loads(
+        next((context.values["output_dir"] / "packages").glob("*.json")).read_text(
+            encoding="utf-8"
+        )
+    )
+    details = package["provenance"]["details"]
+
+    assert result["mode"] == "local-system-tts-demo"
+    assert details["provider"]["provider"] == "host-local"
+    assert details["provider"]["model"] == "host-local-tts-v1"
+    assert details["workflow"]["renderer"]["provenance"]["engine"] == (
+        "fake-local-speech"
+    )
 
 
 @then("the result records a validated source profile and two speakers")
