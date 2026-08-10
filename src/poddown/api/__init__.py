@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Collection, Mapping
+from collections.abc import Callable, Collection, Mapping
 from pathlib import Path
 from uuid import UUID
 
@@ -244,6 +244,7 @@ def create_app(
     available_profiles: Collection[str] | None = None,
     database_path: Path | str | None = None,
     health_dependencies: Mapping[str, DependencyState] | None = None,
+    health_probes: Mapping[str, Callable[[], bool]] | None = None,
 ) -> FastAPI:
     """Create an offline or restart-safe app with injected lifecycle ports."""
     if service is not None and database_path is not None:
@@ -277,6 +278,7 @@ def create_app(
     )
     health_evaluator = HealthEvaluator()
     dependency_states = {} if health_dependencies is None else dict(health_dependencies)
+    dependency_probes = {} if health_probes is None else dict(health_probes)
 
     @app.get("/health/live")
     def health_live() -> dict[str, object]:
@@ -285,14 +287,14 @@ def create_app(
     @app.get("/health/ready")
     def health_ready() -> dict[str, object]:
         snapshot = health_evaluator.evaluate(
-            liveness=True, dependencies=dependency_states
+            liveness=True, dependencies=dependency_states, probes=dependency_probes
         )
         return {"status": snapshot.readiness, **snapshot.to_dict()}
 
     @app.get("/health/dependencies")
     def health_dependency_status() -> dict[str, object]:
         return health_evaluator.evaluate(
-            liveness=True, dependencies=dependency_states
+            liveness=True, dependencies=dependency_states, probes=dependency_probes
         ).to_dict()
 
     @app.exception_handler(EpisodeServiceError)

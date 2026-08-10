@@ -11,6 +11,7 @@ dependencies = [
   "fastapi==0.139.0",
   "pydantic>=2.11,<3",
   "temporalio>=1.30,<1.31",
+  "uvicorn==0.51.0",
   "uuid6==2025.0.1",
   "pyyaml>=6.0.2,<7",
 ]
@@ -18,6 +19,8 @@ dependencies = [
 [project.scripts]
 poddown = "poddown.cli:main"
 poddown-mcp = "poddown.agent_mcp_stdio:main"
+poddown-api = "poddown.runtime:api_main"
+poddown-worker = "poddown.runtime:worker_main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/poddown"]

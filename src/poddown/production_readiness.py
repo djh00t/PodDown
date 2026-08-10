@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
@@ -42,13 +42,25 @@ class HealthEvaluator:
         self,
         *,
         liveness: bool,
-        dependencies: Mapping[str, DependencyState],
+        dependencies: Mapping[str, DependencyState] | None = None,
+        probes: Mapping[str, Callable[[], bool]] | None = None,
     ) -> HealthSnapshot:
+        states = {} if dependencies is None else dict(dependencies)
+        if probes is not None:
+            for name, probe in probes.items():
+                try:
+                    states[name] = (
+                        DependencyState.HEALTHY
+                        if probe()
+                        else DependencyState.UNAVAILABLE
+                    )
+                except Exception:
+                    states[name] = DependencyState.UNAVAILABLE
         normalized = {
             name: state
             if isinstance(state, DependencyState)
             else DependencyState(state)
-            for name, state in dependencies.items()
+            for name, state in states.items()
         }
         if not liveness:
             readiness = "unhealthy"
@@ -68,32 +80,49 @@ _UNSAFE_KEY_PARTS = (
     "source",
     "script",
     "audio",
+    "transcript",
+    "voice",
     "credential",
     "password",
     "secret",
     "token",
     "api_key",
-    "provider_payload",
-    "raw_payload",
+    "provider",
+    "payload",
+    "path",
+    "uri",
 )
 
 
 def _is_unsafe_key(key: str) -> bool:
-    normalized = key.casefold().replace("-", "_")
-    return any(part in normalized for part in _UNSAFE_KEY_PARTS)
+    normalized = "".join(
+        character for character in key.casefold() if character.isalnum()
+    )
+    return any(
+        "".join(character for character in part if character.isalnum()) in normalized
+        for part in _UNSAFE_KEY_PARTS
+    )
+
+
+def _safe_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return dict(_safe_attributes({str(key): item for key, item in value.items()}))
+    if isinstance(value, list):
+        return [_safe_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_safe_value(item) for item in value)
+    if isinstance(value, (bytes, bytearray)):
+        return _REDACTED
+    return value
 
 
 def _safe_attributes(attributes: Mapping[str, object]) -> Mapping[str, object]:
     result: dict[str, object] = {}
     for key, value in attributes.items():
-        if not isinstance(key, str) or _is_unsafe_key(key):
-            result[str(key)] = _REDACTED
-        elif isinstance(value, Mapping):
-            result[key] = dict(_safe_attributes(value))
-        elif isinstance(value, (bytes, bytearray)):
+        if _is_unsafe_key(key):
             result[key] = _REDACTED
         else:
-            result[key] = value
+            result[key] = _safe_value(value)
     return MappingProxyType(dict(sorted(result.items())))
 
 

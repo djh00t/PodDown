@@ -73,3 +73,28 @@ def test_metric_rejects_raw_sensitive_values() -> None:
             project_id="project-1",
             labels={"source_text": "private"},
         )
+
+
+def test_operational_event_redacts_nested_sequences_and_key_variants() -> None:
+    event = OperationalEvent.create(
+        event_name="episode.completed",
+        tenant_id="tenant-1",
+        project_id="project-1",
+        correlation_id="corr-1",
+        attributes={
+            "safe": [
+                {"voice_id": "voice-secret", "path": "/private/audio.mp3"},
+                {"uri": "https://private.example/audio"},
+            ],
+            "transcript": "private transcript",
+            "providerPayload": {"request": "private"},
+        },
+    )
+    assert event.to_dict()["attributes"] == {
+        "providerPayload": "[REDACTED]",
+        "safe": [
+            {"path": "[REDACTED]", "voice_id": "[REDACTED]"},
+            {"uri": "[REDACTED]"},
+        ],
+        "transcript": "[REDACTED]",
+    }
