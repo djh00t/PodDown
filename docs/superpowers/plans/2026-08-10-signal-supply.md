@@ -28,9 +28,9 @@
 - Create: `tests/integration/test_signal_supply.py`
 - Create: `tests/evals/test_signal_supply.py`
 
-- [ ] Add scenarios for public-contract preparation, 100% critical-token fidelity, counter-thesis/uncertainty preservation, disclosure, unchanged robotics regression, and configuration removal leaving no finance core references.
-- [ ] Load only fixture files and public APIs through typed `ContentPreparationRequest`; invoke the deterministic local renderer through `DurableRenderService.render_takes` and evaluate prepared token spoken forms with `poddown.qa.fidelity.evaluate_critical_tokens`.
-- [ ] Run the focused suite and capture the expected RED failure because the M6 fixture does not exist.
+- [x] Add scenarios for public-contract preparation, 100% critical-token fidelity, counter-thesis/uncertainty preservation, disclosure, unchanged robotics regression, and configuration removal leaving no finance core references.
+- [x] Load only fixture files and public APIs through typed `ContentPreparationRequest`; invoke the deterministic local renderer through `DurableRenderService.render_takes` and evaluate prepared token spoken forms with `poddown.qa.fidelity.evaluate_critical_tokens`.
+- [x] Run the focused suite and capture the expected RED failure because the M6 fixture does not exist.
 
 ### Task 2: Add versioned Signal & Supply integration artifacts
 
@@ -46,19 +46,19 @@
 - Create: `integrations/signal-supply/v1/evals.json`
 - Create: `integrations/signal-supply/v1/spoken-transcript.txt`
 
-- [ ] Keep the article synthetic and source-bound, including explicit uncertainty and counter-thesis language.
-- [ ] Record opaque demo voice asset IDs and valid consents without provider identifiers or credentials.
-- [ ] Define finance/technology pronunciations and critical-token expectations without ticker/market logic in code.
-- [ ] Define disclosure, provider-neutral publication metadata, and protected workflow configuration as data only.
-- [ ] Keep the transcript deterministic and explicit about local-demo rendering; it is not provider or live audio evidence.
-- [ ] Render both declared speakers and the robotics fixture through the same public local contract.
+- [x] Keep the article synthetic and source-bound, including explicit uncertainty and counter-thesis language.
+- [x] Record opaque demo voice asset IDs and valid consents without provider identifiers or credentials.
+- [x] Define finance/technology pronunciations and critical-token expectations without ticker/market logic in code.
+- [x] Define disclosure, provider-neutral publication metadata, and protected workflow configuration as data only.
+- [x] Keep the transcript deterministic and explicit about local-demo rendering; it is not provider or live audio evidence.
+- [x] Render both declared speakers and the robotics fixture through the same public local contract.
 
 ### Task 3: Verify, document, and deliver
 
 **Files:**
 - Create: `docs/verification/signal-supply.md`
 
-- [ ] Run focused BDD/unit/integration/eval tests and changed-scope `make check`.
-- [ ] Run `make build`, `make docs`, `uv lock --check`, `uv pip check`, compileall, diff, and credential checks.
-- [ ] Confirm core source files are unchanged and remove generated artifacts.
-- [ ] Commit one review-ready Conventional Commit locally; do not push or create a PR.
+- [x] Run focused BDD/unit/integration/eval tests and changed-scope `make check`.
+- [x] Run `make build`, `make docs`, `uv lock --check`, `uv pip check`, compileall, diff, and credential checks.
+- [x] Confirm core source files are unchanged and remove generated artifacts.
+- [x] Commit review-ready Conventional Commits locally; publish a normal ready-for-review PR with merge remaining user-owned.

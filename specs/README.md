@@ -15,7 +15,7 @@ specification; other specifications reference it rather than redefining it.
 | [005](005-cli-and-automation/spec.md) | CLI and GitHub Action | 18, 21 | Planned |
 | [006](006-agent-integrations/spec.md) | MCP server, PodDown skill and future ChatGPT app boundary | 19, 20 | Planned |
 | [007](007-publishing/spec.md) | Publishing adapters, authorization and disclosure | 17 | Planned |
-| [008](008-signal-and-supply/spec.md) | Domain-neutral client integration | 24 | Planned |
+| [008](008-signal-and-supply/spec.md) | Domain-neutral client integration | 24 | Implemented locally with deterministic offline evidence; live provider/publication UAT pending |
 | [009](009-production-readiness/spec.md) | Deployment, observability, security, retention and release operations | Cross-cutting | Planned |
 
 ## Delivery rules
@@ -46,4 +46,3 @@ flowchart TD
     P7 --> P8
     P4 --> P9["009 Production readiness"]
 ```
-
