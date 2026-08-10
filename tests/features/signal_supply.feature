@@ -17,6 +17,7 @@ Feature: Signal and Supply customer-one integration
     When the adapted spoken text is rendered through the local PodDown contract
     Then the deterministic renderer is invoked without a live provider
     And the rendered transcript passes the public critical-token evaluator at 1.0
+    And the rendered request and transcript contain the synthetic-presenter disclosure
 
   Scenario: Preserve counter-thesis and uncertainty without hype
     Given the versioned Signal and Supply fixture

@@ -712,16 +712,15 @@ def _merge_lexicon_matches(
                 )
             structural_index = structural_indices[0]
             structural = matches[structural_index]
-            if (candidate.start, candidate.end) != (
-                structural.start,
-                structural.end,
+            if not (
+                candidate.start <= structural.start and structural.end <= candidate.end
             ):
                 raise TokenExtractionConflictError(
                     "lexicon span partially overlaps a structural token span"
                 )
             matches[structural_index] = _Match(
-                start=structural.start,
-                end=structural.end,
+                start=candidate.start,
+                end=candidate.end,
                 category=structural.category,
                 spoken_form=candidate.spoken_form,
                 pronunciation_source=candidate.pronunciation_source,
