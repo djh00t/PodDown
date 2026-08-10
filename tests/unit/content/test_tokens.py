@@ -194,6 +194,35 @@ def test_extract_critical_tokens_uses_utf8_byte_spans_and_unicode_normalization(
     assert tokens[1].pronunciation_source == "project:v1:opaque"
 
 
+def test_lexicon_matching_normalizes_once_per_source_character(monkeypatch):
+    """Substring enumeration would normalize quadratically for a long script."""
+    import poddown.content.tokens as tokens_module
+
+    original = tokens_module.normalize_lexicon_key
+    calls = 0
+
+    def counted(value: str) -> str:
+        nonlocal calls
+        calls += 1
+        return original(value)
+
+    monkeypatch.setattr(tokens_module, "normalize_lexicon_key", counted)
+    text = "ordinary " * 400
+    lexicons = {
+        "project": PronunciationLexicon(
+            "project",
+            "v1",
+            (
+                PronunciationEntry("one", "missing one", "one", "v1"),
+                PronunciationEntry("two", "missing two", "two", "v1"),
+            ),
+        )
+    }
+
+    assert extract_critical_tokens(text, lexicons) == ()
+    assert calls < len(text) * 4
+
+
 def test_structural_categories_win_but_keep_lexicon_pronunciation_provenance():
     """A lexicon hint must not relabel date, currency, ticker, acronym, or number."""
     text = "2026-08-09 $AAPL SLAM 42"
