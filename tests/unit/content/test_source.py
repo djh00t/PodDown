@@ -278,6 +278,15 @@ def test_multiline_setext_heading_has_one_exact_heading_block():
     assert snapshot.blocks[0].text == "First line\ncontinued line\n----------------"
 
 
+def test_pipe_containing_setext_heading_is_not_misclassified_as_a_table():
+    """A partial delimiter row must not override valid setext heading parsing."""
+    snapshot = snapshot_source("Title | Subtitle\n---\n")
+
+    assert [(block.kind, block.text) for block in snapshot.blocks] == [
+        ("heading", "Title | Subtitle\n---")
+    ]
+
+
 def test_crlf_frontmatter_and_commonmark_block_boundaries_are_preserved():
     """CRLF, setext/indented headings, and longer fences retain exact spans."""
     snapshot = snapshot_source(CRLF_COMMONMARK_SOURCE)

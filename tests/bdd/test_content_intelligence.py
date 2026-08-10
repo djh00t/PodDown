@@ -13,6 +13,8 @@ from pathlib import Path
 
 from pytest_bdd import given, scenarios, then, when
 
+from poddown.content.source import snapshot_source
+
 scenarios("../features/content_intelligence.feature")
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "content"
@@ -320,6 +322,11 @@ def canonical_script_over_limit(context):
     }
 
 
+@given("a pipe-containing setext heading")
+def pipe_containing_setext_heading(context):
+    context.values["source_snapshot"] = snapshot_source("Title | Subtitle\n---\n")
+
+
 @when("content intelligence prepares the episode")
 def prepare_episode(context):
     context.values["renderer_probe"] = RendererProbe()
@@ -407,6 +414,11 @@ def segment_script(context):
     context.values["result"] = segment_fn(context.values["script"])
 
 
+@when("the source is snapshotted")
+def source_is_snapshotted(context):
+    context.values["result"] = context.values["source_snapshot"]
+
+
 @then("the canonical script has two stable speakers and complete factual anchors")
 def script_has_stable_speakers(context):
     result = context.values["result"]
@@ -426,6 +438,14 @@ def script_has_stable_speakers(context):
 
     for claim_id in expected_anchor_ids:
         assert any(turn["claim_anchor"] == claim_id for turn in turns)
+
+
+@then("the heading remains one heading block")
+def heading_remains_one_heading_block(context):
+    blocks = context.values["result"].blocks
+    assert [(block.kind, block.text) for block in blocks] == [
+        ("heading", "Title | Subtitle\n---")
+    ]
 
 
 @then("the source snapshot frontmatter and hash are preserved")
