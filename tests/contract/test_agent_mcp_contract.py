@@ -36,3 +36,12 @@ def test_error_contract_is_json_safe_and_redacted():
             "message": "PodDown operation failed safely",
         }
     }
+
+
+def test_each_output_schema_is_closed_and_declares_properties():
+    schemas = AgentMCPServer(LocalGateway(), AuthenticatedContext("tenant-a")).schemas()
+    for schema in schemas.values():
+        output = schema["output_schema"]
+        assert output["type"] == "object"
+        assert output["additionalProperties"] is False
+        assert output["properties"]

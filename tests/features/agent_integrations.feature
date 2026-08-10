@@ -38,3 +38,19 @@ Feature: Safe PodDown agent integrations
     Given an authenticated tenant MCP server with a trusted approval registry
     When the agent presents a missing or stale approval
     Then publish is rejected without a side effect
+
+  Scenario: MCP negotiates before exposing tools
+    Given an authenticated tenant MCP server
+    When the MCP client initializes and lists tools
+    Then the handshake returns the supported protocol and capabilities
+    And tools are returned as MCP tool objects
+
+  Scenario: MCP tool calls use the CallToolResult envelope
+    Given an authenticated tenant MCP server
+    When the MCP client calls preview through stdio
+    Then the response contains content and structured content
+
+  Scenario: Malformed tool arguments do not kill stdio
+    Given an authenticated tenant MCP server
+    When the MCP client sends null tool arguments followed by a valid call
+    Then stdio returns an invalid-parameters result and continues

@@ -84,3 +84,44 @@ def test_schema_declares_required_fields_descriptions_outputs_and_string_source(
     assert schemas["poddown_preview"]["properties"]["source"]["type"] == "string"
     assert "source" in schemas["poddown_preview"]["required"]
     assert "episode_id" in schemas["poddown_render"]["required"]
+
+
+def test_output_schemas_declare_the_fields_returned_by_each_tool():
+    schemas = AgentMCPServer(LocalGateway(), AuthenticatedContext("tenant-a")).schemas()
+    expected = {
+        "poddown_preview": {"source_sha256", "profile_id", "side_effect"},
+        "poddown_render": {"job_id", "side_effect"},
+        "poddown_publish": {"publication_id", "side_effect"},
+        "poddown_get_status": {"episode_id", "stage"},
+        "poddown_get_episode": {"episode_id", "tenant_id", "resources"},
+    }
+    for tool, properties in expected.items():
+        assert set(schemas[tool]["output_schema"]["properties"]) == properties
+
+
+def test_nested_allowed_values_are_shape_checked_and_redacted():
+    gateway = LocalGateway(result_override={"status": {"credential": "SECRET"}})
+    server = AgentMCPServer(gateway, AuthenticatedContext("tenant-a"))
+    result = server.call("poddown_get_status", {"episode_id": "episode-1"})
+    assert result["result"] == {}
+    assert "SECRET" not in str(result)
+
+
+def test_approval_verifier_failure_is_a_stable_redacted_error():
+    class BrokenVerifier:
+        def verify_and_consume(self, tenant_id, episode_id, approval_id):
+            raise RuntimeError("credential=SECRET backing store unavailable")
+
+    server = AgentMCPServer(
+        LocalGateway(),
+        AuthenticatedContext("tenant-a"),
+        approval_verifier=BrokenVerifier(),
+    )
+    assert server.call(
+        "poddown_publish", {"episode_id": "episode-1", "approval_id": "a1"}
+    ) == {
+        "error": {
+            "code": "internal_error",
+            "message": "PodDown operation failed safely",
+        }
+    }
