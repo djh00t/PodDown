@@ -15,6 +15,9 @@ dependencies = [
   "pyyaml>=6.0.2,<7",
 ]
 
+[project.scripts]
+poddown = "poddown.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/poddown"]
 

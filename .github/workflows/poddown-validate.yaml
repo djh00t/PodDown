@@ -1,0 +1,144 @@
+name: PodDown preview validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      render:
+        description: Run the protected reference render
+        required: false
+        default: false
+        type: boolean
+      publish:
+        description: Run the protected publication request
+        required: false
+        default: false
+        type: boolean
+      episode_id:
+        description: Episode ID to publish when publish is approved
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: poddown-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    name: Validate Markdown preview
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          version: "0.12.3"
+      - name: Install Python
+        run: uv python install 3.12
+      - name: Sync locked environment
+        run: uv sync --locked --all-groups
+      - name: Validate reference Markdown
+        uses: ./.github/actions/poddown-preview
+        with:
+          markdown: tests/fixtures/content/robotics-mapping.md
+
+  approved-render:
+    name: Protected reference render
+    if: >-
+      (github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+      (github.event_name == 'workflow_dispatch' && inputs.render == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: poddown-render-approval
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: poddown-render-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          version: "0.12.3"
+      - name: Install Python
+        run: uv python install 3.12
+      - name: Sync locked environment
+        run: uv sync --locked --all-groups
+      - name: Render approved reference episode
+        env:
+          PODDOWN_API_ENDPOINT: ${{ vars.PODDOWN_API_ENDPOINT }}
+          PODDOWN_API_TOKEN: ${{ secrets.PODDOWN_API_TOKEN }}
+          PODDOWN_TENANT_ID: ${{ vars.PODDOWN_TENANT_ID }}
+          PODDOWN_PROJECT_ID: ${{ vars.PODDOWN_PROJECT_ID }}
+        run: |
+          test -n "$PODDOWN_API_ENDPOINT"
+          test -n "$PODDOWN_API_TOKEN"
+          test -n "$PODDOWN_TENANT_ID"
+          test -n "$PODDOWN_PROJECT_ID"
+          uv run poddown render tests/fixtures/content/robotics-mapping.md --wait --json | tee render-result.json
+          {
+            echo "### Protected render"
+            echo '```json'
+            cat render-result.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  approved-publish:
+    name: Protected publication request
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && inputs.episode_id != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: poddown-publish-approval
+    permissions:
+      contents: read
+    concurrency:
+      group: poddown-publish-${{ inputs.episode_id }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          version: "0.12.3"
+      - name: Install Python
+        run: uv python install 3.12
+      - name: Sync locked environment
+        run: uv sync --locked --all-groups
+      - name: Publish approved episode
+        env:
+          PODDOWN_API_ENDPOINT: ${{ vars.PODDOWN_API_ENDPOINT }}
+          PODDOWN_API_TOKEN: ${{ secrets.PODDOWN_API_TOKEN }}
+          PODDOWN_TENANT_ID: ${{ vars.PODDOWN_TENANT_ID }}
+          PODDOWN_PROJECT_ID: ${{ vars.PODDOWN_PROJECT_ID }}
+          PODDOWN_EPISODE_ID: ${{ inputs.episode_id }}
+        run: |
+          test -n "$PODDOWN_API_ENDPOINT"
+          test -n "$PODDOWN_API_TOKEN"
+          test -n "$PODDOWN_TENANT_ID"
+          test -n "$PODDOWN_PROJECT_ID"
+          uv run poddown publish "$PODDOWN_EPISODE_ID" --confirm --json | tee publish-result.json
+          {
+            echo "### Protected publication"
+            echo '```json'
+            cat publish-result.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

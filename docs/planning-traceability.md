@@ -21,10 +21,10 @@
 | 15 | Mastering | 003 | M2 deterministic mastering and final-master QA boundaries locally verified for stable ordering, profile validation, injected ffmpeg/ffprobe boundaries, exact-byte transcription binding, WAV/MP3 inspection, and immutable provenance: [mastering BDD](../tests/features/mastering.feature), [final-master BDD](../tests/features/final_master_qa.feature), and [verification evidence](verification/final-master-qa.md) |
 | 16 | Package/provenance | 001/003/004 | M0–M3 locally verified for content-addressed immutable artifacts, deterministic nine-file generation, final checksum and critical-token binding, replay, conflict preservation, and tenant/project-scoped filesystem object storage: [package BDD](../tests/features/package.feature), [package-generation BDD](../tests/features/package_generation.feature), [object-storage BDD](../tests/features/tenant_object_storage.feature), [artifact unit tests](../tests/unit/test_artifacts.py), [package unit tests](../tests/unit/test_packages.py), [object-storage integration tests](../tests/integration/test_tenant_object_storage.py), [immutable package verification](verification/immutable-package.md), [package-generation verification](verification/package-generation.md), and [tenant object-storage verification](verification/tenant-object-storage.md); S3 integration and publication remain pending |
 | 17 | Publishing adapters | 007 | M5 |
-| 18 | CLI | 005 | M4 |
+| 18 | CLI | 005 | M4 provider-free preview/render/publish/status command client, stable exit/JSON contracts, config precedence, resumable polling, atomic package installation, and local verification evidence: [CLI BDD](../tests/features/cli.feature), [CLI unit/integration tests](../tests/unit/test_cli.py), and [verification evidence](verification/cli-github-automation.md); live provider rendering and external publication remain pending |
 | 19 | MCP server | 006 | M5 |
 | 20 | PodDown skill | 006 | M5 |
-| 21 | GitHub Action | 005 | M4 |
+| 21 | GitHub Action | 005 | M4 local pull-request preview plus separately protected merge/tag/manual render and publication jobs with concurrency keys, environment approvals, secret isolation, and job summaries verified: [CLI BDD](../tests/features/cli.feature) and [verification evidence](verification/cli-github-automation.md); external environment credentials remain deployment-owned |
 | 22 | Multitenancy | 004 | M3 tenant-scoped lifecycle repository, SQLite persistence, object keys, and HTTP boundary locally verified: [episode lifecycle BDD](../tests/features/episode_lifecycle.feature), [episode API BDD](../tests/features/episode_api.feature), [durable persistence BDD](../tests/features/durable_persistence.feature), [object-storage BDD](../tests/features/tenant_object_storage.feature), and [verification evidence](verification/durable-persistence.md); PostgreSQL row-level isolation and auth middleware remain pending |
 | 23 | Usage/cost metering | 004 | M3 append-only tenant-scoped SQLite usage/cost ledger locally verified with exact Decimal serialization, idempotent provider-request replay, and conflict protection: [persistence unit tests](../tests/unit/test_persistence.py), [persistence integration tests](../tests/integration/test_durable_persistence.py), and [verification evidence](verification/durable-persistence.md); provider-invoice reconciliation remains pending |
 | 24 | Signal & Supply integration | 008 | M6 |
@@ -74,5 +74,7 @@ not expand the MVP feature set; they make the approved service operable.
   remain pending.
 - Task-level implementation plan: intentionally produced just-in-time per
   milestone so measured interfaces and audio quality inform the next plan.
-- Audio rendering, Temporal, API, CLI, publishing, MCP, Signal & Supply, and
-  production readiness remain pending in their assigned future milestones.
+- Publishing, MCP, Signal & Supply, and production readiness remain pending in
+  their assigned future milestones. The API and CLI now have deterministic
+  local HTTP/SQLite paths; live provider rendering and external publication
+  remain explicit deployment-boundary work.
