@@ -54,3 +54,8 @@ Feature: Safe PodDown agent integrations
     Given an authenticated tenant MCP server
     When the MCP client sends null tool arguments followed by a valid call
     Then stdio returns an invalid-parameters result and continues
+
+  Scenario: Malformed JSON-RPC framing does not kill stdio
+    Given an authenticated tenant MCP server
+    When the MCP client sends malformed JSON-RPC framing followed by initialize
+    Then stdio returns a framing error and continues
