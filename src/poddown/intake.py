@@ -28,6 +28,7 @@ class _PodDownMetadata(BaseModel):
 
 
 def _frontmatter(source: str) -> dict[object, object]:
+    source = source.replace("\r\n", "\n")
     if not source.startswith("---\n"):
         return {}
     boundary = source.find("\n---\n", 4)

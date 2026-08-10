@@ -179,6 +179,19 @@ def replay_episode_create(context):
     context.values["second"] = second
 
 
+@when("the episode is scripted and the original request is replayed")
+def replay_after_transition(context):
+    original = context.values["episode"]
+    service = context.values["service"]
+    service.transition(
+        tenant_id=TENANT_ID,
+        episode_id=original.episode_id,
+        target_state=EpisodeState.SCRIPTED,
+        expected_version=original.version,
+    )
+    context.values["replay"] = service.create_episode(_command())
+
+
 @when("the tenant reuses its idempotency key with different source bytes")
 def conflicting_idempotency_key(context):
     _capture(
@@ -304,6 +317,13 @@ def idempotent_replay(context):
     assert second == first
     assert second.episode_id == EPISODE_ID
     assert second.version == 1
+
+
+@then("the replay preserves the validated version-1 create snapshot")
+def replay_preserves_create_snapshot(context):
+    replay = context.values["replay"]
+    assert replay.state is EpisodeState.VALIDATED
+    assert replay.version == 1
 
 
 @then("creation returns a redacted idempotency conflict with status 409")

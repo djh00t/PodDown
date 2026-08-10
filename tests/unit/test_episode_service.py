@@ -162,6 +162,54 @@ def test_identical_idempotency_replay_returns_the_original_immutable_record():
     assert replay.version == 1
 
 
+def test_idempotency_replay_preserves_the_original_create_snapshot_after_transition():
+    """A create retry must return validation state, not the current lifecycle state."""
+    service = _service()
+    created = _created(service)
+    service.transition(
+        TENANT_ID,
+        created.episode_id,
+        EpisodeState.SCRIPTED,
+        expected_version=created.version,
+    )
+
+    replay = service.create_episode(_command())
+
+    assert replay == created
+    assert replay.state is EpisodeState.VALIDATED
+    assert replay.version == 1
+
+
+def test_create_records_the_profile_resolved_from_frontmatter():
+    """A document profile must take precedence over the command default profile."""
+    service = EpisodeApplicationService(
+        repository=InMemoryEpisodeRepository(),
+        episode_id_factory=lambda: EPISODE_ID,
+        clock=lambda: CREATED_AT,
+        available_profiles=frozenset({"spoken-word", "technical-dialogue"}),
+    )
+    source = SOURCE.replace(b"spoken-word", b"technical-dialogue")
+
+    record = service.create_episode(_command(source_bytes=source))
+
+    assert record.profile_name == "technical-dialogue"
+
+
+def test_create_rejects_invalid_crlf_frontmatter():
+    """CRLF frontmatter must receive the same strict validation as LF frontmatter."""
+    source = (
+        b"---\r\n"
+        b"poddown:\r\n"
+        b"  profile: spoken-word\r\n"
+        b"  unexpected: forbidden\r\n"
+        b"---\r\n"
+        b"# Invalid CRLF metadata\r\n"
+    )
+
+    with pytest.raises(EpisodeValidationError, match="Unknown PodDown key"):
+        _service().create_episode(_command(source_bytes=source))
+
+
 def test_idempotency_key_reuse_with_a_different_fingerprint_fails_closed():
     """Changing source evidence behind a key must not replace the first request."""
     service = _service()

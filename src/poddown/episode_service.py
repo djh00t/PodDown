@@ -337,18 +337,18 @@ class InMemoryEpisodeRepository:
 
     def __init__(self) -> None:
         self._by_id: dict[UUID, EpisodeRecord] = {}
-        self._by_key: dict[tuple[UUID, str], EpisodeRecord] = {}
+        self._create_by_key: dict[tuple[UUID, str], EpisodeRecord] = {}
 
     def create(self, record: EpisodeRecord) -> EpisodeRecord:
         key = (record.tenant_id, record.idempotency_key)
-        existing = self._by_key.get(key)
+        existing = self._create_by_key.get(key)
         if existing is not None:
             if existing.request_fingerprint != record.request_fingerprint:
                 raise IdempotencyConflict()
             return existing
         if record.episode_id in self._by_id:
             raise IdempotencyConflict()
-        self._by_key[key] = record
+        self._create_by_key[key] = record
         self._by_id[record.episode_id] = record
         return record
 
@@ -382,7 +382,6 @@ class InMemoryEpisodeRepository:
         if current.version != expected_version:
             raise VersionConflict()
         self._by_id[record.episode_id] = record
-        self._by_key[(record.tenant_id, record.idempotency_key)] = record
         return record
 
 
@@ -443,6 +442,12 @@ class EpisodeApplicationService:
         source_sha256 = hashlib.sha256(command.source_bytes).hexdigest()
         if snapshot.source_sha256 != source_sha256:
             raise EpisodeValidationError("source snapshot hash is inconsistent")
+        profile_name = command.profile_name
+        raw_poddown = snapshot.frontmatter.get("poddown")
+        if isinstance(raw_poddown, Mapping) and isinstance(
+            raw_poddown.get("profile"), str
+        ):
+            profile_name = raw_poddown["profile"]
         fingerprint = _request_fingerprint(command)
         try:
             episode_id = self._episode_id_factory()
@@ -453,7 +458,7 @@ class EpisodeApplicationService:
                 project_id=command.project_id,
                 episode_id=episode_id,
                 idempotency_key=command.idempotency_key,
-                profile_name=command.profile_name,
+                profile_name=profile_name,
                 source_sha256=source_sha256,
                 source_bytes=len(command.source_bytes),
                 request_fingerprint=fingerprint,

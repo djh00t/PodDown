@@ -17,6 +17,11 @@ Feature: Manage an offline tenant-scoped episode lifecycle
     When the same episode request is created twice
     Then both creates return the same immutable episode at version 1
 
+  Scenario: Replay a create after an episode transition
+    Given a created tenant-scoped episode
+    When the episode is scripted and the original request is replayed
+    Then the replay preserves the validated version-1 create snapshot
+
   Scenario: Reject conflicting reuse of a tenant idempotency key
     Given a created tenant-scoped episode
     When the tenant reuses its idempotency key with different source bytes
