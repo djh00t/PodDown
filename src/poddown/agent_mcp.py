@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
+from threading import Lock
 from typing import Protocol, cast
 
 TOOL_NAMES = (
@@ -35,6 +36,7 @@ class InMemoryApprovalRegistry:
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
     approvals: dict[tuple[str, str, str], datetime] = field(default_factory=dict)
     consumed: set[tuple[str, str, str]] = field(default_factory=set)
+    _lock: Lock = field(default_factory=Lock, init=False, repr=False)
 
     def issue(
         self, tenant_id: str, episode_id: str, approval_id: str, *, expires_at: datetime
@@ -44,12 +46,13 @@ class InMemoryApprovalRegistry:
     def verify_and_consume(
         self, tenant_id: str, episode_id: str, approval_id: str
     ) -> bool:
-        key = (tenant_id, episode_id, approval_id)
-        expires_at = self.approvals.get(key)
-        if expires_at is None or key in self.consumed or self.clock() >= expires_at:
-            return False
-        self.consumed.add(key)
-        return True
+        with self._lock:
+            key = (tenant_id, episode_id, approval_id)
+            expires_at = self.approvals.get(key)
+            if expires_at is None or key in self.consumed or self.clock() >= expires_at:
+                return False
+            self.consumed.add(key)
+            return True
 
 
 class AgentGateway(Protocol):

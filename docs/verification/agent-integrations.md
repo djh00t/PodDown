@@ -25,14 +25,22 @@ PYDANTIC_DISABLE_PLUGINS=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
 uv run pytest -p pytest_bdd.plugin -q \
   tests/bdd/test_agent_integrations.py \
   tests/unit/test_agent_mcp.py \
+  tests/unit/test_agent_mcp_review_regressions.py \
+  tests/unit/test_agent_mcp_concurrency.py \
   tests/integration/test_agent_mcp.py \
+  tests/integration/test_agent_mcp_stdio.py \
   tests/contract/test_agent_mcp_contract.py
-23 passed
+26 passed
 ```
 
-The review RED run failed during collection because the intentionally absent
-`InMemoryApprovalRegistry` was not yet implemented. The final focused run
-passes 23 scenarios/tests.
+The final review-fix RED run failed in the trusted-environment stdio publish
+test because approval registration was absent. The final focused run passes
+26 scenarios/tests, including the two-thread one-time-consumption regression.
+
+The stdio process registers only a trusted environment token/configuration:
+`PODDOWN_APPROVAL_TOKEN`, `PODDOWN_APPROVAL_EPISODE_ID`, and
+`PODDOWN_APPROVAL_EXPIRES_AT`. The token is never printed. Model-supplied
+fresh/nonce fields remain non-authoritative.
 
 ## Final checks
 
