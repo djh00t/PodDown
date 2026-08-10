@@ -1,0 +1,14 @@
+version: 1.0.0
+assets:
+  - asset_id: demo-reference-host-v1
+    label: synthetic reference host
+    synthetic: true
+    demo_only: true
+    consent_status: approved
+    consent_id: consent-reference-host-v1
+  - asset_id: demo-reference-analyst-v1
+    label: synthetic reference analyst
+    synthetic: true
+    demo_only: true
+    consent_status: approved
+    consent_id: consent-reference-analyst-v1

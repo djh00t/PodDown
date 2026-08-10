@@ -1,0 +1,11 @@
+version: 1.0.0
+profile_id: reference-demo-dialogue-v1
+format_type: dialogue
+target_minutes: 12
+speakers:
+  - speaker_id: ref-host
+    display_name: Reference synthetic host
+    voice_asset_id: demo-reference-host-v1
+  - speaker_id: ref-analyst
+    display_name: Reference synthetic analyst
+    voice_asset_id: demo-reference-analyst-v1
