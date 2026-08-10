@@ -1,0 +1,7 @@
+version: 1.0.0
+name: signal-supply-fixture
+trigger: manual-or-reviewed-change
+permissions: read-only
+provider_calls: 0
+publish_environment: protected-demo-only
+secret_policy: no secrets for untrusted changes

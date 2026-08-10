@@ -1,0 +1,9 @@
+version: 1.0.0
+target_id: signal-supply-demo-rss
+kind: rss
+show_id: signal-and-supply-demo
+feed_url: https://example.invalid/signal-and-supply.xml
+secret_ref: secret://signal-supply/demo-rss
+visibility: private-demo
+update_policy: immutable
+disclosure_ref: disclosure.yaml

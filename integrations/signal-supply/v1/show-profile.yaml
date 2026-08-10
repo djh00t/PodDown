@@ -1,0 +1,19 @@
+version: 1.0.0
+profile_id: signal-supply-finance-tech
+format_type: dialogue
+target_minutes: 12
+synthetic_presenter: true
+demo_only: true
+poddown:
+  profile: signal-supply-finance-tech
+  duration_minutes: 12
+critical_tokens:
+  - NVIDIA
+  - NVDA
+  - ASML
+  - TSMC
+  - Nasdaq
+  - 7.5%
+  - 3.2 billion dollars
+  - not guaranteed
+  - counter-thesis

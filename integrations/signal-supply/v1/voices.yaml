@@ -1,0 +1,14 @@
+version: 1.0.0
+assets:
+  - asset_id: demo-synthetic-signal-host-v1
+    label: synthetic demo presenter
+    synthetic: true
+    demo_only: true
+    consent_status: approved
+    consent_id: consent-signal-host-v1
+  - asset_id: demo-synthetic-supply-analyst-v1
+    label: synthetic demo analyst
+    synthetic: true
+    demo_only: true
+    consent_status: approved
+    consent_id: consent-supply-analyst-v1
