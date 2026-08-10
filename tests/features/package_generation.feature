@@ -47,6 +47,16 @@ Feature: Generate deterministic episode package artifacts
     When package artifacts are built
     Then package generation fails closed
 
+  Scenario: Reject a segment detached from the canonical script
+    Given a package-generation request with a detached segment
+    When package artifacts are built
+    Then package generation fails closed
+
+  Scenario: Reject show notes that are not source excerpts
+    Given a package-generation request with unverified show notes
+    When package artifacts are built
+    Then package generation fails closed
+
   Scenario: Commit and replay the generated package
     Given a passing package-generation request
     When generated package artifacts are committed and replayed

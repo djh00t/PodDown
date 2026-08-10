@@ -24,6 +24,7 @@ from poddown.content.models import (
 )
 from poddown.content.segmentation import Segment
 from poddown.content.source import snapshot_source
+from poddown.content.tokens import CriticalToken
 from poddown.domain import FidelityResult, ProviderUsage
 from poddown.package_generation import (
     PackageGenerationError,
@@ -47,11 +48,18 @@ def _wav_bytes() -> bytes:
 
 
 def _input() -> PackageGenerationInput:
-    source = snapshot_source("# Episode title\n\nSource-backed first note.\n")
-    anchor = SourceAnchor(
+    source = snapshot_source(
+        "# Episode title\n\nWelcome to PodDown.\n\nThe package is immutable.\n"
+    )
+    first_anchor = SourceAnchor(
         block_id=source.blocks[1].block_id,
         start=source.blocks[1].start,
         end=source.blocks[1].end,
+    )
+    second_anchor = SourceAnchor(
+        block_id=source.blocks[2].block_id,
+        start=source.blocks[2].start,
+        end=source.blocks[2].end,
     )
     profile = Profile(
         profile_id="spoken-word",
@@ -74,8 +82,16 @@ def _input() -> PackageGenerationInput:
                 speaker_id="host",
                 text="Welcome to PodDown.",
                 kind="factual",
-                source_anchors=(anchor,),
-                claim_anchors=(anchor,),
+                source_anchors=(first_anchor,),
+                claim_anchors=(first_anchor,),
+            ),
+            ScriptTurn(
+                turn_id="turn-2",
+                speaker_id="host",
+                text="The package is immutable.",
+                kind="factual",
+                source_anchors=(second_anchor,),
+                claim_anchors=(second_anchor,),
             ),
         ),
         canonical_hash="a" * 64,
@@ -86,7 +102,7 @@ def _input() -> PackageGenerationInput:
             turn_ids=("turn-1",),
             speaker_ids=("host",),
             text="Welcome to PodDown.",
-            source_anchors=(anchor,),
+            source_anchors=(first_anchor,),
             critical_tokens=(),
             leading_context="",
             trailing_context="",
@@ -98,7 +114,7 @@ def _input() -> PackageGenerationInput:
             turn_ids=("turn-2",),
             speaker_ids=("host",),
             text="The package is immutable.",
-            source_anchors=(anchor,),
+            source_anchors=(second_anchor,),
             critical_tokens=(),
             leading_context="",
             trailing_context="",
@@ -164,7 +180,7 @@ def _input() -> PackageGenerationInput:
         segments=segments,
         content_manifest={
             "script": {"canonical_hash": script.canonical_hash},
-            "show_notes": ("Source-backed first note.",),
+            "show_notes": ("Welcome to PodDown.",),
         },
         mastered_audio=master,
         final_qa=qa,
@@ -257,9 +273,7 @@ def test_generation_emits_cumulative_segment_chapters_and_source_anchored_notes_
         b'"start_seconds":0.0,"title":"Segment 1"},{"end_seconds":3.75,'
         b'"segment_id":"segment-2","start_seconds":1.25,"title":"Segment 2"}]}'
     )
-    assert artifacts["show-notes.md"] == (
-        b"# Show notes\n\nSource-backed first note.\n"
-    )
+    assert artifacts["show-notes.md"] == (b"# Show notes\n\nWelcome to PodDown.\n")
 
 
 def test_generation_serializes_qa_provenance_and_render_manifest_compactly_and_sorted():
@@ -285,7 +299,7 @@ def test_generation_serializes_qa_provenance_and_render_manifest_compactly_and_s
     manifest = json.loads(artifacts["render-manifest.json"])
     assert manifest["content_manifest"] == {
         "script": {"canonical_hash": "a" * 64},
-        "show_notes": ["Source-backed first note."],
+        "show_notes": ["Welcome to PodDown."],
     }
     assert manifest["segments"] == ["segment-1", "segment-2"]
     assert manifest["render_evidence"] == {"attempt": 1, "workflow_id": "render-1"}
@@ -310,7 +324,7 @@ def test_generation_requires_script_content_manifest_binding():
         generate_package_artifacts(
             replace(
                 value,
-                content_manifest={"show_notes": ("Source-backed first note.",)},
+                content_manifest={"show_notes": ("Welcome to PodDown.",)},
             )
         )
 
@@ -349,6 +363,87 @@ def test_generation_input_is_immutable_after_validation():
 
     with pytest.raises(FrozenInstanceError):
         value.renderer = "different-renderer"  # type: ignore[misc]
+
+
+def test_generation_input_snapshots_nested_evidence_before_callers_mutate_it():
+    """Caller-owned nested JSON values cannot alter a validated package replay."""
+    value = _input()
+    content_manifest = {
+        "script": {"canonical_hash": value.script.canonical_hash},
+        "show_notes": ["Welcome to PodDown."],
+    }
+    render_evidence = {"workflow_id": "render-1", "attempts": [1]}
+    lexicon_evidence = {"entries": {"PodDown": ["pod-down"]}}
+    request = replace(
+        value,
+        content_manifest=content_manifest,
+        render_evidence=render_evidence,
+        lexicon_evidence=lexicon_evidence,
+    )
+    expected = _artifacts(request)
+
+    content_manifest["show_notes"].append("Unsupported later note.")
+    render_evidence["attempts"].append(2)
+    lexicon_evidence["entries"]["PodDown"].append("changed")
+
+    assert _artifacts(request) == expected
+
+
+def test_generation_input_rejects_render_evidence_episode_version_override():
+    """Workflow evidence cannot replace the validated episode identity."""
+    value = _input()
+
+    with pytest.raises(PackageGenerationError, match="episode_version_id"):
+        replace(
+            value,
+            render_evidence={
+                "workflow_id": "render-1",
+                "episode_version_id": "different-episode",
+            },
+        )
+
+
+def test_generation_rejects_segment_detached_from_current_script_and_source():
+    """A well-formed segment must retain the current script turn evidence."""
+    value = _input()
+    detached = replace(value.segments[0], text="Forged package narration.")
+
+    with pytest.raises(PackageGenerationError, match="segment"):
+        generate_package_artifacts(replace(value, segments=(detached,)))
+
+
+def test_generation_rejects_segment_critical_token_outside_its_source_anchors():
+    """Segment critical-token evidence must be contained by canonical source anchors."""
+    value = _input()
+    token = CriticalToken(
+        occurrence_id="forged-token",
+        category="product",
+        normalized="PodDown",
+        source_span=(0, 1),
+        script_span=None,
+        expected_spoken_form="PodDown",
+        pronunciation_source=None,
+    )
+    detached = replace(value.segments[0], critical_tokens=(token,))
+
+    with pytest.raises(PackageGenerationError, match="segment"):
+        generate_package_artifacts(replace(value, segments=(detached,)))
+
+
+def test_generation_rejects_show_notes_that_are_not_source_excerpts():
+    """Show notes must be verifiable excerpts instead of arbitrary package prose."""
+    value = _input()
+
+    with pytest.raises(PackageGenerationError, match="show notes"):
+        generate_package_artifacts(
+            replace(
+                value,
+                content_manifest={
+                    "script": {"canonical_hash": value.script.canonical_hash},
+                    "show_notes": ("Unsupported factual claim.",),
+                },
+            )
+        )
 
 
 def test_generation_rejects_detached_content_and_duplicate_segment_ids():

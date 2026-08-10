@@ -43,13 +43,14 @@ def _generation_module():
 def _source_and_script() -> tuple[object, ScriptVersion]:
     """Build source-bound script fixtures using the repository's immutable models."""
     source = snapshot_source(
-        "# Fixture episode\n\nPodDown produces a verified episode.\n"
+        "# Fixture episode\n\nPodDown produces\n\na verified episode.\n"
     )
-    anchor = source.blocks[1]
-    turn_anchor = (source.blocks[1].block_id, anchor.start, anchor.end)
+    first = source.blocks[1]
+    second = source.blocks[2]
     from poddown.content.models import SourceAnchor
 
-    source_anchor = SourceAnchor(*turn_anchor)
+    first_anchor = SourceAnchor(first.block_id, first.start, first.end)
+    second_anchor = SourceAnchor(second.block_id, second.start, second.end)
     script = ScriptVersion(
         script_id="script-fixture-v1",
         source_sha256=source.source_sha256,
@@ -58,10 +59,18 @@ def _source_and_script() -> tuple[object, ScriptVersion]:
             ScriptTurn(
                 "turn-1",
                 "host",
-                "PodDown produces a verified episode.",
+                "PodDown produces",
                 "factual",
-                (source_anchor,),
-                (source_anchor,),
+                (first_anchor,),
+                (first_anchor,),
+            ),
+            ScriptTurn(
+                "turn-2",
+                "host",
+                "a verified episode.",
+                "factual",
+                (second_anchor,),
+                (second_anchor,),
             ),
         ),
         canonical_hash=sha256(b"script-fixture-v1").hexdigest(),
@@ -86,7 +95,7 @@ def _profile() -> Profile:
 
 def _segments(source) -> tuple[Segment, ...]:
     """Build hand-timed ordered segments for deterministic chapter assertions."""
-    first, second = source.blocks
+    _, first, second = source.blocks
     from poddown.content.models import SourceAnchor
 
     return (
@@ -190,7 +199,7 @@ def _request(*, qa_passed: bool = True):
         segments=_segments(source),
         content_manifest={
             "script": {"canonical_hash": script.canonical_hash},
-            "show_notes": ("PodDown is source-anchored.",),
+            "show_notes": ("PodDown produces",),
         },
         mastered_audio=master,
         final_qa=_final_qa(master, passed=qa_passed),
@@ -248,7 +257,12 @@ def request_with_mismatched_master_checksum(context):
 
 @given("a package-generation request with non-JSON render evidence")
 def request_with_non_json_render_evidence(context):
-    context.values["request"] = replace(_request(), render_evidence={"bad": object()})
+    try:
+        context.values["request"] = replace(
+            _request(), render_evidence={"bad": object()}
+        )
+    except Exception as error:
+        context.values["error"] = error
 
 
 @given("a package-generation request with incomplete critical-token accuracy")
@@ -263,6 +277,27 @@ def request_with_incomplete_critical_token_accuracy(context):
     )
 
 
+@given("a package-generation request with a detached segment")
+def request_with_detached_segment(context):
+    request = _request()
+    context.values["request"] = replace(
+        request,
+        segments=(replace(request.segments[0], text="Forged package narration."),),
+    )
+
+
+@given("a package-generation request with unverified show notes")
+def request_with_unverified_show_notes(context):
+    request = _request()
+    context.values["request"] = replace(
+        request,
+        content_manifest={
+            "script": {"canonical_hash": request.script.canonical_hash},
+            "show_notes": ("Unsupported factual claim.",),
+        },
+    )
+
+
 @given("two equivalent package-generation requests")
 def equivalent_package_generation_requests(context):
     context.values["first_request"] = _request()
@@ -271,6 +306,8 @@ def equivalent_package_generation_requests(context):
 
 @when("package artifacts are built")
 def package_artifacts_are_built(context):
+    if "error" in context.values:
+        return
     try:
         context.values["artifacts"] = _generation_module().build_package_artifacts(
             context.values["request"]
@@ -344,9 +381,7 @@ def all_nine_artifacts_contain_expected_bytes(context):
     assert artifacts["episode.wav"] == MASTER_WAV
     assert artifacts["episode.mp3"] == MASTER_MP3
     assert artifacts["transcript.txt"] == b"PodDown produces a verified episode.\n"
-    assert (
-        artifacts["show-notes.md"] == b"# Show notes\n\nPodDown is source-anchored.\n"
-    )
+    assert artifacts["show-notes.md"] == b"# Show notes\n\nPodDown produces\n"
     assert (
         json.loads(artifacts["qa-report.json"])
         == context.values["request"].final_qa.to_dict()

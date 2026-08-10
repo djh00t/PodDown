@@ -7,12 +7,17 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
-from types import MappingProxyType
 from uuid import UUID
 
 from poddown.audio.mastering import MasteredAudio, MasteringProvenance
-from poddown.content.models import Profile, ScriptVersion, SourceSnapshot
+from poddown.content.models import (
+    Profile,
+    ScriptVersion,
+    SourceSnapshot,
+    freeze_mapping,
+)
 from poddown.content.segmentation import Segment
+from poddown.content.source import anchor_text
 from poddown.packages import (
     REQUIRED_PACKAGE_ARTIFACTS,
     PackageArtifact,
@@ -83,7 +88,17 @@ class PackageGenerationInput:
             value = getattr(self, name)
             if not isinstance(value, Mapping):
                 raise PackageGenerationError(f"{name} must be a mapping")
-            object.__setattr__(self, name, MappingProxyType(dict(value)))
+            try:
+                frozen = freeze_mapping(value)
+            except (TypeError, ValueError) as error:
+                raise PackageGenerationError(
+                    f"{name} must be immutable JSON evidence"
+                ) from error
+            object.__setattr__(self, name, frozen)
+        if "episode_version_id" in self.render_evidence:
+            raise PackageGenerationError(
+                "render_evidence must not override episode_version_id"
+            )
 
 
 def _json_value(value: object) -> object:
@@ -122,6 +137,7 @@ def _validate_request(request: PackageGenerationInput) -> None:
         raise PackageGenerationError("script is not bound to its source")
     if request.script.profile_id != request.profile.profile_id:
         raise PackageGenerationError("script is not bound to its profile")
+    _validate_segments(request)
     canonical_hash = request.content_manifest.get("script")
     if not isinstance(canonical_hash, Mapping) or (
         canonical_hash.get("canonical_hash") != request.script.canonical_hash
@@ -160,6 +176,58 @@ def _validate_request(request: PackageGenerationInput) -> None:
     _json_bytes(request.content_manifest)
     _json_bytes(request.render_evidence)
     _json_bytes(request.lexicon_evidence)
+
+
+def _validate_segments(request: PackageGenerationInput) -> None:
+    """Require segment evidence to match the current source-bound script."""
+    script_turns = {turn.turn_id: turn for turn in request.script.turns}
+    source_bytes = request.source.source.encode("utf-8")
+    for segment in request.segments:
+        try:
+            turns = tuple(script_turns[turn_id] for turn_id in segment.turn_ids)
+        except KeyError as error:
+            raise PackageGenerationError(
+                "segment is detached from the current script"
+            ) from error
+        expected_text = "\n".join(turn.text for turn in turns)
+        expected_speakers = tuple(dict.fromkeys(turn.speaker_id for turn in turns))
+        expected_anchors = tuple(
+            anchor for turn in turns for anchor in turn.source_anchors
+        )
+        if (
+            segment.text != expected_text
+            or segment.speaker_ids != expected_speakers
+            or segment.source_anchors != expected_anchors
+        ):
+            raise PackageGenerationError("segment is detached from the current script")
+        if not expected_anchors:
+            raise PackageGenerationError("segment must retain source anchors")
+        for anchor in expected_anchors:
+            try:
+                anchor_text(request.source, anchor)
+            except ValueError as error:
+                raise PackageGenerationError(
+                    "segment source anchor is invalid"
+                ) from error
+        for token in segment.critical_tokens:
+            start, end = token.source_span
+            if not any(
+                anchor.start <= start and end <= anchor.end
+                for anchor in expected_anchors
+            ):
+                raise PackageGenerationError(
+                    "segment critical token is detached from its source anchors"
+                )
+            try:
+                source_form = source_bytes[start:end].decode("utf-8")
+            except UnicodeDecodeError as error:
+                raise PackageGenerationError(
+                    "segment critical token is detached from its source"
+                ) from error
+            if source_form != token.source_form:
+                raise PackageGenerationError(
+                    "segment critical token is detached from its source"
+                )
 
 
 def _vtt_timestamp(milliseconds: int) -> str:
@@ -236,6 +304,8 @@ def _show_notes(request: PackageGenerationInput) -> bytes:
         or any(not isinstance(note, str) or not note.strip() for note in notes)
     ):
         raise PackageGenerationError("show notes must be a non-empty sequence of text")
+    if any(note.strip() not in request.source.source for note in notes):
+        raise PackageGenerationError("show notes must be source excerpts")
     return (
         "# Show notes\n\n" + "\n".join(note.strip() for note in notes) + "\n"
     ).encode("utf-8")
