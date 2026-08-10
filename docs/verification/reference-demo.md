@@ -7,6 +7,10 @@ SQLite ledger, filesystem package storage, and filesystem publication adapter.
 It does not use a provider credential, provider spend, hosted Temporal, payment,
 or external publication adapter.
 
+The local mastering adapter requires the `ffmpeg` package, which provides both
+`ffmpeg` and `ffprobe`. On macOS use `brew install ffmpeg`; on Debian/Ubuntu use
+`sudo apt-get update && sudo apt-get install --no-install-recommends -y ffmpeg`.
+
 Run it with:
 
 ```bash
