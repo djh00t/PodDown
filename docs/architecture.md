@@ -63,6 +63,20 @@ All provider adapters MUST:
 - use deterministic adapter tests in CI, with live tests opt-in, separately
   marked, budget-capped, and excluded from untrusted pull requests.
 
+### Reference-demo rendering modes
+
+`poddown-demo --output PATH` selects `local-system-tts-demo`: a host-local
+renderer using macOS `say` or Linux `espeak-ng`/`espeak`, normalized and
+inspected through `ffmpeg`/`ffprobe`. It has zero provider cost and reads no API
+key; absent local tools are a terminal pre-publication failure. Its audio bytes
+vary by host engine and voice version. The explicit
+`--audio-mode deterministic` selection preserves `deterministic-local-demo` for
+offline structural tests. Neither local mode is live-provider evidence.
+
+ElevenLabs remains a separately authorized live adapter requiring
+`ELEVENLABS_API_KEY`, approved voice mapping, rights/consent provenance, and
+spending authorization; local mode never silently falls back to it.
+
 ### ElevenLabs adapter
 
 ElevenLabs is the initial production `VoiceRenderer`. PodDown sends only the
