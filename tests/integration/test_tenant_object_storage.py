@@ -50,6 +50,28 @@ def test_put_replays_exact_reference_and_read_bytes(tmp_path: Path) -> None:
     assert (tmp_path / first.storage_key).read_bytes() == DATA
 
 
+def test_delete_removes_scoped_object_and_metadata(tmp_path: Path) -> None:
+    store = FilesystemObjectStore(tmp_path)
+    reference = store.put(
+        TENANT_ID, PROJECT_ID, name="fixture.md", media_type="text/markdown", data=DATA
+    )
+    store.delete(TENANT_ID, PROJECT_ID, reference)
+    with pytest.raises(ObjectNotFound):
+        store.read(TENANT_ID, PROJECT_ID, reference)
+
+
+def test_delete_rejects_cross_scope_reference_without_removing_object(
+    tmp_path: Path,
+) -> None:
+    store = FilesystemObjectStore(tmp_path)
+    reference = store.put(
+        TENANT_ID, PROJECT_ID, name="fixture.md", media_type="text/markdown", data=DATA
+    )
+    with pytest.raises(ObjectScopeError):
+        store.delete(OTHER_TENANT_ID, OTHER_PROJECT_ID, reference)
+    assert store.read(TENANT_ID, PROJECT_ID, reference) == DATA
+
+
 def test_identical_bytes_have_distinct_keys_for_distinct_scopes(tmp_path: Path) -> None:
     store = FilesystemObjectStore(tmp_path)
     first = store.put(

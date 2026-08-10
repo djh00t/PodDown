@@ -154,6 +154,14 @@ class ObjectStore(Protocol):
     ) -> bytes:
         """Read one object only within the caller's tenant/project scope."""
 
+    def delete(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        reference: ObjectRef,
+    ) -> None:
+        """Delete one verified object only within the caller's scope."""
+
 
 class FilesystemObjectStore:
     """Atomic local object store with tenant-safe content-addressed keys."""
@@ -273,6 +281,41 @@ class FilesystemObjectStore:
                 os.close(object_fd)
         finally:
             os.close(parent_fd)
+
+    def delete(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        reference: ObjectRef,
+    ) -> None:
+        """Verify and remove one scoped object and its exact metadata sidecar."""
+        _validate_uuid7(tenant_id, field="tenant_id")
+        _validate_uuid7(project_id, field="project_id")
+        if not isinstance(reference, ObjectRef):
+            raise ObjectValidationError("reference must be an ObjectRef")
+        if reference.tenant_id != tenant_id or reference.project_id != project_id:
+            raise ObjectScopeError("object reference is outside caller scope")
+        self.read(tenant_id, project_id, reference)
+        key_parts = tuple(
+            storage_key_for(
+                reference.tenant_id, reference.project_id, reference.sha256
+            ).split("/")
+        )
+        parent_fd = self._open_directory_chain(key_parts[:-1], create=False)
+        try:
+            try:
+                os.unlink(key_parts[-1], dir_fd=parent_fd)
+                os.unlink(self._metadata_name(reference.sha256), dir_fd=parent_fd)
+            except FileNotFoundError as error:
+                raise ObjectNotFound("object or metadata is missing") from error
+            except OSError as error:
+                raise ObjectIntegrityError("object deletion failed") from error
+        finally:
+            os.close(parent_fd)
+        for part_count in range(len(key_parts) - 1, 2, -1):
+            directory = self._root.joinpath(*key_parts[:part_count])
+            with suppress(OSError):
+                directory.rmdir()
 
     @staticmethod
     def _metadata_name(digest: str) -> str:
