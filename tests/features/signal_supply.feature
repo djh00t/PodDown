@@ -12,6 +12,12 @@ Feature: Signal and Supply customer-one integration
     When critical tokens are extracted from the article
     Then every declared finance critical token is present with fidelity 1.0
 
+  Scenario: Render adapted spoken text and evaluate its deterministic transcript
+    Given the versioned Signal and Supply fixture
+    When the adapted spoken text is rendered through the local PodDown contract
+    Then the deterministic renderer is invoked without a live provider
+    And the rendered transcript passes the public critical-token evaluator at 1.0
+
   Scenario: Preserve counter-thesis and uncertainty without hype
     Given the versioned Signal and Supply fixture
     When the article is loaded through PodDown public contracts

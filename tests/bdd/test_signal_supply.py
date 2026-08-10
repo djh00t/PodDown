@@ -7,8 +7,16 @@ from pathlib import Path
 import yaml
 from pytest_bdd import given, scenarios, then, when
 
+from poddown.audio import (
+    DeterministicLocalRenderer,
+    DurableRenderService,
+    RenderRequest,
+    VoiceConsent,
+)
+from poddown.audio.storage import FilesystemArtifactStore, FilesystemRenderRecordStore
 from poddown.content.source import snapshot_source
 from poddown.content.tokens import extract_critical_tokens
+from poddown.qa.fidelity import evaluate_critical_tokens
 
 scenarios("../features/signal_supply.feature")
 
@@ -32,6 +40,9 @@ def _load(context):
                 (FIXTURE / "disclosure.yaml").read_text(encoding="utf-8")
             ),
             "evals": json.loads((FIXTURE / "evals.json").read_text(encoding="utf-8")),
+            "proposal": json.loads(
+                (FIXTURE / "adaptation.json").read_text(encoding="utf-8")
+            ),
         }
     return context.values["fixture"]
 
@@ -88,6 +99,61 @@ def critical_tokens_present(context):
     text = context.values["fixture"]["article"].lower()
     assert all(token.lower() in text for token in context.values["declared_tokens"])
     assert context.values["fixture"]["evals"]["critical_token_fidelity"] == 1.0
+
+
+@when("the adapted spoken text is rendered through the local PodDown contract")
+def render_spoken_text(context, tmp_path):
+    fixture = _load(context)
+    spoken_text = (FIXTURE / "spoken-transcript.txt").read_text(encoding="utf-8")
+    request = RenderRequest(
+        episode_id="signal-supply-bdd",
+        episode_version="v1",
+        segment_id="article",
+        speaker_id="synthetic-presenter",
+        expected_spoken_text=spoken_text,
+        voice_asset_id="demo-voice-signal-supply-v1",
+        provider="local",
+        model="local-deterministic-v1",
+    )
+    consent = VoiceConsent(
+        voice_asset_id=request.voice_asset_id,
+        evidence_id="synthetic-demo-consent-v1",
+        allowed_providers=frozenset({"local"}),
+    )
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
+    renderer = DeterministicLocalRenderer()
+    service = DurableRenderService(
+        artifacts, FilesystemRenderRecordStore(tmp_path / "records", artifacts)
+    )
+    import asyncio
+
+    context.values["render"] = (
+        asyncio.run(service.render_takes(request, consent, renderer)),
+        renderer,
+        request,
+        evaluate_critical_tokens(
+            tuple(
+                item["spoken_form"]
+                for item in fixture["proposal"]["expected_critical_tokens"]
+            ),
+            spoken_text,
+        ),
+    )
+
+
+@then("the deterministic renderer is invoked without a live provider")
+def local_renderer_invoked(context):
+    outcomes, renderer, request, _ = context.values["render"]
+    assert len(outcomes) == 1
+    assert renderer.calls == [request.idempotency_key]
+    assert outcomes[0].candidate.provider == "local"
+
+
+@then("the rendered transcript passes the public critical-token evaluator at 1.0")
+def transcript_passes_fidelity(context):
+    fidelity = context.values["render"][3]
+    assert fidelity.passed is True
+    assert fidelity.accuracy == 1.0
 
 
 @then("the counter-thesis and uncertainty language remain present")

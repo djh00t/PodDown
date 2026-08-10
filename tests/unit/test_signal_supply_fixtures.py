@@ -20,6 +20,7 @@ def test_signal_supply_fixture_is_complete_and_versioned():
         "publishing-target.yaml",
         "github-workflow.yaml",
         "evals.json",
+        "spoken-transcript.txt",
     }
     assert {path.name for path in FIXTURE.iterdir()} == expected
     assert (
