@@ -8,10 +8,12 @@ import re
 import shutil
 import tempfile
 import xml.etree.ElementTree as ET
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from threading import RLock
+from types import MappingProxyType
 from typing import Protocol
 from uuid import UUID, uuid4
 
@@ -139,6 +141,7 @@ class PublicationReceipt:
             raise PublishingAuthorizationError(
                 "publication receipt requires publish authorization"
             )
+        object.__setattr__(self, "provenance", _freeze_mapping(self.provenance))
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -157,7 +160,7 @@ class PublicationReceipt:
                 "show_notes": self.disclosure.show_notes,
                 "platform": self.disclosure.platform,
             },
-            "provenance": dict(self.provenance),
+            "provenance": _thaw(self.provenance),
         }
 
 
@@ -184,6 +187,7 @@ class PublicationMutationReceipt:
             raise PublishingAuthorizationError(
                 "separate mutation authorization is required"
             )
+        object.__setattr__(self, "provenance", _freeze_mapping(self.provenance))
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -195,7 +199,7 @@ class PublicationMutationReceipt:
             "idempotency_key": self.idempotency_key,
             "status": self.status,
             "authorization": self.authorization.to_dict(),
-            "provenance": dict(self.provenance),
+            "provenance": _thaw(self.provenance),
         }
 
 
@@ -230,11 +234,55 @@ def _package_identity(package: EpisodePackage) -> str:
     ).hexdigest()
 
 
+def _freeze_mapping(value: Mapping[str, object]) -> Mapping[str, object]:
+    def freeze(item: object) -> object:
+        if isinstance(item, Mapping):
+            return MappingProxyType(
+                {str(key): freeze(nested) for key, nested in item.items()}
+            )
+        if isinstance(item, (list, tuple)):
+            return tuple(freeze(nested) for nested in item)
+        return item
+
+    frozen = freeze(value)
+    if not isinstance(frozen, Mapping):
+        raise PublishingValidationError("publication provenance must be a mapping")
+    return frozen
+
+
+def _thaw(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {str(key): _thaw(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw(item) for item in value]
+    return value
+
+
+def _target_snapshot(target: PublicationTarget) -> dict[str, object]:
+    return {
+        "target_id": target.target_id,
+        "kind": target.kind,
+        "show_id": target.show_id,
+        "feed_url": target.feed_url,
+        "visibility": target.visibility,
+        "update_policy": target.update_policy,
+        "disclosure": {
+            "spoken": target.disclosure.spoken,
+            "show_notes": target.disclosure.show_notes,
+            "platform": target.disclosure.platform,
+        },
+    }
+
+
 def _read_artifacts(store: ArtifactStore, package: EpisodePackage) -> dict[str, bytes]:
     if package.provenance.qa != "pass":
         raise PublishingValidationError("only QA-passed packages can publish")
     if package.provenance.critical_token_accuracy != 1.0:
         raise PublishingValidationError("only fully verified packages can publish")
+    try:
+        EpisodePackage.from_dict(package.to_dict())
+    except ValueError as error:
+        raise PublishingValidationError("package manifest is invalid") from error
     artifacts: dict[str, bytes] = {}
     for reference in package.files:
         data = store.read(reference)
@@ -562,6 +610,12 @@ class PublishingService:
         self._mutations: dict[
             tuple[UUID, UUID, str, str], PublicationMutationReceipt
         ] = {}
+        self._lock_guard = RLock()
+        self._publish_locks: dict[tuple[UUID, UUID, str], RLock] = {}
+
+    def _publish_lock(self, key: tuple[UUID, UUID, str]) -> RLock:
+        with self._lock_guard:
+            return self._publish_locks.setdefault(key, RLock())
 
     def attempt(
         self, idempotency_key: str, tenant_id: UUID, project_id: UUID
@@ -582,70 +636,64 @@ class PublishingService:
         if not idempotency_key.strip():
             raise PublishingValidationError("publication idempotency key is required")
         key = (target.tenant_id, target.project_id, idempotency_key)
-        attempt = self._attempts.setdefault(
-            key,
-            PublicationAttempt(target.tenant_id, target.project_id, idempotency_key),
-        )
-        existing = self._receipts.get(key)
-        if existing is not None:
-            if (
-                existing.target_id != target.target_id
-                or existing.package_sha256 != package.provenance.final_sha256
-            ):
-                raise PublicationConflictError(
-                    "idempotency key is bound to another publication"
-                )
-            return existing
-        artifacts = _read_artifacts(self.artifact_store, package)
-        adapter = self.adapters.get(target.kind)
-        if adapter is None:
-            raise PublishingValidationError("publication adapter is unavailable")
-        try:
-            external_id = adapter.publish(package, target, artifacts)
-        except Exception as error:
-            attempt.state = "failed"
-            attempt.retryable = True
-            attempt.failure = str(error)
-            raise
-        receipt = PublicationReceipt(
-            publication_id=str(uuid4()),
-            tenant_id=target.tenant_id,
-            project_id=target.project_id,
-            episode_version_id=package.episode_version_id,
-            target_id=target.target_id,
-            idempotency_key=idempotency_key,
-            package_sha256=package.provenance.final_sha256,
-            external_id=external_id,
-            status="resumed" if attempt.state == "failed" else "published",
-            authorization=authorization,
-            disclosure=target.disclosure,
-            provenance={
-                "package_identity": _package_identity(package),
-                "adapter": target.kind,
-                "authorization_decision_id": authorization.decision_id,
-                "target": {
-                    "target_id": target.target_id,
-                    "kind": target.kind,
-                    "show_id": target.show_id,
-                    "feed_url": target.feed_url,
-                    "visibility": target.visibility,
-                    "update_policy": target.update_policy,
-                    "disclosure": {
-                        "spoken": target.disclosure.spoken,
-                        "show_notes": target.disclosure.show_notes,
-                        "platform": target.disclosure.platform,
-                    },
-                    "package_sha256": package.provenance.final_sha256,
-                    "package_identity": _package_identity(package),
+        with self._publish_lock(key):
+            attempt = self._attempts.setdefault(
+                key,
+                PublicationAttempt(
+                    target.tenant_id, target.project_id, idempotency_key
+                ),
+            )
+            existing = self._receipts.get(key)
+            package_identity = _package_identity(package)
+            expected_target = _target_snapshot(target)
+            if existing is not None:
+                if (
+                    existing.episode_version_id != package.episode_version_id
+                    or existing.package_sha256 != package.provenance.final_sha256
+                    or existing.provenance.get("package_identity") != package_identity
+                    or existing.provenance.get("target") != expected_target
+                ):
+                    raise PublicationConflictError(
+                        "idempotency key is bound to another publication"
+                    )
+                return existing
+            artifacts = _read_artifacts(self.artifact_store, package)
+            adapter = self.adapters.get(target.kind)
+            if adapter is None:
+                raise PublishingValidationError("publication adapter is unavailable")
+            try:
+                external_id = adapter.publish(package, target, artifacts)
+            except Exception as error:
+                attempt.state = "failed"
+                attempt.retryable = True
+                attempt.failure = str(error)
+                raise
+            receipt = PublicationReceipt(
+                publication_id=str(uuid4()),
+                tenant_id=target.tenant_id,
+                project_id=target.project_id,
+                episode_version_id=package.episode_version_id,
+                target_id=target.target_id,
+                idempotency_key=idempotency_key,
+                package_sha256=package.provenance.final_sha256,
+                external_id=external_id,
+                status="resumed" if attempt.state == "failed" else "published",
+                authorization=authorization,
+                disclosure=target.disclosure,
+                provenance={
+                    "package_identity": package_identity,
+                    "episode_version_id": package.episode_version_id,
+                    "adapter": target.kind,
+                    "authorization_decision_id": authorization.decision_id,
+                    "target": expected_target,
                 },
-            },
-        )
-        self._receipts[key] = receipt
-        attempt.state = "completed"
-        attempt.retryable = False
-        attempt.receipt = receipt
-        self._targets[receipt.publication_id] = target
-        return receipt
+            )
+            self._receipts[key] = receipt
+            attempt.state = "completed"
+            attempt.retryable = False
+            attempt.receipt = receipt
+            self._targets[receipt.publication_id] = target
+            return receipt
 
     def update(
         self,
@@ -687,11 +735,7 @@ class PublishingService:
             if (
                 existing.publication_id != receipt.publication_id
                 or existing.target_id != receipt.target_id
-                or existing.provenance
-                != {
-                    "target": receipt.provenance["target"],
-                    "external_id": receipt.external_id,
-                }
+                or existing.provenance.get("target") != receipt.provenance.get("target")
             ):
                 raise PublicationConflictError(
                     "mutation idempotency key is bound to another publication"

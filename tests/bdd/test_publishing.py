@@ -1,4 +1,3 @@
-from hashlib import sha256
 from pathlib import Path
 from uuid import UUID
 
@@ -6,7 +5,11 @@ import pytest
 from pytest_bdd import given, scenarios, then, when
 
 from poddown.artifacts import FilesystemArtifactStore
-from poddown.packages import EpisodePackage, PackageProvenance
+from poddown.packages import (
+    REQUIRED_PACKAGE_ARTIFACTS,
+    EpisodePackage,
+    PackageProvenance,
+)
 from poddown.publishing import (
     DisclosurePolicy,
     FilesystemPublicationAdapter,
@@ -24,12 +27,19 @@ PROJECT = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b12")
 
 def _setup(context, tmp_path: Path, qa: str = "pass", kind: str = "filesystem") -> None:
     store = FilesystemArtifactStore(tmp_path / "artifacts")
-    data = b"bdd episode"
-    ref = store.put("episode.mp3", "audio/mpeg", data)
+    refs = tuple(
+        store.put(
+            name,
+            "audio/mpeg" if name.endswith((".mp3", ".wav")) else "text/plain",
+            b"bdd episode" if name == "episode.wav" else name.encode(),
+        )
+        for name in REQUIRED_PACKAGE_ARTIFACTS
+    )
+    wav = next(ref for ref in refs if ref.name == "episode.wav")
     package = EpisodePackage(
         "018f3c7d-9d04-7c25-8e20-9e8e0c4d3b11",
-        (ref,),
-        PackageProvenance("b" * 64, 1, "v1", "test", qa, 1.0, sha256(data).hexdigest()),
+        refs,
+        PackageProvenance("b" * 64, 1, "v1", "test", qa, 1.0, wav.sha256),
     )
     target = PublicationTarget(
         TENANT,
