@@ -112,7 +112,7 @@ Shared files require explicit coordinator review before editing:
   idempotency, status redaction, authorization, and non-blocking dispatch.
 - [x] Fix every valid Important or acceptance-blocking finding with a regression
   test, rebase onto the final PR16 head, and rerun the gate.
-- [ ] Push and create a normal ready PR directly stacked on PR16.
+- [x] Push and create a normal ready PR directly stacked on PR16: [PR #17](https://github.com/djh00t/PodDown/pull/17).
 
 ## Explicit deferrals
 
