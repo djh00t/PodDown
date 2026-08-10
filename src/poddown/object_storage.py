@@ -195,7 +195,7 @@ class FilesystemObjectStore:
         key_parts = tuple(storage_key.split("/"))
         parent_fd = self._open_directory_chain(key_parts[:-1], create=True)
         try:
-            object_created = self._ensure_file(
+            self._ensure_file(
                 parent_fd,
                 key_parts[-1],
                 data,
@@ -207,10 +207,6 @@ class FilesystemObjectStore:
             try:
                 metadata_fd = self._open_file(parent_fd, metadata_name)
             except ObjectNotFound:
-                if not object_created:
-                    raise ObjectIntegrityError(
-                        "persisted object metadata is missing"
-                    ) from None
                 self._create_once(
                     parent_fd,
                     metadata_name,
@@ -453,6 +449,12 @@ class FilesystemObjectStore:
                     dst_dir_fd=parent_fd,
                     follow_symlinks=False,
                 )
+                try:
+                    os.fsync(parent_fd)
+                except OSError as error:
+                    raise ObjectIntegrityError(
+                        "object directory sync failed"
+                    ) from error
                 return True
             except FileExistsError:
                 existing_fd = FilesystemObjectStore._open_file(parent_fd, name)

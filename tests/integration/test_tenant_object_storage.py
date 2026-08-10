@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from hashlib import sha256
@@ -173,7 +174,7 @@ def test_same_digest_metadata_conflict_fails_closed(tmp_path: Path) -> None:
         )
 
 
-def test_missing_persisted_metadata_fails_closed(tmp_path: Path) -> None:
+def test_put_recovers_missing_metadata_after_object_publication(tmp_path: Path) -> None:
     store = FilesystemObjectStore(tmp_path)
     reference = store.put(
         TENANT_ID,
@@ -186,8 +187,16 @@ def test_missing_persisted_metadata_fails_closed(tmp_path: Path) -> None:
     metadata_path = metadata_path.with_name(f".{reference.sha256}.metadata.json")
     metadata_path.unlink()
 
-    with pytest.raises(ObjectIntegrityError):
-        store.read(TENANT_ID, PROJECT_ID, reference)
+    replay = store.put(
+        TENANT_ID,
+        PROJECT_ID,
+        name="fixture.md",
+        media_type="text/markdown",
+        data=DATA,
+    )
+
+    assert replay == reference
+    assert store.read(TENANT_ID, PROJECT_ID, replay) == DATA
 
 
 def test_metadata_create_race_is_verified(
@@ -276,13 +285,47 @@ def test_concurrent_same_digest_puts_never_return_forged_metadata(
             return ("failure", error)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(executor.map(put, ("first.md", "second.md")))
+        results = list(executor.map(put, ("fixture.md", "fixture.md")))
 
     successes = [value for status, value in results if status == "success"]
     failures = [value for status, value in results if status == "failure"]
-    assert len(successes) == 1
-    assert len(failures) == 1
+    assert len(successes) == 2
+    assert not failures
+    assert successes[0] == successes[1]
     assert store.read(TENANT_ID, PROJECT_ID, successes[0]) == DATA
+
+
+def test_put_syncs_destination_directory_after_link(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FilesystemObjectStore(tmp_path)
+    destination_fds: list[int] = []
+    synced_fds: list[int] = []
+    real_link = os.link
+    real_fsync = os.fsync
+
+    def capture_link(*args, **kwargs) -> None:
+        destination_fds.append(kwargs["dst_dir_fd"])
+        real_link(*args, **kwargs)
+
+    def capture_fsync(file_descriptor: int) -> None:
+        synced_fds.append(file_descriptor)
+        real_fsync(file_descriptor)
+
+    monkeypatch.setattr("poddown.object_storage.os.link", capture_link)
+    monkeypatch.setattr("poddown.object_storage.os.fsync", capture_fsync)
+
+    store.put(
+        TENANT_ID,
+        PROJECT_ID,
+        name="fixture.md",
+        media_type="text/markdown",
+        data=DATA,
+    )
+
+    assert destination_fds
+    assert destination_fds[-1] in synced_fds
 
 
 def test_put_rejects_invalid_metadata_before_filesystem_write(tmp_path: Path) -> None:

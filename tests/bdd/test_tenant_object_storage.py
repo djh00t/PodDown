@@ -162,6 +162,32 @@ def missing_object_result(object_context: dict[str, object]) -> None:
         store.read(TENANT_ID, PROJECT_ID, reference)
 
 
+@when("I replay its put after removing the metadata sidecar")
+def replay_after_metadata_removal(object_context: dict[str, object]) -> None:
+    store = object_context["store"]
+    reference = object_context["reference"]
+    assert isinstance(store, FilesystemObjectStore)
+    metadata_path = store._root / reference.storage_key  # noqa: SLF001
+    metadata_path.with_name(f".{reference.sha256}.metadata.json").unlink()
+    object_context["replay"] = store.put(
+        TENANT_ID,
+        PROJECT_ID,
+        name="fixture.md",
+        media_type="text/markdown",
+        data=DATA,
+    )
+
+
+@then("the replay recovers the exact metadata sidecar")
+def metadata_sidecar_recovered(object_context: dict[str, object]) -> None:
+    store = object_context["store"]
+    reference = object_context["reference"]
+    replay = object_context["replay"]
+    assert isinstance(store, FilesystemObjectStore)
+    assert replay == reference
+    assert store.read(TENANT_ID, PROJECT_ID, replay) == DATA
+
+
 @when("I submit a UUID4 scope and path-traversal name")
 def submit_malformed_input(object_context: dict[str, object]) -> None:
     store = object_context["store"]

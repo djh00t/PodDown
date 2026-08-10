@@ -32,6 +32,11 @@ Feature: Tenant-scoped immutable object storage
     When the stored object is removed
     Then the object read fails with a missing-object error
 
+  Scenario: Recover an interrupted object metadata publication
+    Given an object stored in the tenant object store
+    When I replay its put after removing the metadata sidecar
+    Then the replay recovers the exact metadata sidecar
+
   Scenario: Reject malformed object input
     Given an empty tenant object store
     When I submit a UUID4 scope and path-traversal name
