@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 poddown = "poddown.cli:main"
+poddown-demo = "poddown.demo:main"
 poddown-mcp = "poddown.agent_mcp_stdio:main"
 poddown-api = "poddown.runtime:api_main"
 poddown-worker = "poddown.runtime:worker_main"
