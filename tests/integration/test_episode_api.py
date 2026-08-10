@@ -8,14 +8,24 @@ provider/network clients.
 from __future__ import annotations
 
 import re
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+
 from poddown.api import create_app
+from poddown.episode_service import (
+    EpisodeApplicationService,
+    EpisodeCreateCommand,
+    EpisodeState,
+    InMemoryEpisodeRepository,
+    StructuredFailure,
+)
 
 TENANT_ID = "018f3c7d-9d04-7c25-8e20-9e8e0c4d3b10"
 OTHER_TENANT_ID = "018f3c7d-9d04-7c25-8e20-9e8e0c4d3b11"
 PROJECT_ID = "018f3c7d-9d04-7c25-8e20-9e8e0c4d3b12"
+OTHER_PROJECT_ID = "018f3c7d-9d04-7c25-8e20-9e8e0c4d3b13"
 PROFILE = "technical-dialogue"
 SOURCE = "---\npoddown:\n  profile: technical-dialogue\n---\n# Offline API fixture\n"
 UUIDV7 = re.compile(
@@ -31,11 +41,14 @@ def client() -> TestClient:
 
 
 def _headers(
-    *, tenant_id: str = TENANT_ID, key: str = "episode-create-001"
+    *,
+    tenant_id: str = TENANT_ID,
+    project_id: str = PROJECT_ID,
+    key: str = "episode-create-001",
 ) -> dict[str, str]:
     return {
         "X-Tenant-ID": tenant_id,
-        "X-Project-ID": PROJECT_ID,
+        "X-Project-ID": project_id,
         "Idempotency-Key": key,
     }
 
@@ -96,6 +109,31 @@ def test_post_episodes_rejects_conflicting_idempotency_reuse(
     )
 
     _assert_problem(response, status=409, code="idempotency_conflict")
+
+
+def test_create_idempotency_rejects_cross_project_key_rebinding(
+    client: TestClient,
+) -> None:
+    _create_episode(client)
+    response = client.post(
+        "/v1/episodes",
+        headers=_headers(project_id=OTHER_PROJECT_ID),
+        json={"source": SOURCE, "profile": PROFILE},
+    )
+
+    _assert_problem(response, status=409, code="idempotency_conflict")
+
+
+def test_post_episodes_rejects_missing_profile_with_stable_problem(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/v1/episodes",
+        headers=_headers(key="missing-profile-001"),
+        json={"source": SOURCE},
+    )
+
+    _assert_problem(response, status=422, code="invalid_profile")
 
 
 @pytest.mark.parametrize(
@@ -181,6 +219,58 @@ def test_get_episode_and_status_return_tenant_scoped_summary_and_redacted_status
     assert "authorization" not in str(status.json()).lower()
 
 
+def test_failed_status_projects_only_safe_failure_fields() -> None:
+    repository = InMemoryEpisodeRepository()
+    service = EpisodeApplicationService(
+        repository=repository,
+        available_profiles={PROFILE},
+    )
+    record = service.create_episode(
+        EpisodeCreateCommand(
+            tenant_id=UUID(TENANT_ID),
+            project_id=UUID(PROJECT_ID),
+            idempotency_key="failed-status-001",
+            source_bytes=SOURCE.encode("utf-8"),
+            profile_name=PROFILE,
+        )
+    )
+    service.transition(
+        UUID(TENANT_ID),
+        record.episode_id,
+        EpisodeState.FAILED,
+        expected_version=record.version,
+        failure=StructuredFailure(
+            code="provider_failure",
+            stage="render",
+            message="provider failed for SECRET_SOURCE",
+            retriable=False,
+            details={
+                "raw_source": "SECRET_SOURCE",
+                "credential": "TOKEN",
+                "parser_detail": "internal parser trace",
+            },
+            status=502,
+        ),
+    )
+
+    with TestClient(create_app(service)) as failed_client:
+        response = failed_client.get(
+            f"/v1/episodes/{record.episode_id}/status",
+            headers=_headers(key="failed-status-read-001"),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["failure"] == {
+        "code": "provider_failure",
+        "stage": "render",
+        "status": 502,
+        "retriable": False,
+    }
+    assert "SECRET_SOURCE" not in str(response.json())
+    assert "TOKEN" not in str(response.json())
+    assert "parser trace" not in str(response.json())
+
+
 @pytest.mark.parametrize(
     "method,path_suffix",
     [
@@ -232,7 +322,4 @@ def test_publish_requires_explicit_authorization_header(client: TestClient) -> N
     )
 
     _assert_problem(unauthorized, status=403, code="publish_authorization_required")
-    assert authorized.status_code == 202
-    assert authorized.json()["episode_id"] == episode_id
-    assert authorized.json()["command"] == "publish"
-    assert authorized.json()["accepted"] is True
+    _assert_problem(authorized, status=409, code="invalid_episode_transition")

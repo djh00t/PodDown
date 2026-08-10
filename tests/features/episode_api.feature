@@ -32,6 +32,11 @@ Feature: Submit and monitor tenant-scoped episodes over HTTP
     When I request the episode status
     Then the status response contains no source or credential material
 
+  Scenario: Expose allowlisted failure details in status
+    Given an offline episode API client with a failed episode
+    When I request the failed episode status
+    Then the failure response contains only allowlisted fields
+
   Scenario: Submit an idempotent non-blocking render command
     Given an offline episode API client with a created episode
     When I submit the same render request twice
@@ -40,4 +45,4 @@ Feature: Submit and monitor tenant-scoped episodes over HTTP
   Scenario: Require explicit authorization to publish
     Given an offline episode API client with a created episode
     When I publish without explicit authorization and then with authorization
-    Then publish is forbidden until explicitly authorized
+    Then publish is forbidden without authorization and remains gated before packaging

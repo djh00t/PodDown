@@ -5,6 +5,8 @@ from __future__ import annotations
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
+
 from poddown.api.models import (
     CommandReceipt,
     EpisodeCreateRequest,
@@ -12,7 +14,6 @@ from poddown.api.models import (
     ProblemDetail,
     RequestContext,
 )
-from pydantic import ValidationError
 
 TENANT_ID = "018f3c7d-9d04-7c25-8e20-9e8e0c4d3b10"
 PROJECT_ID = "018f3c7d-9d04-7c25-8e20-9e8e0c4d3b12"

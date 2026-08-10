@@ -6,7 +6,7 @@
 |---:|---|---|---|
 | 1 | Markdown/frontmatter | 001 | M0 |
 | 2 | Profile configuration | 001 | M0/M1 |
-| 3 | Episode job API | 004 | M3 lifecycle contract locally verified: [episode lifecycle BDD](../tests/features/episode_lifecycle.feature), [unit tests](../tests/unit/test_episode_service.py), and [verification evidence](verification/episode-lifecycle.md); HTTP/API transport remains pending |
+| 3 | Episode job API | 004 | M3 lifecycle and deterministic offline HTTP transport locally verified: [episode lifecycle BDD](../tests/features/episode_lifecycle.feature), [episode API BDD](../tests/features/episode_api.feature), [API integration tests](../tests/integration/test_episode_api.py), [API model tests](../tests/unit/test_api_models.py), and [verification evidence](verification/episode-api.md); durable production transport remains pending |
 | 4 | Source-bound adaptation | 002 | M1 complete locally; adversarial eval evidence recorded |
 | 5 | Dialogue/script model | 002 | M1 complete locally; source-bound canonical script verified |
 | 6 | Provider abstraction | 001 | M0 |
@@ -25,7 +25,7 @@
 | 19 | MCP server | 006 | M5 |
 | 20 | PodDown skill | 006 | M5 |
 | 21 | GitHub Action | 005 | M4 |
-| 22 | Multitenancy | 004 | M3 tenant-scoped lifecycle repository locally verified: [episode lifecycle BDD](../tests/features/episode_lifecycle.feature) and [verification evidence](verification/episode-lifecycle.md); database isolation/middleware remains pending |
+| 22 | Multitenancy | 004 | M3 tenant-scoped lifecycle repository and HTTP boundary locally verified: [episode lifecycle BDD](../tests/features/episode_lifecycle.feature), [episode API BDD](../tests/features/episode_api.feature), and [verification evidence](verification/episode-api.md); database row-level isolation/auth middleware remains pending |
 | 23 | Usage/cost metering | 004 | M3 |
 | 24 | Signal & Supply integration | 008 | M6 |
 

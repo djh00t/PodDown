@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi.testclient import TestClient
-from poddown.api import create_app
 from pytest_bdd import given, scenarios, then, when
 
+from poddown.api import create_app
+from poddown.episode_service import (
+    EpisodeApplicationService,
+    EpisodeCreateCommand,
+    EpisodeState,
+    InMemoryEpisodeRepository,
+    StructuredFailure,
+)
 from tests.integration.test_episode_api import (
     OTHER_TENANT_ID,
     PROFILE,
@@ -42,6 +51,40 @@ def offline_client(context) -> None:
 def created_episode_client(context) -> None:
     offline_client(context)
     context.values["created"] = _create(context)
+
+
+@given("an offline episode API client with a failed episode")
+def failed_episode_client(context) -> None:
+    repository = InMemoryEpisodeRepository()
+    service = EpisodeApplicationService(
+        repository=repository,
+        available_profiles={PROFILE},
+    )
+    record = service.create_episode(
+        EpisodeCreateCommand(
+            tenant_id=UUID(TENANT_ID),
+            project_id=UUID(PROJECT_ID),
+            idempotency_key="failed-bdd-001",
+            source_bytes=SOURCE.encode("utf-8"),
+            profile_name=PROFILE,
+        )
+    )
+    service.transition(
+        UUID(TENANT_ID),
+        record.episode_id,
+        EpisodeState.FAILED,
+        expected_version=record.version,
+        failure=StructuredFailure(
+            code="provider_failure",
+            stage="render",
+            message="provider failed for SECRET_SOURCE",
+            retriable=False,
+            details={"raw_source": "SECRET_SOURCE", "credential": "TOKEN"},
+            status=502,
+        ),
+    )
+    context.values["client"] = TestClient(create_app(service))
+    context.values["failed_episode_id"] = str(record.episode_id)
 
 
 @when("I submit valid Markdown for the registered profile")
@@ -108,6 +151,11 @@ def invalid_context(context) -> None:
         ),
         client.post(
             "/v1/episodes",
+            headers=_headers(key="missing-profile"),
+            json={"source": SOURCE},
+        ),
+        client.post(
+            "/v1/episodes",
             headers=_headers(),
             content=b'{"source":"\xff","profile":"technical-dialogue"}',
         ),
@@ -157,6 +205,28 @@ def status_redaction(context) -> None:
     assert "authorization" not in str(response.json()).lower()
 
 
+@when("I request the failed episode status")
+def request_failed_status(context) -> None:
+    context.values["response"] = _client(context).get(
+        f"/v1/episodes/{context.values['failed_episode_id']}/status",
+        headers=_headers(key="failed-bdd-read-001"),
+    )
+
+
+@then("the failure response contains only allowlisted fields")
+def failure_redaction(context) -> None:
+    response = context.values["response"]
+    assert response.status_code == 200
+    assert response.json()["failure"] == {
+        "code": "provider_failure",
+        "stage": "render",
+        "status": 502,
+        "retriable": False,
+    }
+    assert "SECRET_SOURCE" not in str(response.json())
+    assert "TOKEN" not in str(response.json())
+
+
 @when("I submit the same render request twice")
 def replay_render(context) -> None:
     episode_id = context.values["created"]["episode"]["id"]
@@ -191,11 +261,15 @@ def publish_authorization(context) -> None:
     )
 
 
-@then("publish is forbidden until explicitly authorized")
+@then("publish is forbidden without authorization and remains gated before packaging")
 def publish_authorization_result(context) -> None:
     _assert_problem(
         context.values["unauthorized"],
         status=403,
         code="publish_authorization_required",
     )
-    assert context.values["authorized"].status_code == 202
+    _assert_problem(
+        context.values["authorized"],
+        status=409,
+        code="invalid_episode_transition",
+    )
