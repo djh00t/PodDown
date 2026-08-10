@@ -43,7 +43,34 @@ def main() -> int:
         print("authenticated tenant context is required", file=sys.stderr)
         return 2
     for line in sys.stdin:
-        request = json.loads(line)
+        try:
+            request = json.loads(line)
+        except json.JSONDecodeError:
+            print(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32700, "message": "Parse error"},
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+            continue
+        if not isinstance(request, Mapping):
+            print(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32600, "message": "Invalid Request"},
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+            continue
         method = request.get("method")
         if method == "initialize":
             response = {
