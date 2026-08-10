@@ -34,3 +34,9 @@ Feature: Signal and Supply customer-one integration
     Given the versioned Signal and Supply fixture
     When the existing robotics fixture is loaded
     Then its source bytes and digest remain unchanged
+
+  Scenario: Render the unchanged robotics fixture through the local contract
+    Given the existing robotics fixture
+    When the robotics fixture is prepared and rendered through PodDown public contracts
+    Then every robotics segment has a successful local render
+    And the robotics source digest remains unchanged

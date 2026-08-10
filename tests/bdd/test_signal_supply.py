@@ -11,12 +11,15 @@ from poddown.audio import (
     DeterministicLocalRenderer,
     DurableRenderService,
     RenderRequest,
-    VoiceConsent,
+)
+from poddown.audio import (
+    VoiceConsent as AudioVoiceConsent,
 )
 from poddown.audio.storage import FilesystemArtifactStore, FilesystemRenderRecordStore
 from poddown.content.source import snapshot_source
-from poddown.content.tokens import extract_critical_tokens
 from poddown.qa.fidelity import evaluate_critical_tokens
+from tests.integration.test_content_pipeline import _request as robotics_request
+from tests.integration.test_signal_supply import _prepared_fixture
 
 scenarios("../features/signal_supply.feature")
 
@@ -61,9 +64,12 @@ def load_article(context):
 
 @when("critical tokens are extracted from the article")
 def extract_article_tokens(context):
-    fixture = _load(context)
-    context.values["tokens"] = extract_critical_tokens(fixture["article"])
-    context.values["declared_tokens"] = fixture["profile"]["critical_tokens"]
+    prepared, proposal, _ = _prepared_fixture()
+    context.values["tokens"] = prepared.tokens
+    context.values["declared_tokens"] = {
+        item["source_form"] for item in proposal["expected_critical_tokens"]
+    }
+    context.values["prepared"] = prepared
 
 
 @when("the integration metadata is loaded")
@@ -96,30 +102,18 @@ def no_provider_calls(context):
 
 @then("every declared finance critical token is present with fidelity 1.0")
 def critical_tokens_present(context):
-    text = context.values["fixture"]["article"].lower()
-    assert all(token.lower() in text for token in context.values["declared_tokens"])
-    assert context.values["fixture"]["evals"]["critical_token_fidelity"] == 1.0
+    prepared = context.values["prepared"]
+    assert context.values["declared_tokens"] <= {
+        token.source_form for token in prepared.tokens
+    }
+    nvidia = next(token for token in prepared.tokens if token.source_form == "NVIDIA")
+    assert nvidia.expected_spoken_form == "en-VID-ee-uh"
+    assert nvidia.pronunciation_source.startswith("episode:")
 
 
 @when("the adapted spoken text is rendered through the local PodDown contract")
 def render_spoken_text(context, tmp_path):
-    fixture = _load(context)
-    spoken_text = (FIXTURE / "spoken-transcript.txt").read_text(encoding="utf-8")
-    request = RenderRequest(
-        episode_id="signal-supply-bdd",
-        episode_version="v1",
-        segment_id="article",
-        speaker_id="synthetic-presenter",
-        expected_spoken_text=spoken_text,
-        voice_asset_id="demo-voice-signal-supply-v1",
-        provider="local",
-        model="local-deterministic-v1",
-    )
-    consent = VoiceConsent(
-        voice_asset_id=request.voice_asset_id,
-        evidence_id="synthetic-demo-consent-v1",
-        allowed_providers=frozenset({"local"}),
-    )
+    prepared, _, voices = _prepared_fixture()
     artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
     renderer = DeterministicLocalRenderer()
     service = DurableRenderService(
@@ -127,26 +121,50 @@ def render_spoken_text(context, tmp_path):
     )
     import asyncio
 
-    context.values["render"] = (
-        asyncio.run(service.render_takes(request, consent, renderer)),
-        renderer,
-        request,
-        evaluate_critical_tokens(
-            tuple(
-                item["spoken_form"]
-                for item in fixture["proposal"]["expected_critical_tokens"]
+    outcomes = []
+    for segment in prepared.segments:
+        speaker = next(
+            item
+            for item in prepared.profile.speakers
+            if item.speaker_id == segment.speaker_ids[0]
+        )
+        request = RenderRequest(
+            episode_id="signal-supply-bdd",
+            episode_version="v1",
+            segment_id=segment.segment_id,
+            speaker_id=speaker.speaker_id,
+            expected_spoken_text=segment.text,
+            voice_asset_id=speaker.voice_asset_id,
+            provider="local",
+            model="local-deterministic-v1",
+        )
+        consent = AudioVoiceConsent(
+            voice_asset_id=request.voice_asset_id,
+            evidence_id=next(
+                item["consent_id"]
+                for item in voices["assets"]
+                if item["asset_id"] == speaker.voice_asset_id
             ),
-            spoken_text,
+            allowed_providers=frozenset({"local"}),
+        )
+        outcomes.extend(asyncio.run(service.render_takes(request, consent, renderer)))
+    context.values["render"] = (
+        outcomes,
+        renderer,
+        prepared,
+        evaluate_critical_tokens(
+            tuple(token.expected_spoken_form for token in prepared.tokens),
+            (FIXTURE / "spoken-transcript.txt").read_text(encoding="utf-8"),
         ),
     )
 
 
 @then("the deterministic renderer is invoked without a live provider")
 def local_renderer_invoked(context):
-    outcomes, renderer, request, _ = context.values["render"]
-    assert len(outcomes) == 1
-    assert renderer.calls == [request.idempotency_key]
-    assert outcomes[0].candidate.provider == "local"
+    outcomes, renderer, prepared, _ = context.values["render"]
+    assert len(outcomes) == len(prepared.segments)
+    assert len(renderer.calls) == len(prepared.segments)
+    assert {outcome.candidate.provider for outcome in outcomes} == {"local"}
 
 
 @then("the rendered transcript passes the public critical-token evaluator at 1.0")
@@ -187,4 +205,69 @@ def assets_approved(context):
 def robotics_unchanged(context):
     expected = ROBOTICS.read_bytes()
     assert context.values["robotics_bytes"] == expected
+    assert context.values["robotics_digest"] == ROBOTICS_SHA256
+
+
+@given("the existing robotics fixture")
+def robotics_fixture(context):
+    load_robotics(context)
+
+
+@when("the robotics fixture is prepared and rendered through PodDown public contracts")
+def prepare_and_render_robotics(context, tmp_path):
+    from poddown.audio import (
+        DeterministicLocalRenderer,
+        DurableRenderService,
+        RenderRequest,
+    )
+    from poddown.audio.storage import (
+        FilesystemArtifactStore,
+        FilesystemRenderRecordStore,
+    )
+
+    prepared = __import__(
+        "poddown.content.service", fromlist=["prepare_content"]
+    ).prepare_content(robotics_request())
+    artifacts = FilesystemArtifactStore(tmp_path / "artifacts")
+    service = DurableRenderService(
+        artifacts, FilesystemRenderRecordStore(tmp_path / "records", artifacts)
+    )
+    renderer = DeterministicLocalRenderer()
+    outcomes = []
+    for segment in prepared.segments:
+        speaker = next(
+            item
+            for item in prepared.profile.speakers
+            if item.speaker_id == segment.speaker_ids[0]
+        )
+        request = RenderRequest(
+            episode_id="robotics-mapping",
+            episode_version="v1",
+            segment_id=segment.segment_id,
+            speaker_id=speaker.speaker_id,
+            expected_spoken_text=segment.text,
+            voice_asset_id=speaker.voice_asset_id,
+            provider="local",
+            model="local-deterministic-v1",
+        )
+        consent = AudioVoiceConsent(
+            voice_asset_id=request.voice_asset_id,
+            evidence_id=f"robotics-consent-{speaker.speaker_id}",
+            allowed_providers=frozenset({"local"}),
+        )
+        import asyncio
+
+        outcomes.extend(asyncio.run(service.render_takes(request, consent, renderer)))
+    context.values["robotics_render"] = (prepared, outcomes)
+
+
+@then("every robotics segment has a successful local render")
+def robotics_rendered(context):
+    prepared, outcomes = context.values["robotics_render"]
+    assert len(outcomes) == len(prepared.segments)
+    assert {outcome.candidate.provider for outcome in outcomes} == {"local"}
+
+
+@then("the robotics source digest remains unchanged")
+def robotics_digest_after_render(context):
     assert context.values["robotics_digest"] == ROBOTICS_SHA256
