@@ -787,12 +787,13 @@ async def _render_segments(
             for item in prepared.profile.speakers
             if item.speaker_id == segment.speaker_ids[0]
         )
+        segment_transcript = _spoken_text(segment.text, prepared)
         request = RenderRequest(
             "reference-demo-episode-v1",
             "v1",
             segment.segment_id,
             speaker.speaker_id,
-            segment.text,
+            segment_transcript,
             speaker.voice_asset_id,
             fail_once_renderer.provider,
             fail_once_renderer.model,
@@ -821,7 +822,6 @@ async def _render_segments(
         if outcome_cost != 0:
             raise ValueError("offline local render candidates must be zero-cost")
         render_cost += outcome_cost
-        segment_transcript = _spoken_text(segment.text, prepared)
         qualities = tuple(
             CandidateQuality(
                 outcome.candidate.candidate_id,

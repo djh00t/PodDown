@@ -30,6 +30,7 @@ Feature: Reference episode demo
       Then the result records host-local speech provenance
       And three takes are rendered for every segment with stable voice bindings
       And one failed segment is regenerated before QA
+      And the local speech renderer receives canonical pronunciation text
 
     Scenario: Reject a mismatched local-speech resume before dispatch
       Given a completed local speech reference episode demo

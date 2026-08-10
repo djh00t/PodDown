@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
+from poddown.audio import DeterministicLocalRenderer, RenderRequest
+from poddown.audio.contracts import RenderedAudio
 from poddown.content.service import prepare_content
 from poddown.demo import (
     _build_content_request,
@@ -12,6 +15,7 @@ from poddown.demo import (
     _local_voice_bindings,
     _reference_fixture_root,
     _ReferenceFixture,
+    _render_segments,
     _spoken_text,
 )
 from poddown.qa.fidelity import evaluate_critical_tokens
@@ -21,6 +25,26 @@ REFERENCE_FIXTURE = Path(__file__).parents[2] / "integrations" / "reference-demo
 
 def _fixture() -> _ReferenceFixture:
     return _load_reference_fixture(REFERENCE_FIXTURE)
+
+
+class _RecordingRenderer:
+    """Capture demo render requests while preserving deterministic local audio."""
+
+    capabilities = DeterministicLocalRenderer.capabilities
+    provider = "host-local"
+    model = "host-local-tts-v1"
+    mode = "local-system-tts-demo"
+
+    def __init__(self) -> None:
+        self.requests: list[RenderRequest] = []
+        self._delegate = DeterministicLocalRenderer()
+
+    def provenance(self) -> dict[str, str]:
+        return {"engine": "recording-local-speech", "mode": self.mode}
+
+    async def render(self, request: RenderRequest) -> RenderedAudio:
+        self.requests.append(request)
+        return await self._delegate.render(request)
 
 
 def test_local_voice_bindings_use_macos_say_names() -> None:
@@ -52,6 +76,31 @@ def test_spoken_text_does_not_rewrite_generated_pronunciation_forms() -> None:
     assert evaluate_critical_tokens(
         tuple(token.expected_spoken_form for token in segment.critical_tokens),
         transcript,
+    ).passed
+
+
+def test_segment_renderer_receives_canonical_pronunciation_text(tmp_path: Path) -> None:
+    """Passing raw script text to the renderer would desync audio from fidelity QA."""
+    fixture = _load_reference_fixture(_reference_fixture_root())
+    prepared = prepare_content(_build_content_request(fixture))
+    segment = next(segment for segment in prepared.segments if "LiDAR" in segment.text)
+    renderer = _RecordingRenderer()
+
+    asyncio.run(_render_segments(prepared, fixture, tmp_path, renderer))
+
+    request = next(
+        request
+        for request in renderer.requests
+        if request.segment_id == segment.segment_id
+    )
+    assert "LIE-dar" in request.expected_spoken_text
+    assert "LiDAR" not in request.expected_spoken_text
+    assert "see one" in request.expected_spoken_text
+    assert "C1" not in request.expected_spoken_text
+    assert request.expected_spoken_text != segment.text
+    assert evaluate_critical_tokens(
+        tuple(token.expected_spoken_form for token in segment.critical_tokens),
+        request.expected_spoken_text,
     ).passed
 
 

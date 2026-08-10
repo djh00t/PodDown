@@ -1,6 +1,7 @@
 """Executable acceptance tests for host-local speech rendering."""
 
 import asyncio
+import subprocess
 import wave
 from io import BytesIO
 from pathlib import Path
@@ -62,6 +63,14 @@ def speech_context(monkeypatch):
         "which",
         lambda executable: f"/fake/{executable}",
     )
+
+    def version_run(command, **_kwargs):
+        executable = Path(command[0]).name
+        if executable == "sw_vers":
+            return subprocess.CompletedProcess(command, 0, stdout="26.6\n")
+        return subprocess.CompletedProcess(command, 0, stdout=f"{executable} 1.0\n")
+
+    monkeypatch.setattr(speech.subprocess, "run", version_run)
     runner = SpeechRunner()
     return {"renderer": LocalSpeechRenderer(process_runner=runner), "runner": runner}
 
@@ -69,6 +78,13 @@ def speech_context(monkeypatch):
 @given("an available host-local speech engine")
 def available_host_local_speech_engine(speech_context):
     assert speech_context["renderer"].provenance()["engine"] in {"say", "espeak-ng"}
+
+
+@then("local renderer provenance records resolved tool versions")
+def local_renderer_provenance_records_resolved_tool_versions(speech_context):
+    provenance = speech_context["renderer"].provenance()
+    assert provenance["engine_version"] == "macOS say 26.6"
+    assert provenance["ffmpeg_version"] == "ffmpeg 1.0"
 
 
 @given("the requested local speech executable is unavailable")

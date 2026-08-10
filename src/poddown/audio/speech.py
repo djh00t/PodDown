@@ -77,12 +77,18 @@ class LocalSpeechRenderer:
         ffmpeg_executable: str = "ffmpeg",
     ) -> None:
         self._engine, self._executable = self._resolve_engine(engine)
+        self._engine_version = self._tool_version(
+            self._executable, tool_name=self._engine
+        )
         ffmpeg_path = shutil.which(ffmpeg_executable)
         if ffmpeg_path is None:
             raise LocalSpeechError(
                 f"local speech executable unavailable: {ffmpeg_executable}"
             )
         self._ffmpeg_executable = ffmpeg_path
+        self._ffmpeg_version = self._tool_version(
+            self._ffmpeg_executable, tool_name="ffmpeg"
+        )
         self._voices = dict(voices or {})
         self._process_runner = process_runner or SubprocessSpeechRunner()
         self._cache: dict[tuple[str, str, str, int], bytes] = {}
@@ -92,8 +98,10 @@ class LocalSpeechRenderer:
         return MappingProxyType(
             {
                 "engine": self._engine,
+                "engine_version": self._engine_version,
                 "executable": self._executable,
                 "ffmpeg_executable": self._ffmpeg_executable,
+                "ffmpeg_version": self._ffmpeg_version,
                 "mode": self.mode,
                 "voices": dict(self._voices),
             }
@@ -139,6 +147,36 @@ class LocalSpeechRenderer:
             if executable is not None:
                 return candidate, executable
         raise LocalSpeechError(f"local speech executable unavailable: {candidates[0]}")
+
+    def _tool_version(self, executable: str, *, tool_name: str | None = None) -> str:
+        if tool_name == "say":
+            version_executable = shutil.which("sw_vers")
+            if version_executable is None:
+                raise LocalSpeechError("local speech version unavailable: sw_vers")
+            command = (version_executable, "-productVersion")
+            version_prefix = "macOS say"
+        elif tool_name == "ffmpeg":
+            command = (executable, "-version")
+            version_prefix = None
+        else:
+            command = (executable, "--version")
+            version_prefix = None
+        try:
+            result = subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=_TIMEOUT_SECONDS,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            raise LocalSpeechError(
+                f"local speech version unavailable: {command[0]}"
+            ) from error
+        version = result.stdout.strip().splitlines()
+        if not version:
+            raise LocalSpeechError(f"local speech version unavailable: {command[0]}")
+        return f"{version_prefix} {version[0]}" if version_prefix else version[0]
 
     def _render_normalized_wav(self, request: RenderRequest) -> bytes:
         voice = self._voices.setdefault(request.speaker_id, request.speaker_id)

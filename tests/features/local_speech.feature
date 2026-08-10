@@ -5,6 +5,10 @@ Feature: Host-local speech rendering
     When I render a local speech request
     Then I receive canonical zero-cost speech WAV audio
 
+  Scenario: Renderer provenance binds local tool versions
+    Given an available host-local speech engine
+    Then local renderer provenance records resolved tool versions
+
   Scenario: A missing local executable fails closed
     Given the requested local speech executable is unavailable
     When I render a local speech request

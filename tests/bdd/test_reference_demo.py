@@ -93,9 +93,11 @@ def empty_local_speech_output(context, tmp_path):
 def run_local_speech_demo(context):
     from poddown.demo import run_reference_demo
 
+    renderer = FakeLocalSpeechRenderer()
     context.values["result"] = run_reference_demo(
-        context.values["output_dir"], renderer=FakeLocalSpeechRenderer()
+        context.values["output_dir"], renderer=renderer
     )
+    context.values["renderer"] = renderer
 
 
 @then("the result records host-local speech provenance")
@@ -114,6 +116,20 @@ def local_speech_provenance(context):
     assert details["workflow"]["renderer"]["provenance"]["engine"] == (
         "fake-local-speech"
     )
+
+
+@then("the local speech renderer receives canonical pronunciation text")
+def renderer_receives_canonical_pronunciation_text(context):
+    request = next(
+        request
+        for request in context.values["renderer"].requests
+        if "LiDAR" in request.expected_spoken_text
+        or "LIE-dar" in request.expected_spoken_text
+    )
+
+    assert "LIE-dar" in request.expected_spoken_text
+    assert "LiDAR" not in request.expected_spoken_text
+    assert context.values["result"].critical_token_accuracy == 1.0
 
 
 @given("a completed local speech reference episode demo")

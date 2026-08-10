@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import subprocess
 import wave
 from io import BytesIO
 from pathlib import Path
@@ -66,13 +67,34 @@ def request(**overrides: object) -> RenderRequest:
 
 
 def renderer(
-    monkeypatch, *, engine: str = "say", runner: FakeSpeechRunner | None = None
+    monkeypatch,
+    *,
+    engine: str = "say",
+    runner: FakeSpeechRunner | None = None,
+    tool_versions: dict[str, str] | None = None,
 ):
     import poddown.audio.speech as speech
+
+    versions = {
+        "say": "say 1.0",
+        "espeak-ng": "espeak-ng 1.0",
+        "espeak": "espeak 1.0",
+        "ffmpeg": "ffmpeg 7.0",
+        "sw_vers": "26.6",
+    }
+    versions.update(tool_versions or {})
+
+    def version_run(command, **_kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=f"{versions[Path(command[0]).name]}\n",
+        )
 
     monkeypatch.setattr(
         speech.shutil, "which", lambda executable: f"/tools/{executable}"
     )
+    monkeypatch.setattr(speech.subprocess, "run", version_run)
     return LocalSpeechRenderer(
         engine=engine, process_runner=runner or FakeSpeechRunner()
     )
@@ -174,6 +196,56 @@ def test_renderer_fails_closed_when_requested_executable_is_missing(monkeypatch)
         LocalSpeechRenderer(engine="say", process_runner=FakeSpeechRunner())
 
 
+def test_renderer_fails_closed_when_a_tool_version_is_unavailable(monkeypatch):
+    import poddown.audio.speech as speech
+
+    monkeypatch.setattr(
+        speech.shutil, "which", lambda executable: f"/tools/{executable}"
+    )
+    monkeypatch.setattr(
+        speech.subprocess,
+        "run",
+        lambda command, **_kwargs: (_ for _ in ()).throw(
+            subprocess.CalledProcessError(1, command)
+        ),
+    )
+
+    with pytest.raises(LocalSpeechError, match="version unavailable: /tools/espeak"):
+        LocalSpeechRenderer(engine="espeak", process_runner=FakeSpeechRunner())
+
+
+def test_macos_say_uses_os_version_for_renderer_identity(monkeypatch):
+    import poddown.audio.speech as speech
+
+    commands: list[tuple[str, ...]] = []
+
+    def version_run(command, **_kwargs):
+        normalized = tuple(command)
+        commands.append(normalized)
+        executable = Path(normalized[0]).name
+        if executable == "sw_vers":
+            return subprocess.CompletedProcess(normalized, 0, stdout="26.6\n")
+        if executable == "ffmpeg":
+            return subprocess.CompletedProcess(
+                normalized, 0, stdout="ffmpeg version 8.1.2\n"
+            )
+        raise subprocess.CalledProcessError(1, normalized)
+
+    monkeypatch.setattr(
+        speech.shutil, "which", lambda executable: f"/tools/{executable}"
+    )
+    monkeypatch.setattr(speech.subprocess, "run", version_run)
+
+    local_renderer = LocalSpeechRenderer(
+        engine="say", process_runner=FakeSpeechRunner()
+    )
+
+    assert local_renderer.provenance()["engine_version"] == "macOS say 26.6"
+    assert ("/tools/sw_vers", "-productVersion") in commands
+    assert ("/tools/ffmpeg", "-version") in commands
+    assert ("/tools/say", "--version") not in commands
+
+
 def test_renderer_does_not_read_environment_credentials(monkeypatch):
     def fail_on_environment_read(key: str, default: object = None) -> object:
         raise AssertionError(f"environment access is forbidden: {key}")
@@ -201,8 +273,35 @@ def test_cache_reuses_audio_only_for_same_speaker_voice_text_and_sample_rate(
     assert changed_voice.request_id != second.request_id
     assert local_renderer.provenance() == {
         "engine": "say",
+        "engine_version": "macOS say 26.6",
         "executable": "/tools/say",
         "ffmpeg_executable": "/tools/ffmpeg",
+        "ffmpeg_version": "ffmpeg 7.0",
         "mode": "local-system-tts-demo",
         "voices": {"host": "host"},
     }
+
+
+def test_tool_version_changes_alter_renderer_resume_identity(monkeypatch):
+    first = renderer(
+        monkeypatch,
+        engine="espeak",
+        tool_versions={"espeak": "espeak 1.0", "ffmpeg": "ffmpeg 7.0"},
+    )
+    second = renderer(
+        monkeypatch,
+        engine="espeak",
+        tool_versions={"espeak": "espeak 2.0", "ffmpeg": "ffmpeg 8.0"},
+    )
+
+    def identity(local_renderer: LocalSpeechRenderer) -> dict[str, object]:
+        return {
+            "provider": local_renderer.provider,
+            "model": local_renderer.model,
+            "mode": local_renderer.mode,
+            "provenance": dict(local_renderer.provenance()),
+        }
+
+    assert first.provenance()["engine_version"] == "espeak 1.0"
+    assert first.provenance()["ffmpeg_version"] == "ffmpeg 7.0"
+    assert identity(first) != identity(second)
