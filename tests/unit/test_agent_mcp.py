@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import UTC
+
 from poddown.agent_mcp import (
     TOOL_NAMES,
     AgentMCPServer,
     AuthenticatedContext,
+    InMemoryApprovalRegistry,
     LocalGateway,
 )
 
@@ -17,7 +20,7 @@ def test_render_is_distinct_from_free_preview():
     gateway = LocalGateway()
     server = AgentMCPServer(gateway, AuthenticatedContext("tenant-a"))
     assert (
-        server.call("poddown_preview", {"source": b"# A"})["result"]["side_effect"]
+        server.call("poddown_preview", {"source": "# A"})["result"]["side_effect"]
         == "none"
     )
     assert (
@@ -31,15 +34,18 @@ def test_render_is_distinct_from_free_preview():
 
 def test_publish_accepts_only_fresh_matching_approval():
     gateway = LocalGateway()
-    server = AgentMCPServer(gateway, AuthenticatedContext("tenant-a"))
-    approval = {
-        "tenant_id": "tenant-a",
-        "episode_id": "episode-1",
-        "nonce": "n1",
-        "fresh": True,
-    }
+    registry = InMemoryApprovalRegistry()
+    from datetime import datetime, timedelta
+
+    now = datetime.now(UTC)
+    registry.issue(
+        "tenant-a", "episode-1", "approval-1", expires_at=now + timedelta(minutes=1)
+    )
+    server = AgentMCPServer(
+        gateway, AuthenticatedContext("tenant-a"), approval_verifier=registry
+    )
     result = server.call(
-        "poddown_publish", {"episode_id": "episode-1", "approval": approval}
+        "poddown_publish", {"episode_id": "episode-1", "approval_id": "approval-1"}
     )
     assert result["result"]["side_effect"] == "external_publish"
     assert gateway.side_effects == ["publish"]

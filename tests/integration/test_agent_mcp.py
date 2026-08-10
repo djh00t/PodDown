@@ -18,15 +18,10 @@ def test_publish_rejects_stale_or_cross_tenant_approval_without_side_effect():
     gateway = LocalGateway()
     server = AgentMCPServer(gateway, AuthenticatedContext("tenant-a"))
     approval = {
-        "tenant_id": "tenant-b",
         "episode_id": "episode-1",
-        "nonce": "n1",
-        "fresh": True,
+        "approval_id": "missing",
     }
     assert (
-        server.call(
-            "poddown_publish", {"episode_id": "episode-1", "approval": approval}
-        )["error"]["code"]
-        == "approval_required"
+        server.call("poddown_publish", approval)["error"]["code"] == "approval_required"
     )
     assert gateway.side_effects == []

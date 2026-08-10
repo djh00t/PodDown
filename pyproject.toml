@@ -17,11 +17,16 @@ dependencies = [
 
 [project.scripts]
 poddown = "poddown.cli:main"
+poddown-mcp = "poddown.agent_mcp_stdio:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/poddown"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"skills/poddown/v1" = "poddown/skills/v1"
+
 [tool.hatch.build.targets.sdist]
+include = ["skills/poddown/v1/**"]
 exclude = [
   "/.coverage",
   "/.mypy_cache",

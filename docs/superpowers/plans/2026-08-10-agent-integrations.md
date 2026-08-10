@@ -44,6 +44,9 @@
 - [ ] Define an injected gateway protocol for preview, render, publish, status, and episode reads.
 - [ ] Reject tenant IDs in tool arguments and reject publish without a fresh matching approval scope.
 - [ ] Return JSON-safe results, stable error codes/messages, redacted failure details, and authorized resource links.
+- [x] Replace model-supplied freshness with a trusted, time-bounded, one-time approval verifier.
+- [x] Validate schema-shaped arguments and allowlist successful gateway output.
+- [x] Add the environment-authenticated JSON-lines stdio entrypoint and package skill/evals.
 - [ ] Run the focused contract suite after each behavior is implemented.
 
 ### Task 3: Verify and document the slice
@@ -56,3 +59,12 @@
 - [ ] Confirm no forbidden files changed and record coordinator-only needs, deferrals, and residual risks.
 - [ ] Create a review-ready local commit without pushing or creating a PR.
 
+## Review correction evidence
+
+- Regression RED: focused collection failed because `InMemoryApprovalRegistry`
+  was intentionally absent from `poddown.agent_mcp`.
+- Final focused evidence: `23 passed` across BDD, unit, integration, and
+  contract suites.
+- Remaining integration is coordinator-owned: wire this transport-neutral
+  boundary to the real authenticated API/application gateway without changing
+  CLI or publisher modules.
