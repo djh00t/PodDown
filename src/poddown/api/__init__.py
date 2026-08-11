@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Collection, Mapping
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 from fastapi import FastAPI, Header, Request
@@ -15,9 +16,11 @@ from poddown.api.models import (
     CommandReceipt,
     EpisodeCreateRequest,
     EpisodeCreateResponse,
+    EpisodeFailure,
     EpisodeStatusResponse,
     EpisodeSummary,
     ProblemDetail,
+    ProductionStage,
     RequestContext,
 )
 from poddown.api.runtime import CommandDispatcher, InMemoryCommandDispatcher
@@ -227,14 +230,30 @@ def _progress(state: EpisodeState) -> float:
     }[state]
 
 
-def _safe_failure(failure: StructuredFailure) -> dict[str, object]:
+def _status_stage(state: EpisodeState) -> ProductionStage:
+    """Map legacy service states to the frozen production status stages."""
+    return cast(
+        ProductionStage,
+        {
+            EpisodeState.VALIDATED: "ingested",
+            EpisodeState.SCRIPTED: "prepared",
+            EpisodeState.RENDERED: "rendering",
+            EpisodeState.QA_PASSED: "qa",
+            EpisodeState.PACKAGED: "packaged",
+            EpisodeState.PUBLISHED: "published",
+            EpisodeState.FAILED: "failed",
+        }[state],
+    )
+
+
+def _safe_failure(failure: StructuredFailure) -> EpisodeFailure:
     """Allowlist failure fields safe for polling clients."""
-    return {
-        "code": failure.code,
-        "stage": failure.stage,
-        "status": failure.status,
-        "retriable": failure.retriable,
-    }
+    return EpisodeFailure(
+        code=failure.code,
+        stage=failure.stage,
+        status=failure.status,
+        retriable=failure.retriable,
+    )
 
 
 def create_app(
@@ -386,12 +405,16 @@ def create_app(
         )
         return EpisodeStatusResponse(
             episode_id=record.episode_id,
+            # The pre-durable repository has one identity for the initial
+            # version; the durable version repository will supply distinct IDs.
+            episode_version_id=record.episode_id,
             version=record.version,
-            stage=record.state.value,
+            stage=_status_stage(record.state),
             progress=_progress(record.state),
             failure=_safe_failure(record.failure)
             if record.failure is not None
             else None,
+            package_manifest_sha256=record.package_sha256,
         )
 
     @app.post("/v1/episodes/{episode_id}/render", status_code=202)

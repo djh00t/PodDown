@@ -215,9 +215,17 @@ def test_get_episode_and_status_return_tenant_scoped_summary_and_redacted_status
     assert episode.status_code == 200
     assert episode.json()["id"] == episode_id
     assert status.status_code == 200
-    assert {"episode_id", "version", "stage", "progress", "failure"} <= set(
-        status.json()
-    )
+    assert set(status.json()) == {
+        "episode_id",
+        "episode_version_id",
+        "version",
+        "stage",
+        "progress",
+        "failure",
+        "workflow_id",
+        "package_manifest_sha256",
+        "publication_id",
+    }
     assert status.json()["version"] == episode.json()["version"]
     assert SOURCE not in str(status.json())
     assert "authorization" not in str(status.json()).lower()

@@ -7,7 +7,26 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    WithJsonSchema,
+    field_validator,
+)
+
+ProductionStage = Literal[
+    "ingested",
+    "prepared",
+    "rendering",
+    "qa",
+    "mastering",
+    "packaged",
+    "publishing",
+    "published",
+    "failed",
+]
 
 
 class _FrozenModel(BaseModel):
@@ -83,23 +102,48 @@ class EpisodeCreateResponse(_FrozenModel):
 
 
 class RenderCommandRequest(_FrozenModel):
-    """Optional production controls for an asynchronous render command."""
+    """Optional production controls using the frozen render wire contract."""
 
-    provider_route_id: UUID | None = None
-    execution_mode: Literal[
-        "deterministic-local", "host-local", "live-provider"
-    ] | None = None
-    cost_ceiling: (
-        Annotated[Decimal, WithJsonSchema({"type": "string"})] | None
-    ) = Field(default=None, gt=0)
+    provider_route_id: str | None = Field(default=None, min_length=1)
+    mode: Literal["deterministic-local", "host-local", "live-provider"] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("mode", "execution_mode"),
+    )
+    max_cost: Annotated[Decimal, WithJsonSchema({"type": "string"})] | None = Field(
+        default=None,
+        gt=0,
+        validation_alias=AliasChoices("max_cost", "cost_ceiling"),
+    )
 
-    @field_validator("cost_ceiling", mode="before")
+    @field_validator("provider_route_id", mode="before")
     @classmethod
-    def require_decimal_string_cost_ceiling(cls, value: object) -> object:
-        """Reject non-string cost ceilings before Decimal coercion."""
+    def normalize_provider_route_id(cls, value: object) -> object:
+        """Accept UUID objects from existing callers while exposing a string ID."""
         if value is None or isinstance(value, str):
             return value
-        raise ValueError("cost_ceiling must be a decimal string")
+        if isinstance(value, UUID):
+            return str(value)
+        raise ValueError("provider_route_id must be a string")
+
+    @field_validator("max_cost", mode="before")
+    @classmethod
+    def require_decimal_string_max_cost(cls, value: object) -> object:
+        """Reject non-string maximum costs before Decimal coercion."""
+        if value is None or isinstance(value, str):
+            return value
+        raise ValueError("max_cost must be a decimal string")
+
+    @property
+    def execution_mode(
+        self,
+    ) -> Literal["deterministic-local", "host-local", "live-provider"] | None:
+        """Expose the pre-contract name for internal callers during migration."""
+        return self.mode
+
+    @property
+    def cost_ceiling(self) -> Decimal | None:
+        """Expose the pre-contract name without serializing it on the wire."""
+        return self.max_cost
 
 
 class PublishCommandRequest(_FrozenModel):
@@ -135,16 +179,30 @@ class EpisodeFailure(_FrozenModel):
 
 
 class EpisodeStatusResponse(_FrozenModel):
-    """Tenant-scoped status without source or credential material."""
+    """Tenant-scoped status using the frozen production lifecycle contract."""
 
     episode_id: UUID
+    episode_version_id: UUID
     version: int
-    stage: str
-    progress: float
+    stage: ProductionStage
+    progress: float = Field(ge=0, le=1)
     failure: EpisodeFailure | None = None
     workflow_id: str | None = None
-    package_manifest_checksum: str | None = None
-    publication_id: str | None = None
+    package_manifest_sha256: str | None = None
+    publication_id: UUID | None = None
+
+    @field_validator("episode_id", "episode_version_id", "publication_id")
+    @classmethod
+    def require_uuidv7_status_ids(cls, value: UUID | None) -> UUID | None:
+        """Reject non-UUIDv7 public status identities."""
+        if value is not None and value.version != 7:
+            raise ValueError("status identifiers must be UUIDv7")
+        return value
+
+    @property
+    def package_manifest_checksum(self) -> str | None:
+        """Expose the retired field name for read-only internal compatibility."""
+        return self.package_manifest_sha256
 
 
 class ProblemDetail(_FrozenModel):

@@ -145,40 +145,57 @@ def test_command_receipt_accepts_each_production_workflow_state(state: str) -> N
     assert receipt.state == state
 
 
-def test_render_command_request_preserves_optional_route_mode_and_cost_ceiling(
-) -> None:
+def test_render_command_request_preserves_optional_route_mode_and_cost_ceiling() -> (
+    None
+):
     """Catch render requests that drop production dispatch controls."""
     request = RenderCommandRequest(
-        provider_route_id="01986e76-4ec6-7b00-8000-000000000003",
-        execution_mode="live-provider",
-        cost_ceiling="12.50",
+        provider_route_id="route-live-elevenlabs-v1",
+        mode="live-provider",
+        max_cost="12.50",
     )
 
     assert request.model_dump(mode="json") == {
-        "provider_route_id": "01986e76-4ec6-7b00-8000-000000000003",
-        "execution_mode": "live-provider",
-        "cost_ceiling": "12.50",
+        "provider_route_id": "route-live-elevenlabs-v1",
+        "mode": "live-provider",
+        "max_cost": "12.50",
     }
 
 
-def test_render_command_cost_ceiling_has_a_decimal_string_json_contract() -> None:
+def test_render_command_max_cost_has_a_decimal_string_json_contract() -> None:
     """Catch wire schemas that admit numeric cost ceilings."""
     schema = RenderCommandRequest.model_json_schema()
     wire_types = {
-        option["type"]
-        for option in schema["properties"]["cost_ceiling"]["anyOf"]
+        option["type"] for option in schema["properties"]["max_cost"]["anyOf"]
     }
-    accepted = RenderCommandRequest.model_validate_json(
-        '{"cost_ceiling":"12.50"}'
-    )
+    accepted = RenderCommandRequest.model_validate_json('{"max_cost":"12.50"}')
     bodyless = RenderCommandRequest.model_validate_json("{}")
 
     with pytest.raises(ValidationError):
-        RenderCommandRequest.model_validate_json('{"cost_ceiling":12.50}')
+        RenderCommandRequest.model_validate_json('{"max_cost":12.50}')
 
     assert wire_types == {"string", "null"}
-    assert accepted.cost_ceiling == Decimal("12.50")
-    assert bodyless.cost_ceiling is None
+    assert accepted.max_cost == Decimal("12.50")
+    assert bodyless.max_cost is None
+
+
+def test_render_command_accepts_legacy_input_aliases_but_serializes_frozen_keys() -> (
+    None
+):
+    """Keep existing callers compatible without leaking legacy wire names."""
+    request = RenderCommandRequest(
+        provider_route_id="route-local-v1",
+        execution_mode="deterministic-local",
+        cost_ceiling="1.00",
+    )
+
+    assert request.mode == "deterministic-local"
+    assert request.max_cost == Decimal("1.00")
+    assert request.model_dump(mode="json") == {
+        "provider_route_id": "route-local-v1",
+        "mode": "deterministic-local",
+        "max_cost": "1.00",
+    }
 
 
 def test_publish_command_request_requires_target_and_uuidv7_approval() -> None:
@@ -217,12 +234,13 @@ def test_status_exposes_production_links_and_only_safe_failure_fields() -> None:
     """Catch status contracts that leak failure details or omit production links."""
     status = EpisodeStatusResponse(
         episode_id=EPISODE_ID,
+        episode_version_id="01986e76-4ec6-7b00-8000-000000000005",
         version=3,
-        stage="package",
+        stage="packaged",
         progress=0.8,
         workflow_id="episode-production-01986e76",
-        package_manifest_checksum="a" * 64,
-        publication_id="publication-001",
+        package_manifest_sha256="a" * 64,
+        publication_id="01986e76-4ec6-7b00-8000-000000000006",
         failure=EpisodeFailure(
             code="provider_failure",
             stage="render",
@@ -233,8 +251,9 @@ def test_status_exposes_production_links_and_only_safe_failure_fields() -> None:
 
     assert status.model_dump(mode="json") == {
         "episode_id": EPISODE_ID,
+        "episode_version_id": "01986e76-4ec6-7b00-8000-000000000005",
         "version": 3,
-        "stage": "package",
+        "stage": "packaged",
         "progress": 0.8,
         "failure": {
             "code": "provider_failure",
@@ -243,6 +262,57 @@ def test_status_exposes_production_links_and_only_safe_failure_fields() -> None:
             "retriable": False,
         },
         "workflow_id": "episode-production-01986e76",
-        "package_manifest_checksum": "a" * 64,
-        "publication_id": "publication-001",
+        "package_manifest_sha256": "a" * 64,
+        "publication_id": "01986e76-4ec6-7b00-8000-000000000006",
     }
+
+
+@pytest.mark.parametrize("stage", ["validated", "package", "unknown"])
+def test_status_rejects_non_production_stage_names(stage: str) -> None:
+    """Prevent internal lifecycle names from crossing the public API boundary."""
+    with pytest.raises(ValidationError):
+        EpisodeStatusResponse(
+            episode_id=EPISODE_ID,
+            episode_version_id="01986e76-4ec6-7b00-8000-000000000005",
+            version=1,
+            stage=stage,
+            progress=0.0,
+        )
+
+
+def test_status_rejects_non_uuidv7_episode_version_id() -> None:
+    """Keep the durable episode-version identity aligned with UUIDv7."""
+    with pytest.raises(ValidationError):
+        EpisodeStatusResponse(
+            episode_id=EPISODE_ID,
+            episode_version_id="550e8400-e29b-41d4-a716-446655440000",
+            version=1,
+            stage="ingested",
+            progress=0.0,
+        )
+
+
+def test_status_rejects_non_uuidv7_publication_id() -> None:
+    """Keep publication references aligned with UUIDv7 approvals and receipts."""
+    with pytest.raises(ValidationError):
+        EpisodeStatusResponse(
+            episode_id=EPISODE_ID,
+            episode_version_id="01986e76-4ec6-7b00-8000-000000000005",
+            version=1,
+            stage="ingested",
+            progress=0.0,
+            publication_id="550e8400-e29b-41d4-a716-446655440000",
+        )
+
+
+@pytest.mark.parametrize("progress", [-0.01, 1.01])
+def test_status_rejects_progress_outside_zero_to_one(progress: float) -> None:
+    """Prevent clients from receiving impossible workflow progress values."""
+    with pytest.raises(ValidationError):
+        EpisodeStatusResponse(
+            episode_id=EPISODE_ID,
+            episode_version_id="01986e76-4ec6-7b00-8000-000000000005",
+            version=1,
+            stage="ingested",
+            progress=progress,
+        )
