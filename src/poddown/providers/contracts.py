@@ -101,10 +101,9 @@ class ProviderEvidence:
         ):
             if type(counter_value) is not int or counter_value < 0:
                 raise ValueError(f"{counter_name} must be a non-negative integer")
-        if (
-            not isinstance(self.occurred_at, datetime)
-            or self.occurred_at.utcoffset() != timedelta(0)
-        ):
+        if not isinstance(
+            self.occurred_at, datetime
+        ) or self.occurred_at.utcoffset() != timedelta(0):
             raise ValueError("occurred_at must be a UTC datetime")
         object.__setattr__(self, "occurred_at", self.occurred_at.astimezone(UTC))
 
