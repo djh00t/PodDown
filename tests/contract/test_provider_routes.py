@@ -72,6 +72,7 @@ def test_schema_records_round_trip_through_the_package_owned_normalizer(
         lambda record: record["renderer"].update(model="  "),  # type: ignore[union-attr]
         lambda record: record.update(pricing_version="\t"),
         lambda record: record["renderer"].update(voice_asset_id="\n"),  # type: ignore[union-attr]
+        lambda record: record["renderer"].update(secret_ref="env://\n"),  # type: ignore[union-attr]
         lambda record: record.update(max_request_cost="1.01"),
         lambda record: record.update(mode="host-local"),
         lambda record: (

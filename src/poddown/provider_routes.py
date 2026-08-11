@@ -9,7 +9,7 @@ from decimal import Decimal
 
 _MODES = frozenset({"deterministic-local", "host-local", "live-provider"})
 _PROVIDERS = frozenset({"local", "host-local", "elevenlabs", "openai"})
-_SECRET_REFERENCE_PREFIXES = ("env://", "keychain://", "secret://", "vault://")
+_SECRET_REFERENCE_PATTERN = re.compile(r"(?:env|keychain|secret|vault)://\S+")
 _DECIMAL_PATTERN = re.compile(r"^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$")
 _MODE_PROVIDERS = {
     "deterministic-local": frozenset({"local"}),
@@ -55,8 +55,7 @@ class ProviderBinding:
             )
         if self.secret_ref is not None and (
             not isinstance(self.secret_ref, str)
-            or not self.secret_ref.startswith(_SECRET_REFERENCE_PREFIXES)
-            or self.secret_ref in _SECRET_REFERENCE_PREFIXES
+            or _SECRET_REFERENCE_PATTERN.fullmatch(self.secret_ref) is None
         ):
             raise ValueError("secret_ref must be a non-empty secret reference")
         if self.provider in {"local", "host-local"} and self.secret_ref is not None:
