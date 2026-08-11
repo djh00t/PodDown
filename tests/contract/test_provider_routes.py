@@ -1,8 +1,7 @@
-"""Executable JSON contract checks for provider-route records."""
+"""Executable schema-plus-normalizer contract checks for provider-route records."""
 
 import json
-import re
-from collections.abc import Mapping
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -16,85 +15,6 @@ def _schema() -> dict[str, object]:
         / "specs/003-durable-audio-production/contracts/provider-route.schema.json"
     )
     return json.loads(schema_path.read_text())
-
-
-def _schema_rejection(schema: Mapping[str, object], record: object) -> str | None:
-    """Return the schema-rule violation for the focused record subset, if any."""
-    if not isinstance(record, dict) or set(record) != set(schema["required"]):
-        return "route fields"
-    properties = schema["properties"]
-    if not isinstance(properties, dict):
-        raise AssertionError("route properties must be an object")
-    if record["mode"] not in properties["mode"]["enum"]:
-        return "mode"
-    for field in ("route_id", "pricing_version"):
-        value = record[field]
-        if not isinstance(value, str) or not value:
-            return field
-    decimal = schema["$defs"]["decimal"]
-    for field in ("max_request_cost", "max_episode_cost"):
-        value = record[field]
-        if not isinstance(value, str) or re.fullmatch(decimal["pattern"], value) is None:
-            return field
-    mode_bindings = {
-        rule["if"]["properties"]["mode"]["const"]: rule["then"]["properties"]
-        for rule in schema["allOf"]
-    }
-    bindings = mode_bindings[record["mode"]]
-    for field in ("renderer", "transcriber"):
-        rejection = _binding_rejection(schema, record[field], bindings[field]["$ref"])
-        if rejection is not None:
-            return f"{field}.{rejection}"
-    fallbacks = record["fallbacks"]
-    if not isinstance(fallbacks, list):
-        return "fallbacks"
-    fallback_ref = bindings["fallbacks"]["items"]["$ref"]
-    for fallback in fallbacks:
-        rejection = _binding_rejection(schema, fallback, fallback_ref)
-        if rejection is not None:
-            return f"fallbacks.{rejection}"
-    return None
-
-
-def _binding_rejection(
-    schema: Mapping[str, object], binding: object, binding_ref: str
-) -> str | None:
-    if not isinstance(binding, dict):
-        return "object"
-    binding_schema = schema["$defs"]["providerBinding"]
-    if set(binding) - set(binding_schema["properties"]) or not set(
-        binding_schema["required"]
-    ) <= set(binding):
-        return "fields"
-    provider = binding["provider"]
-    if provider not in binding_schema["properties"]["provider"]["enum"]:
-        return "provider"
-    specialized = schema["$defs"][binding_ref.rsplit("/", 1)[-1]]
-    allowed_providers = specialized["allOf"][1]["properties"]["provider"]
-    if provider not in allowed_providers.get("enum", [allowed_providers.get("const")]):
-        return "provider"
-    for field in ("model",):
-        value = binding[field]
-        if not isinstance(value, str) or not value:
-            return field
-    capabilities = binding["required_capabilities"]
-    if (
-        not isinstance(capabilities, list)
-        or len(capabilities) != len(set(capabilities))
-        or not all(isinstance(item, str) and item for item in capabilities)
-    ):
-        return "required_capabilities"
-    secret_ref = binding.get("secret_ref")
-    if provider in {"local", "host-local"}:
-        if secret_ref is not None:
-            return "secret_ref"
-    elif (
-        not isinstance(secret_ref, str)
-        or re.fullmatch(binding_schema["properties"]["secret_ref"]["pattern"], secret_ref)
-        is None
-    ):
-        return "secret_ref"
-    return None
 
 
 def _record(mode: str, provider: str, secret_ref: str | None) -> dict[str, object]:
@@ -125,51 +45,100 @@ def _record(mode: str, provider: str, secret_ref: str | None) -> dict[str, objec
         ("live-provider", "openai", "env://OPENAI_API_KEY"),
     ],
 )
-def test_schema_valid_records_round_trip_through_the_fail_closed_normalizer(
+def test_schema_records_round_trip_through_the_package_owned_normalizer(
     mode: str, provider: str, secret_ref: str | None
 ) -> None:
-    """Each schema mode has a deterministic, exact normalizer round-trip."""
+    """Each route mode has one exact JSON record normalization path."""
     record = _record(mode, provider, secret_ref)
 
-    assert _schema_rejection(_schema(), record) is None
     assert ProviderRoute.from_record(record).to_record() == record
 
 
 @pytest.mark.parametrize(
-    ("mutator", "expected_rejection"),
+    "mutate",
     [
-        (lambda record: record["renderer"].update(required_capabilities=["wav", "wav"]), "renderer.required_capabilities"),
-        (lambda record: record["renderer"].update(required_capabilities=["wav", 1]), "renderer.required_capabilities"),
-        (lambda record: record.update(max_request_cost="1E+2"), "max_request_cost"),
-        (lambda record: record.update(max_request_cost="01.00"), "max_request_cost"),
-        (lambda record: record.update(mode="host-local"), "renderer.provider"),
-        (lambda record: record["renderer"].update(secret_ref="env://LOCAL_SECRET"), "renderer.secret_ref"),
+        lambda record: record.update(max_request_cost="1E+2"),
+        lambda record: record.update(max_request_cost="01.00"),
+        lambda record: record["renderer"].update(  # type: ignore[union-attr]
+            required_capabilities=["wav", "wav"]
+        ),
+        lambda record: record["renderer"].update(  # type: ignore[union-attr]
+            required_capabilities=["wav", 1]
+        ),
+        lambda record: record["renderer"].update(  # type: ignore[union-attr]
+            required_capabilities=[""]
+        ),
+        lambda record: record.update(route_id="  "),
+        lambda record: record["renderer"].update(model="  "),  # type: ignore[union-attr]
+        lambda record: record.update(pricing_version="\t"),
+        lambda record: record["renderer"].update(voice_asset_id="\n"),  # type: ignore[union-attr]
+        lambda record: record.update(max_request_cost="1.01"),
+        lambda record: record.update(mode="host-local"),
+        lambda record: (
+            record.update(mode="deterministic-local"),
+            record["renderer"].update(  # type: ignore[union-attr]
+                provider="local", secret_ref="env://LOCAL_SECRET"
+            ),
+            record["transcriber"].update(  # type: ignore[union-attr]
+                provider="local", secret_ref="env://LOCAL_SECRET"
+            ),
+        ),
+        lambda record: record["renderer"].pop("secret_ref"),  # type: ignore[union-attr]
     ],
 )
-def test_schema_rejections_are_also_rejected_by_the_record_parser(
-    mutator: object, expected_rejection: str
+def test_schema_invalid_records_are_rejected_by_the_package_owned_normalizer(
+    mutate: Callable[[dict[str, object]], object],
 ) -> None:
-    """Parser rejection agrees with schema-visible lexical and binding constraints."""
-    record = _record("deterministic-local", "local", None)
-    mutator(record)  # type: ignore[operator]
+    """Structural and semantic JSON record failures share one executable boundary."""
+    record = _record("live-provider", "openai", "env://OPENAI_API_KEY")
+    mutate(record)
+    if record["max_request_cost"] == "1.01":
+        record["max_episode_cost"] = "1.00"
 
-    assert _schema_rejection(_schema(), record) == expected_rejection
     with pytest.raises(ValueError):
         ProviderRoute.from_record(record)
 
 
-def test_schema_normalizer_extension_documents_cost_ceiling_enforced_by_parser() -> None:
-    """The cross-field Decimal ceiling is explicit outside standard schema keywords."""
+def test_schema_documents_the_complete_schema_plus_normalizer_boundary() -> None:
+    """The schema points JSON record validation at its package-owned normalizer."""
     schema = _schema()
 
     assert schema["x-poddown-validation-boundary"] == {
-        "description": "JSON Schema validates record structure; the normalizer also enforces max_episode_cost >= max_request_cost.",
-        "normalizer": "poddown.provider_routes.ProviderRoute.from_record",
+        "description": (
+            "JSON Schema validates route-record structure; "
+            "ProviderRoute.from_record is the package-owned normalizer and "
+            "enforces max_episode_cost >= max_request_cost."
+        ),
+        "normalizer": "ProviderRoute.from_record",
         "normalizer_enforces": ["max_episode_cost >= max_request_cost"],
     }
-    record = _record("host-local", "host-local", None)
-    record["max_request_cost"] = "1.01"
+    assert "x-poddown-cost-ceiling" not in schema
 
-    assert _schema_rejection(schema, record) is None
-    with pytest.raises(ValueError, match="max_episode_cost"):
-        ProviderRoute.from_record(record)
+
+def test_schema_declares_the_same_lexical_constraints_as_the_normalizer() -> None:
+    """Schema lexical declarations match normalizer-backed JSON record fixtures."""
+    schema = _schema()
+    definitions = schema["$defs"]
+    properties = schema["properties"]
+    binding = definitions["providerBinding"]
+
+    assert definitions["nonWhitespaceString"] == {
+        "type": "string",
+        "pattern": ".*\\S.*",
+    }
+    assert definitions["decimal"] == {
+        "type": "string",
+        "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+    }
+    assert properties["route_id"] == {"$ref": "#/$defs/nonWhitespaceString"}
+    assert properties["pricing_version"] == {"$ref": "#/$defs/nonWhitespaceString"}
+    assert binding["properties"]["model"] == {"$ref": "#/$defs/nonWhitespaceString"}
+    assert binding["properties"]["voice_asset_id"] == {
+        "type": ["string", "null"],
+        "pattern": ".*\\S.*",
+    }
+    assert binding["properties"]["required_capabilities"] == {
+        "type": "array",
+        "items": {"$ref": "#/$defs/nonWhitespaceString"},
+        "uniqueItems": True,
+    }

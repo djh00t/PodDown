@@ -66,7 +66,7 @@ class ProviderBinding:
 
     @classmethod
     def from_record(cls, record: Mapping[str, object]) -> ProviderBinding:
-        """Create a binding from its schema-compatible JSON record."""
+        """Normalize one schema-compatible JSON binding record."""
         allowed = {
             "provider",
             "model",
@@ -143,7 +143,7 @@ class ProviderRoute:
 
     @classmethod
     def from_record(cls, record: Mapping[str, object]) -> ProviderRoute:
-        """Create a route from its schema-compatible JSON record."""
+        """Normalize one schema-compatible JSON route record, fail-closed."""
         required = {
             "route_id",
             "mode",

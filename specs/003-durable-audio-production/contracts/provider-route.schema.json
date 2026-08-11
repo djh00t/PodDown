@@ -4,9 +4,10 @@
   "title": "PodDown provider route",
   "type": "object",
   "additionalProperties": false,
-  "x-poddown-cost-ceiling": {
-    "description": "max_episode_cost must be at least max_request_cost",
-    "enforced_by": "ProviderRoute.from_record"
+  "x-poddown-validation-boundary": {
+    "description": "JSON Schema validates route-record structure; ProviderRoute.from_record is the package-owned normalizer and enforces max_episode_cost >= max_request_cost.",
+    "normalizer": "ProviderRoute.from_record",
+    "normalizer_enforces": ["max_episode_cost >= max_request_cost"]
   },
   "required": [
     "route_id",
@@ -19,7 +20,7 @@
     "max_episode_cost"
   ],
   "properties": {
-    "route_id": {"type": "string", "minLength": 1},
+    "route_id": {"$ref": "#/$defs/nonWhitespaceString"},
     "mode": {
       "enum": ["deterministic-local", "host-local", "live-provider"]
     },
@@ -29,7 +30,7 @@
       "type": "array",
       "items": {"$ref": "#/$defs/providerBinding"}
     },
-    "pricing_version": {"type": "string", "minLength": 1},
+    "pricing_version": {"$ref": "#/$defs/nonWhitespaceString"},
     "max_request_cost": {"$ref": "#/$defs/decimal"},
     "max_episode_cost": {"$ref": "#/$defs/decimal"}
   },
@@ -66,6 +67,10 @@
     }
   ],
   "$defs": {
+    "nonWhitespaceString": {
+      "type": "string",
+      "pattern": ".*\\S.*"
+    },
     "decimal": {
       "type": "string",
       "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
@@ -78,11 +83,14 @@
         "provider": {
           "enum": ["local", "host-local", "elevenlabs", "openai"]
         },
-        "model": {"type": "string", "minLength": 1},
-        "voice_asset_id": {"type": ["string", "null"], "minLength": 1},
+        "model": {"$ref": "#/$defs/nonWhitespaceString"},
+        "voice_asset_id": {
+          "type": ["string", "null"],
+          "pattern": ".*\\S.*"
+        },
         "required_capabilities": {
           "type": "array",
-          "items": {"type": "string", "minLength": 1},
+          "items": {"$ref": "#/$defs/nonWhitespaceString"},
           "uniqueItems": true
         },
         "secret_ref": {
