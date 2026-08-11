@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": [
     "schema_version",
-    "execution_mode",
+    "mode",
     "render_evidence",
     "transcript_evidence",
     "publication_scope",
@@ -14,7 +14,7 @@
   ],
   "properties": {
     "schema_version": {"const": "1.0"},
-    "execution_mode": {
+    "mode": {
       "enum": ["deterministic-local", "host-local", "live-provider"]
     },
     "render_evidence": {
@@ -41,7 +41,7 @@
           "cost_evidence"
         ],
         "properties": {
-          "execution_mode": {"const": "live-provider"},
+          "mode": {"const": "live-provider"},
           "render_evidence": {"const": "provider-response"},
           "transcript_evidence": {"const": "provider-asr"},
           "consent_valid": {"const": true},
@@ -54,11 +54,15 @@
     "provider_metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["provider", "model", "request_id"],
+      "required": ["provider", "model", "request_ids"],
       "properties": {
         "provider": {"type": "string", "minLength": 1},
         "model": {"type": "string", "minLength": 1},
-        "request_id": {"type": "string", "minLength": 1}
+        "request_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        }
       }
     },
     "cost_evidence": {

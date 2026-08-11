@@ -14,7 +14,7 @@ def test_execution_evidence_schema_freezes_production_closure_vocabulary() -> No
     properties = schema["properties"]
 
     assert properties["schema_version"]["const"] == "1.0"
-    assert properties["execution_mode"]["enum"] == [
+    assert properties["mode"]["enum"] == [
         "deterministic-local",
         "host-local",
         "live-provider",
@@ -35,7 +35,7 @@ def test_execution_evidence_schema_freezes_production_closure_vocabulary() -> No
     ]
     assert set(properties) == {
         "schema_version",
-        "execution_mode",
+        "mode",
         "render_evidence",
         "transcript_evidence",
         "publication_scope",
@@ -46,9 +46,14 @@ def test_execution_evidence_schema_freezes_production_closure_vocabulary() -> No
         "critical_token_accuracy",
         "cost_evidence",
     }
-    assert [mode.value for mode in ExecutionMode] == properties["execution_mode"][
-        "enum"
-    ]
+    assert [mode.value for mode in ExecutionMode] == properties["mode"]["enum"]
+    provider_metadata = schema["$defs"]["provider_metadata"]
+    assert provider_metadata["required"] == ["provider", "model", "request_ids"]
+    assert provider_metadata["properties"]["request_ids"] == {
+        "type": "array",
+        "minItems": 1,
+        "items": {"type": "string", "minLength": 1},
+    }
     assert [kind.value for kind in EvidenceKind] == [
         "synthetic",
         "host-local",

@@ -10,7 +10,7 @@ from poddown.evidence import EvidenceKind, ExecutionMode, validate_execution_evi
 def test_accepts_explicitly_labelled_deterministic_and_host_local_evidence() -> None:
     deterministic = {
         "schema_version": "1.0",
-        "execution_mode": "deterministic-local",
+        "mode": "deterministic-local",
         "render_evidence": "synthetic-bytes",
         "transcript_evidence": "script-derived",
         "publication_scope": "filesystem",
@@ -18,7 +18,7 @@ def test_accepts_explicitly_labelled_deterministic_and_host_local_evidence() -> 
     }
     host_local = {
         **deterministic,
-        "execution_mode": "host-local",
+        "mode": "host-local",
         "render_evidence": "host-tts",
     }
 
@@ -31,7 +31,7 @@ def test_accepts_explicitly_labelled_deterministic_and_host_local_evidence() -> 
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
-        ("execution_mode", "sandbox", "execution_mode"),
+        ("mode", "sandbox", "mode"),
         ("render_evidence", "recorded-file", "render_evidence"),
         ("transcript_evidence", "manual", "transcript_evidence"),
     ],
@@ -41,7 +41,7 @@ def test_rejects_unknown_execution_evidence_values(
 ) -> None:
     record = {
         "schema_version": "1.0",
-        "execution_mode": "deterministic-local",
+        "mode": "deterministic-local",
         "render_evidence": "synthetic-bytes",
         "transcript_evidence": "script-derived",
         "publication_scope": "filesystem",
@@ -56,7 +56,7 @@ def test_rejects_unknown_execution_evidence_values(
 def test_rejects_malformed_provider_metadata() -> None:
     record = {
         "schema_version": "1.0",
-        "execution_mode": "host-local",
+        "mode": "host-local",
         "render_evidence": "host-tts",
         "transcript_evidence": "script-derived",
         "publication_scope": "filesystem",
@@ -64,7 +64,7 @@ def test_rejects_malformed_provider_metadata() -> None:
         "renderer": {"provider": "macos", "model": "say"},
     }
 
-    with pytest.raises(ValueError, match="renderer.request_id"):
+    with pytest.raises(ValueError, match="renderer.request_ids"):
         validate_execution_evidence(record)
 
 
@@ -87,7 +87,7 @@ def test_rejects_unknown_or_malformed_optional_evidence(
 ) -> None:
     record = {
         "schema_version": "1.0",
-        "execution_mode": "deterministic-local",
+        "mode": "deterministic-local",
         "render_evidence": "synthetic-bytes",
         "transcript_evidence": "script-derived",
         "publication_scope": "filesystem",
@@ -104,7 +104,12 @@ def test_rejects_unknown_or_malformed_optional_evidence(
     [
         (
             "renderer",
-            {"provider": "macos", "model": "say", "request_id": "1", "extra": "no"},
+            {
+                "provider": "macos",
+                "model": "say",
+                "request_ids": ["1"],
+                "extra": "no",
+            },
             "renderer",
         ),
         (
@@ -119,7 +124,7 @@ def test_rejects_unknown_nested_evidence_fields(
 ) -> None:
     record = {
         "schema_version": "1.0",
-        "execution_mode": "deterministic-local",
+        "mode": "deterministic-local",
         "render_evidence": "synthetic-bytes",
         "transcript_evidence": "script-derived",
         "publication_scope": "filesystem",
@@ -134,7 +139,7 @@ def test_rejects_unknown_nested_evidence_fields(
 def test_rejects_live_eligible_record_without_complete_live_evidence() -> None:
     record = {
         "schema_version": "1.0",
-        "execution_mode": "live-provider",
+        "mode": "live-provider",
         "render_evidence": "provider-response",
         "transcript_evidence": "provider-asr",
         "publication_scope": "object-storage",
@@ -142,12 +147,12 @@ def test_rejects_live_eligible_record_without_complete_live_evidence() -> None:
         "renderer": {
             "provider": "elevenlabs",
             "model": "eleven_multilingual_v2",
-            "request_id": "render-1",
+            "request_ids": ["render-1"],
         },
         "transcriber": {
             "provider": "openai",
             "model": "gpt-4o-transcribe",
-            "request_id": "asr-1",
+            "request_ids": ["asr-1"],
         },
         "consent_valid": True,
         "critical_token_accuracy": 1.0,
@@ -157,3 +162,56 @@ def test_rejects_live_eligible_record_without_complete_live_evidence() -> None:
 
     with pytest.raises(ValueError, match="cost_evidence"):
         validate_execution_evidence(incomplete)
+
+
+def test_accepts_complete_live_provider_evidence_with_request_id_arrays() -> None:
+    record = {
+        "schema_version": "1.0",
+        "mode": "live-provider",
+        "render_evidence": "provider-response",
+        "transcript_evidence": "provider-asr",
+        "publication_scope": "external",
+        "live_eligible": True,
+        "renderer": {
+            "provider": "elevenlabs",
+            "model": "eleven_multilingual_v2",
+            "request_ids": ["render-1", "render-2"],
+        },
+        "transcriber": {
+            "provider": "openai",
+            "model": "gpt-4o-transcribe",
+            "request_ids": ["asr-1"],
+        },
+        "consent_valid": True,
+        "critical_token_accuracy": 1.0,
+        "cost_evidence": {"currency": "USD", "estimated": 1.5, "reconciled": 1.5},
+    }
+
+    assert validate_execution_evidence(record) == record
+
+
+def test_rejects_live_eligible_evidence_with_boolean_token_accuracy() -> None:
+    record = {
+        "schema_version": "1.0",
+        "mode": "live-provider",
+        "render_evidence": "provider-response",
+        "transcript_evidence": "provider-asr",
+        "publication_scope": "object-storage",
+        "live_eligible": True,
+        "renderer": {
+            "provider": "elevenlabs",
+            "model": "eleven_multilingual_v2",
+            "request_ids": ["render-1"],
+        },
+        "transcriber": {
+            "provider": "openai",
+            "model": "gpt-4o-transcribe",
+            "request_ids": ["asr-1"],
+        },
+        "consent_valid": True,
+        "critical_token_accuracy": True,
+        "cost_evidence": {"currency": "USD", "estimated": 1.5, "reconciled": 1.5},
+    }
+
+    with pytest.raises(ValueError, match="critical_token_accuracy"):
+        validate_execution_evidence(record)

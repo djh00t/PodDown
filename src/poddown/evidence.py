@@ -25,12 +25,12 @@ class EvidenceKind(StrEnum):
 _RENDER_EVIDENCE = frozenset({"synthetic-bytes", "host-tts", "provider-response"})
 _TRANSCRIPT_EVIDENCE = frozenset({"script-derived", "provider-asr"})
 _PUBLICATION_SCOPES = frozenset({"filesystem", "object-storage", "external"})
-_PROVIDER_FIELDS = ("provider", "model", "request_id")
+_PROVIDER_FIELDS = ("provider", "model", "request_ids")
 _COST_FIELDS = ("currency", "estimated", "reconciled")
 _TOP_LEVEL_FIELDS = frozenset(
     {
         "schema_version",
-        "execution_mode",
+        "mode",
         "render_evidence",
         "transcript_evidence",
         "publication_scope",
@@ -51,7 +51,7 @@ def validate_execution_evidence(record: Mapping[str, object]) -> dict[str, objec
     validated = dict(record)
     _validate_known_fields(validated, "execution evidence", _TOP_LEVEL_FIELDS)
     _require_equal(validated, "schema_version", "1.0")
-    _require_member(validated, "execution_mode", ExecutionMode)
+    _require_member(validated, "mode", ExecutionMode)
     _require_member(validated, "render_evidence", _RENDER_EVIDENCE)
     _require_member(validated, "transcript_evidence", _TRANSCRIPT_EVIDENCE)
     _require_member(validated, "publication_scope", _PUBLICATION_SCOPES)
@@ -99,18 +99,31 @@ def _validate_provider_metadata(field: str, value: object) -> None:
     if not isinstance(value, Mapping):
         raise ValueError(f"{field} must be an object")
     _validate_known_fields(value, field, _PROVIDER_FIELDS)
-    for name in _PROVIDER_FIELDS:
+    for name in _PROVIDER_FIELDS[:2]:
         if not isinstance(value.get(name), str) or not value[name]:
             raise ValueError(f"{field}.{name} must be a non-empty string")
+    request_ids = value.get("request_ids")
+    if (
+        not isinstance(request_ids, list)
+        or not request_ids
+        or any(
+            not isinstance(request_id, str) or not request_id
+            for request_id in request_ids
+        )
+    ):
+        raise ValueError(f"{field}.request_ids must be a non-empty array of strings")
 
 
 def _validate_live_eligibility(record: Mapping[str, object]) -> None:
-    _require_equal(record, "execution_mode", ExecutionMode.LIVE_PROVIDER.value)
+    _require_equal(record, "mode", ExecutionMode.LIVE_PROVIDER.value)
     _require_equal(record, "render_evidence", "provider-response")
     _require_equal(record, "transcript_evidence", "provider-asr")
     if record.get("consent_valid") is not True:
         raise ValueError("live_eligible evidence requires valid consent")
-    if record.get("critical_token_accuracy") != 1.0:
+    if (
+        type(record.get("critical_token_accuracy")) not in (int, float)
+        or record["critical_token_accuracy"] != 1.0
+    ):
         raise ValueError(
             "live_eligible evidence requires critical_token_accuracy of 1.0"
         )
