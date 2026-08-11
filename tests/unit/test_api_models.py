@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import UUID
 
 import pytest
@@ -10,8 +11,12 @@ from pydantic import ValidationError
 from poddown.api.models import (
     CommandReceipt,
     EpisodeCreateRequest,
+    EpisodeFailure,
+    EpisodeStatusResponse,
     EpisodeSummary,
     ProblemDetail,
+    PublishCommandRequest,
+    RenderCommandRequest,
     RequestContext,
 )
 
@@ -122,3 +127,83 @@ def test_summary_and_command_receipt_preserve_command_identity() -> None:
     assert receipt.episode_id == summary.id
     assert receipt.idempotency_key == "create-fixture-001"
     assert receipt.accepted is True
+
+
+@pytest.mark.parametrize(
+    "state", ["queued", "dispatched", "running", "completed", "failed"]
+)
+def test_command_receipt_accepts_each_production_workflow_state(state: str) -> None:
+    """Catch receipt contracts that reject a valid workflow state."""
+    receipt = CommandReceipt(
+        command_id="01986e76-4ec6-7b00-8000-000000000002",
+        episode_id=EPISODE_ID,
+        idempotency_key="render-fixture-001",
+        command="render",
+        state=state,
+    )
+
+    assert receipt.state == state
+
+
+def test_render_command_request_preserves_optional_route_mode_and_cost_ceiling(
+) -> None:
+    """Catch render requests that drop production dispatch controls."""
+    request = RenderCommandRequest(
+        provider_route_id="01986e76-4ec6-7b00-8000-000000000003",
+        execution_mode="live-provider",
+        cost_ceiling=Decimal("12.50"),
+    )
+
+    assert request.model_dump(mode="json") == {
+        "provider_route_id": "01986e76-4ec6-7b00-8000-000000000003",
+        "execution_mode": "live-provider",
+        "cost_ceiling": "12.50",
+    }
+
+
+def test_publish_command_request_requires_target_and_uuidv7_approval() -> None:
+    """Catch publish requests accepted without their scoped approval identity."""
+    request = PublishCommandRequest(
+        target_id="transistor-show-001",
+        approval_id="01986e76-4ec6-7b00-8000-000000000004",
+    )
+
+    assert request.model_dump(mode="json") == {
+        "target_id": "transistor-show-001",
+        "approval_id": "01986e76-4ec6-7b00-8000-000000000004",
+    }
+
+
+def test_status_exposes_production_links_and_only_safe_failure_fields() -> None:
+    """Catch status contracts that leak failure details or omit production links."""
+    status = EpisodeStatusResponse(
+        episode_id=EPISODE_ID,
+        version=3,
+        stage="package",
+        progress=0.8,
+        workflow_id="episode-production-01986e76",
+        package_manifest_checksum="a" * 64,
+        publication_id="publication-001",
+        failure=EpisodeFailure(
+            code="provider_failure",
+            stage="render",
+            status=502,
+            retriable=False,
+        ),
+    )
+
+    assert status.model_dump(mode="json") == {
+        "episode_id": EPISODE_ID,
+        "version": 3,
+        "stage": "package",
+        "progress": 0.8,
+        "failure": {
+            "code": "provider_failure",
+            "stage": "render",
+            "status": 502,
+            "retriable": False,
+        },
+        "workflow_id": "episode-production-01986e76",
+        "package_manifest_checksum": "a" * 64,
+        "publication_id": "publication-001",
+    }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
@@ -70,7 +71,7 @@ class CommandReceipt(_FrozenModel):
     idempotency_key: str
     command: Literal["create", "render", "publish"]
     accepted: bool = True
-    state: Literal["queued"] = "queued"
+    state: Literal["queued", "dispatched", "running", "completed", "failed"] = "queued"
     created_at: datetime | None = None
 
 
@@ -81,6 +82,40 @@ class EpisodeCreateResponse(_FrozenModel):
     receipt: CommandReceipt
 
 
+class RenderCommandRequest(_FrozenModel):
+    """Optional production controls for an asynchronous render command."""
+
+    provider_route_id: UUID | None = None
+    execution_mode: Literal[
+        "deterministic-local", "host-local", "live-provider"
+    ] | None = None
+    cost_ceiling: Decimal | None = Field(default=None, gt=0)
+
+
+class PublishCommandRequest(_FrozenModel):
+    """Explicit target and one-time approval for an external publication."""
+
+    target_id: str = Field(min_length=1)
+    approval_id: UUID
+
+    @field_validator("approval_id")
+    @classmethod
+    def require_uuidv7_approval(cls, value: UUID) -> UUID:
+        """Reject approval references that cannot be production UUIDv7 records."""
+        if value.version != 7:
+            raise ValueError("approval_id must be a UUIDv7")
+        return value
+
+
+class EpisodeFailure(_FrozenModel):
+    """Allowlisted failure fields safe to include in a status response."""
+
+    code: str
+    stage: str
+    status: int
+    retriable: bool
+
+
 class EpisodeStatusResponse(_FrozenModel):
     """Tenant-scoped status without source or credential material."""
 
@@ -88,7 +123,10 @@ class EpisodeStatusResponse(_FrozenModel):
     version: int
     stage: str
     progress: float
-    failure: dict[str, object] | None = None
+    failure: EpisodeFailure | None = None
+    workflow_id: str | None = None
+    package_manifest_checksum: str | None = None
+    publication_id: str | None = None
 
 
 class ProblemDetail(_FrozenModel):
