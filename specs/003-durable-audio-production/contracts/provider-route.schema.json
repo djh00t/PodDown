@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poddown.dev/schemas/v1/provider-route.schema.json",
+  "title": "PodDown provider route",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "route_id",
+    "mode",
+    "renderer",
+    "transcriber",
+    "fallbacks",
+    "pricing_version",
+    "max_request_cost",
+    "max_episode_cost"
+  ],
+  "properties": {
+    "route_id": {"type": "string", "minLength": 1},
+    "mode": {
+      "enum": ["deterministic-local", "host-local", "live-provider"]
+    },
+    "renderer": {"$ref": "#/$defs/providerBinding"},
+    "transcriber": {"$ref": "#/$defs/providerBinding"},
+    "fallbacks": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/providerBinding"}
+    },
+    "pricing_version": {"type": "string", "minLength": 1},
+    "max_request_cost": {"$ref": "#/$defs/decimal"},
+    "max_episode_cost": {"$ref": "#/$defs/decimal"}
+  },
+  "$defs": {
+    "decimal": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+    },
+    "providerBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "model",
+        "required_capabilities",
+        "secret_ref"
+      ],
+      "properties": {
+        "provider": {
+          "enum": ["local-system-tts-demo", "elevenlabs", "openai"]
+        },
+        "model": {"type": "string", "minLength": 1},
+        "voice_asset_id": {"type": ["string", "null"], "minLength": 1},
+        "required_capabilities": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "secret_ref": {
+          "type": ["string", "null"],
+          "pattern": "^(?:env|keychain|secret|vault)://.+$"
+        }
+      }
+    }
+  }
+}
