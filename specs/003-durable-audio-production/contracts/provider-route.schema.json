@@ -95,7 +95,7 @@
         },
         "secret_ref": {
           "type": ["string", "null"],
-          "pattern": "^(?:env|keychain|secret|vault)://.+$"
+          "pattern": "^(?:env|keychain|secret|vault)://\\S+$"
         }
       },
       "allOf": [
@@ -105,7 +105,7 @@
           "else": {
             "required": ["secret_ref"],
             "properties": {
-              "secret_ref": {"type": "string", "pattern": "^(?:env|keychain|secret|vault)://.+$"}
+              "secret_ref": {"type": "string", "pattern": "^(?:env|keychain|secret|vault)://\\S+$"}
             }
           }
         }

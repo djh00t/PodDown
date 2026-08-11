@@ -73,6 +73,8 @@ def test_schema_records_round_trip_through_the_package_owned_normalizer(
         lambda record: record.update(pricing_version="\t"),
         lambda record: record["renderer"].update(voice_asset_id="\n"),  # type: ignore[union-attr]
         lambda record: record["renderer"].update(secret_ref="env://\n"),  # type: ignore[union-attr]
+        lambda record: record["renderer"].update(secret_ref="env://API KEY"),  # type: ignore[union-attr]
+        lambda record: record["renderer"].update(secret_ref="env://API\tKEY"),  # type: ignore[union-attr]
         lambda record: record.update(max_request_cost="1.01"),
         lambda record: record.update(mode="host-local"),
         lambda record: (
@@ -137,6 +139,14 @@ def test_schema_declares_the_same_lexical_constraints_as_the_normalizer() -> Non
     assert binding["properties"]["voice_asset_id"] == {
         "type": ["string", "null"],
         "pattern": ".*\\S.*",
+    }
+    assert binding["properties"]["secret_ref"] == {
+        "type": ["string", "null"],
+        "pattern": "^(?:env|keychain|secret|vault)://\\S+$",
+    }
+    assert binding["allOf"][0]["else"]["properties"]["secret_ref"] == {
+        "type": "string",
+        "pattern": "^(?:env|keychain|secret|vault)://\\S+$",
     }
     assert binding["properties"]["required_capabilities"] == {
         "type": "array",
