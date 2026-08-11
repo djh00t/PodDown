@@ -68,6 +68,69 @@ def test_rejects_malformed_provider_metadata() -> None:
         validate_execution_evidence(record)
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("unexpected", "value", "unknown field"),
+        ("consent_valid", "yes", "consent_valid"),
+        ("critical_token_accuracy", True, "critical_token_accuracy"),
+        ("critical_token_accuracy", float("nan"), "critical_token_accuracy"),
+        (
+            "cost_evidence",
+            {"currency": "USD", "estimated": 0, "reconciled": True},
+            "cost_evidence",
+        ),
+    ],
+)
+def test_rejects_unknown_or_malformed_optional_evidence(
+    field: str, value: object, message: str
+) -> None:
+    record = {
+        "schema_version": "1.0",
+        "execution_mode": "deterministic-local",
+        "render_evidence": "synthetic-bytes",
+        "transcript_evidence": "script-derived",
+        "publication_scope": "filesystem",
+        "live_eligible": False,
+    }
+    record[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        validate_execution_evidence(record)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        (
+            "renderer",
+            {"provider": "macos", "model": "say", "request_id": "1", "extra": "no"},
+            "renderer",
+        ),
+        (
+            "cost_evidence",
+            {"currency": "USD", "estimated": 0, "reconciled": 0, "extra": 1},
+            "cost_evidence",
+        ),
+    ],
+)
+def test_rejects_unknown_nested_evidence_fields(
+    field: str, value: object, message: str
+) -> None:
+    record = {
+        "schema_version": "1.0",
+        "execution_mode": "deterministic-local",
+        "render_evidence": "synthetic-bytes",
+        "transcript_evidence": "script-derived",
+        "publication_scope": "filesystem",
+        "live_eligible": False,
+    }
+    record[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        validate_execution_evidence(record)
+
+
 def test_rejects_live_eligible_record_without_complete_live_evidence() -> None:
     record = {
         "schema_version": "1.0",

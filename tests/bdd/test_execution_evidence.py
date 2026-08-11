@@ -25,9 +25,25 @@ def execution_record(context, mode: str, render_evidence: str) -> None:
 
 @when("execution evidence is validated")
 def validate_record(context) -> None:
-    context.values["validated"] = validate_execution_evidence(context.values["record"])
+    try:
+        context.values["validated"] = validate_execution_evidence(
+            context.values["record"]
+        )
+    except ValueError as error:
+        context.values["error"] = error
 
 
 @then("the record is accepted as non-live evidence")
 def accepted_as_non_live(context) -> None:
     assert context.values["validated"]["live_eligible"] is False
+
+
+@given("the execution record is marked live eligible")
+def mark_live_eligible(context) -> None:
+    context.values["record"]["live_eligible"] = True
+
+
+@then("the record is rejected as false live evidence")
+def rejected_as_false_live(context) -> None:
+    assert "error" in context.values
+    assert "execution_mode" in str(context.values["error"])

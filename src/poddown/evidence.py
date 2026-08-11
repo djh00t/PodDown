@@ -27,6 +27,21 @@ _TRANSCRIPT_EVIDENCE = frozenset({"script-derived", "provider-asr"})
 _PUBLICATION_SCOPES = frozenset({"filesystem", "object-storage", "external"})
 _PROVIDER_FIELDS = ("provider", "model", "request_id")
 _COST_FIELDS = ("currency", "estimated", "reconciled")
+_TOP_LEVEL_FIELDS = frozenset(
+    {
+        "schema_version",
+        "execution_mode",
+        "render_evidence",
+        "transcript_evidence",
+        "publication_scope",
+        "live_eligible",
+        "renderer",
+        "transcriber",
+        "consent_valid",
+        "critical_token_accuracy",
+        "cost_evidence",
+    }
+)
 
 
 def validate_execution_evidence(record: Mapping[str, object]) -> dict[str, object]:
@@ -34,6 +49,7 @@ def validate_execution_evidence(record: Mapping[str, object]) -> dict[str, objec
     if not isinstance(record, Mapping):
         raise ValueError("execution evidence must be an object")
     validated = dict(record)
+    _validate_known_fields(validated, "execution evidence", _TOP_LEVEL_FIELDS)
     _require_equal(validated, "schema_version", "1.0")
     _require_member(validated, "execution_mode", ExecutionMode)
     _require_member(validated, "render_evidence", _RENDER_EVIDENCE)
@@ -41,6 +57,12 @@ def validate_execution_evidence(record: Mapping[str, object]) -> dict[str, objec
     _require_member(validated, "publication_scope", _PUBLICATION_SCOPES)
     if type(validated.get("live_eligible")) is not bool:
         raise ValueError("live_eligible must be a boolean")
+    if "consent_valid" in validated and type(validated["consent_valid"]) is not bool:
+        raise ValueError("consent_valid must be a boolean")
+    if "critical_token_accuracy" in validated:
+        _validate_critical_token_accuracy(validated["critical_token_accuracy"])
+    if "cost_evidence" in validated:
+        _validate_cost_evidence(validated["cost_evidence"])
 
     for field in ("renderer", "transcriber"):
         if field in validated:
@@ -64,9 +86,19 @@ def _require_member(
         raise ValueError(f"{field} has an unknown value")
 
 
+def _validate_known_fields(
+    value: Mapping[str, object],
+    field: str,
+    allowed_fields: frozenset[str] | tuple[str, ...],
+) -> None:
+    if any(name not in allowed_fields for name in value):
+        raise ValueError(f"{field} has an unknown field")
+
+
 def _validate_provider_metadata(field: str, value: object) -> None:
     if not isinstance(value, Mapping):
         raise ValueError(f"{field} must be an object")
+    _validate_known_fields(value, field, _PROVIDER_FIELDS)
     for name in _PROVIDER_FIELDS:
         if not isinstance(value.get(name), str) or not value[name]:
             raise ValueError(f"{field}.{name} must be a non-empty string")
@@ -90,6 +122,7 @@ def _validate_live_eligibility(record: Mapping[str, object]) -> None:
 def _validate_cost_evidence(value: object) -> None:
     if not isinstance(value, Mapping):
         raise ValueError("cost_evidence must be an object")
+    _validate_known_fields(value, "cost_evidence", _COST_FIELDS)
     currency = value.get("currency")
     if not isinstance(currency, str) or not currency:
         raise ValueError("cost_evidence.currency must be a non-empty string")
@@ -104,3 +137,11 @@ def _validate_cost_evidence(value: object) -> None:
             raise ValueError(
                 f"cost_evidence.{field} must be a finite non-negative number"
             )
+
+
+def _validate_critical_token_accuracy(value: object) -> None:
+    if type(value) not in (int, float):
+        raise ValueError("critical_token_accuracy must be a finite number")
+    numeric_value = float(cast(int | float, value))
+    if not math.isfinite(numeric_value) or not 0 <= numeric_value <= 1:
+        raise ValueError("critical_token_accuracy must be between zero and one")
