@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poddown.dev/schemas/v1/execution-evidence.schema.json",
+  "title": "PodDown execution evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "execution_mode",
+    "render_evidence",
+    "transcript_evidence",
+    "publication_scope",
+    "live_eligible"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "execution_mode": {
+      "enum": ["deterministic-local", "host-local", "live-provider"]
+    },
+    "render_evidence": {
+      "enum": ["synthetic-bytes", "host-tts", "provider-response"]
+    },
+    "transcript_evidence": {"enum": ["script-derived", "provider-asr"]},
+    "publication_scope": {"enum": ["filesystem", "object-storage", "external"]},
+    "live_eligible": {"type": "boolean"},
+    "renderer": {"$ref": "#/$defs/provider_metadata"},
+    "transcriber": {"$ref": "#/$defs/provider_metadata"},
+    "consent_valid": {"type": "boolean"},
+    "critical_token_accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+    "cost_evidence": {"$ref": "#/$defs/cost_evidence"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"live_eligible": {"const": true}}},
+      "then": {
+        "required": [
+          "renderer",
+          "transcriber",
+          "consent_valid",
+          "critical_token_accuracy",
+          "cost_evidence"
+        ],
+        "properties": {
+          "execution_mode": {"const": "live-provider"},
+          "render_evidence": {"const": "provider-response"},
+          "transcript_evidence": {"const": "provider-asr"},
+          "consent_valid": {"const": true},
+          "critical_token_accuracy": {"const": 1.0}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "provider_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model", "request_id"],
+      "properties": {
+        "provider": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "request_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "cost_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency", "estimated", "reconciled"],
+      "properties": {
+        "currency": {"type": "string", "minLength": 1},
+        "estimated": {"type": "number", "minimum": 0},
+        "reconciled": {"type": "number", "minimum": 0}
+      }
+    }
+  }
+}
