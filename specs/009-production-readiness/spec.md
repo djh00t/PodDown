@@ -41,3 +41,12 @@ signed artifacts and staged deployment.
 6. Release artifacts are reproducible, scanned and traceable to source commit.
 7. Load tests establish capacity and scaling thresholds before launch.
 
+## Production-closure evidence and recovery contract
+
+Operational evidence distinguishes local validation, host-local listening demos,
+provider-live rendering/ASR, storage publication and external publication. Reports
+include provider request IDs, model IDs, hashes, Decimal estimated/reconciled costs,
+latency, retries, provenance and exact package checksums without raw source, audio,
+provider payloads or credentials. Clean-checkout verification must demonstrate API,
+worker, storage and workflow restart recovery, replay idempotency, failed-segment
+rerendering, 100% critical-token accuracy and an honest evidence classification.

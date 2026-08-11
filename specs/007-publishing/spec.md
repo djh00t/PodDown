@@ -30,3 +30,13 @@ Revocation prevents new publication but does not silently delete existing media.
 6. Authorization, disclosure and publication receipt are captured in provenance.
 7. Updating or deleting a publication is an explicit separately authorized action.
 
+## Production-closure durability contract
+
+Publication attempts and receipts are durable PostgreSQL records scoped by tenant,
+project, target and idempotency key. S3 publication uses the content-addressed object
+store and verifies SHA-256, byte count, media type and schema metadata on write and
+read. Identical concurrent puts are idempotent; mismatched existing bytes fail closed.
+Transistor calls use an injected transport and recorded contract fixtures by default;
+live mutations require explicit opt-in and a fresh approval. External publishing
+accepts only packages whose evidence record is `live_eligible`, while filesystem and
+MinIO demos may accept explicitly labelled local evidence.

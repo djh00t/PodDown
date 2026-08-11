@@ -38,3 +38,13 @@ segment approval or status materially improves the workflow.
 4. Skill evals preserve facts and correctly distinguish all tool side effects.
 5. MCP failures return stable safe errors without source, voice IDs or credentials.
 
+## Production-closure authentication and evidence contract
+
+MCP has explicit `local` and `api` modes; API mode is the production default and
+delegates preview, render, status, publish and resource access to the authenticated
+FastAPI service. An `AuthenticatedPrincipal` supplies verified issuer, subject,
+tenant, project scope and scopes. Tenant/project headers are accepted only in local
+auth mode. Publication consumes a durable, one-time, scoped `PublicationApproval`
+whose operation, actor, nonce hash, issue/expiry and consumption timestamps are
+audited. MCP output labels deterministic, host-local and live-provider evidence and
+never elevates local evidence to live fidelity.
