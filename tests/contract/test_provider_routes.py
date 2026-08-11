@@ -22,8 +22,12 @@ def test_provider_route_schema_declares_closed_route_and_binding_contracts() -> 
     binding = schema["$defs"]["providerBinding"]
     assert binding["additionalProperties"] is False
     assert binding["properties"]["provider"]["enum"] == [
-        "local-system-tts-demo",
+        "local",
+        "host-local",
         "elevenlabs",
         "openai",
     ]
     assert binding["properties"]["secret_ref"]["type"] == ["string", "null"]
+    assert "secret_ref" not in binding["required"]
+    assert schema["allOf"]
+    assert schema["x-poddown-cost-ceiling"] is True

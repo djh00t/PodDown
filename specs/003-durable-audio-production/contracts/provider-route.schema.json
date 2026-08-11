@@ -4,6 +4,7 @@
   "title": "PodDown provider route",
   "type": "object",
   "additionalProperties": false,
+  "x-poddown-cost-ceiling": true,
   "required": [
     "route_id",
     "mode",
@@ -29,6 +30,38 @@
     "max_request_cost": {"$ref": "#/$defs/decimal"},
     "max_episode_cost": {"$ref": "#/$defs/decimal"}
   },
+  "allOf": [
+    {
+      "if": {"properties": {"mode": {"const": "deterministic-local"}}},
+      "then": {
+        "properties": {
+          "renderer": {"$ref": "#/$defs/localBinding"},
+          "transcriber": {"$ref": "#/$defs/localBinding"},
+          "fallbacks": {"items": {"$ref": "#/$defs/localBinding"}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"mode": {"const": "host-local"}}},
+      "then": {
+        "properties": {
+          "renderer": {"$ref": "#/$defs/hostLocalBinding"},
+          "transcriber": {"$ref": "#/$defs/hostLocalBinding"},
+          "fallbacks": {"items": {"$ref": "#/$defs/hostLocalBinding"}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"mode": {"const": "live-provider"}}},
+      "then": {
+        "properties": {
+          "renderer": {"$ref": "#/$defs/liveBinding"},
+          "transcriber": {"$ref": "#/$defs/liveBinding"},
+          "fallbacks": {"items": {"$ref": "#/$defs/liveBinding"}}
+        }
+      }
+    }
+  ],
   "$defs": {
     "decimal": {
       "type": "string",
@@ -37,15 +70,10 @@
     "providerBinding": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "provider",
-        "model",
-        "required_capabilities",
-        "secret_ref"
-      ],
+      "required": ["provider", "model", "required_capabilities"],
       "properties": {
         "provider": {
-          "enum": ["local-system-tts-demo", "elevenlabs", "openai"]
+          "enum": ["local", "host-local", "elevenlabs", "openai"]
         },
         "model": {"type": "string", "minLength": 1},
         "voice_asset_id": {"type": ["string", "null"], "minLength": 1},
@@ -58,7 +86,37 @@
           "type": ["string", "null"],
           "pattern": "^(?:env|keychain|secret|vault)://.+$"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"provider": {"enum": ["local", "host-local"]}}},
+          "then": {"properties": {"secret_ref": {"const": null}}},
+          "else": {
+            "required": ["secret_ref"],
+            "properties": {
+              "secret_ref": {"type": "string", "pattern": "^(?:env|keychain|secret|vault)://.+$"}
+            }
+          }
+        }
+      ]
+    },
+    "localBinding": {
+      "allOf": [
+        {"$ref": "#/$defs/providerBinding"},
+        {"properties": {"provider": {"const": "local"}}}
+      ]
+    },
+    "hostLocalBinding": {
+      "allOf": [
+        {"$ref": "#/$defs/providerBinding"},
+        {"properties": {"provider": {"const": "host-local"}}}
+      ]
+    },
+    "liveBinding": {
+      "allOf": [
+        {"$ref": "#/$defs/providerBinding"},
+        {"properties": {"provider": {"enum": ["elevenlabs", "openai"]}}}
+      ]
     }
   }
 }

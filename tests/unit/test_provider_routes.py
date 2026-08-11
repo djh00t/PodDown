@@ -57,3 +57,96 @@ def test_provider_binding_accepts_only_secret_references_not_secret_values() -> 
             required_capabilities=frozenset({"wav"}),
             secret_ref="sk-live-raw-secret",
         )
+
+
+@pytest.mark.parametrize(
+    ("mode", "provider"),
+    [
+        ("deterministic-local", "local"),
+        ("host-local", "host-local"),
+    ],
+)
+def test_local_routes_preserve_their_distinct_provider_identity(
+    mode: str, provider: str
+) -> None:
+    """Each local execution mode accepts only its corresponding provider identity."""
+    binding = ProviderBinding(
+        provider=provider,
+        model="local-model",
+        required_capabilities=frozenset({"wav"}),
+    )
+
+    route = ProviderRoute(
+        route_id=f"{mode}-route",
+        mode=mode,
+        renderer=binding,
+        transcriber=binding,
+        fallbacks=(),
+        pricing_version="local-v1",
+        max_request_cost=Decimal("0"),
+        max_episode_cost=Decimal("0"),
+    )
+
+    assert route.renderer.provider == provider
+
+
+@pytest.mark.parametrize(
+    ("mode", "provider", "secret_ref"),
+    [
+        ("deterministic-local", "host-local", None),
+        ("host-local", "local", None),
+        ("live-provider", "local", None),
+        ("live-provider", "elevenlabs", None),
+        ("host-local", "host-local", "env://LOCAL_SECRET"),
+    ],
+)
+def test_provider_routes_reject_invalid_mode_provider_or_secret_pairings(
+    mode: str, provider: str, secret_ref: str | None
+) -> None:
+    """Route mode and provider identity cannot be substituted for each other."""
+    with pytest.raises(ValueError):
+        binding = ProviderBinding(
+            provider=provider,
+            model="model",
+            required_capabilities=frozenset({"wav"}),
+            secret_ref=secret_ref,
+        )
+        ProviderRoute(
+            route_id="invalid-pairing",
+            mode=mode,
+            renderer=binding,
+            transcriber=binding,
+            fallbacks=(),
+            pricing_version="v1",
+            max_request_cost=Decimal("1"),
+            max_episode_cost=Decimal("1"),
+        )
+
+
+def test_route_record_round_trips_decimal_limits_and_rejects_lower_episode_ceiling(
+) -> None:
+    """JSON records normalize Decimal strings and keep their cost ceiling invariant."""
+    record = {
+        "route_id": "host-route",
+        "mode": "host-local",
+        "renderer": {
+            "provider": "host-local",
+            "model": "say",
+            "required_capabilities": ["wav"],
+        },
+        "transcriber": {
+            "provider": "host-local",
+            "model": "host-asr",
+            "required_capabilities": ["timestamps"],
+        },
+        "fallbacks": [],
+        "pricing_version": "local-v1",
+        "max_request_cost": "0.00",
+        "max_episode_cost": "0.00",
+    }
+
+    assert ProviderRoute.from_record(record).to_record() == record
+    record["max_episode_cost"] = "0.00"
+    record["max_request_cost"] = "0.01"
+    with pytest.raises(ValueError, match="max_episode_cost"):
+        ProviderRoute.from_record(record)

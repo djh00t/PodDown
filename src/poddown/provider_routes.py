@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 
 _MODES = frozenset({"deterministic-local", "host-local", "live-provider"})
-_PROVIDERS = frozenset({"local-system-tts-demo", "elevenlabs", "openai"})
+_PROVIDERS = frozenset({"local", "host-local", "elevenlabs", "openai"})
 _SECRET_REFERENCE_PREFIXES = ("env://", "keychain://", "secret://", "vault://")
+_MODE_PROVIDERS = {
+    "deterministic-local": frozenset({"local"}),
+    "host-local": frozenset({"host-local"}),
+    "live-provider": frozenset({"elevenlabs", "openai"}),
+}
 
 
 def _non_empty_string(name: str, value: object) -> str:
@@ -51,10 +57,46 @@ class ProviderBinding:
             or self.secret_ref in _SECRET_REFERENCE_PREFIXES
         ):
             raise ValueError("secret_ref must be a non-empty secret reference")
-        if self.provider == "local-system-tts-demo" and self.secret_ref is not None:
+        if self.provider in {"local", "host-local"} and self.secret_ref is not None:
             raise ValueError("local provider bindings must not have a secret_ref")
-        if self.provider != "local-system-tts-demo" and self.secret_ref is None:
+        if self.provider in {"elevenlabs", "openai"} and self.secret_ref is None:
             raise ValueError("provider bindings require a secret_ref")
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, object]) -> ProviderBinding:
+        """Create a binding from its schema-compatible JSON record."""
+        allowed = {
+            "provider",
+            "model",
+            "voice_asset_id",
+            "required_capabilities",
+            "secret_ref",
+        }
+        if set(record) - allowed:
+            raise ValueError("provider binding record has unknown fields")
+        capabilities = record.get("required_capabilities")
+        if not isinstance(capabilities, list):
+            raise ValueError("required_capabilities must be a JSON array")
+        return cls(
+            provider=record.get("provider"),  # type: ignore[arg-type]
+            model=record.get("model"),  # type: ignore[arg-type]
+            voice_asset_id=record.get("voice_asset_id"),  # type: ignore[arg-type]
+            required_capabilities=frozenset(capabilities),
+            secret_ref=record.get("secret_ref"),  # type: ignore[arg-type]
+        )
+
+    def to_record(self) -> dict[str, object]:
+        """Return the JSON-safe binding representation without secret values."""
+        record: dict[str, object] = {
+            "provider": self.provider,
+            "model": self.model,
+            "required_capabilities": sorted(self.required_capabilities),
+        }
+        if self.voice_asset_id is not None:
+            record["voice_asset_id"] = self.voice_asset_id
+        if self.secret_ref is not None:
+            record["secret_ref"] = self.secret_ref
+        return record
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,15 +129,73 @@ class ProviderRoute:
         _cost_limit("max_episode_cost", self.max_episode_cost)
         if self.max_episode_cost < self.max_request_cost:
             raise ValueError("max_episode_cost must be at least max_request_cost")
+        allowed_providers = _MODE_PROVIDERS[self.mode]
         bindings = (self.renderer, self.transcriber, *self.fallbacks)
-        if self.mode == "live-provider" and any(
-            binding.provider == "local-system-tts-demo" for binding in bindings
+        if any(binding.provider not in allowed_providers for binding in bindings):
+            raise ValueError("provider binding is incompatible with route mode")
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, object]) -> ProviderRoute:
+        """Create a route from its schema-compatible JSON record."""
+        required = {
+            "route_id",
+            "mode",
+            "renderer",
+            "transcriber",
+            "fallbacks",
+            "pricing_version",
+            "max_request_cost",
+            "max_episode_cost",
+        }
+        if set(record) != required:
+            raise ValueError("provider route record fields are invalid")
+        renderer = record["renderer"]
+        transcriber = record["transcriber"]
+        fallbacks = record["fallbacks"]
+        if not isinstance(renderer, Mapping) or not isinstance(transcriber, Mapping):
+            raise ValueError("provider route bindings must be JSON objects")
+        if not isinstance(fallbacks, list) or not all(
+            isinstance(fallback, Mapping) for fallback in fallbacks
         ):
-            raise ValueError("live-provider routes cannot use local provider bindings")
-        if self.mode != "live-provider" and any(
-            binding.provider != "local-system-tts-demo" for binding in bindings
-        ):
-            raise ValueError("local routes require local provider bindings")
+            raise ValueError("fallbacks must be a JSON array of bindings")
+        return cls(
+            route_id=record["route_id"],  # type: ignore[arg-type]
+            mode=record["mode"],  # type: ignore[arg-type]
+            renderer=ProviderBinding.from_record(renderer),
+            transcriber=ProviderBinding.from_record(transcriber),
+            fallbacks=tuple(
+                ProviderBinding.from_record(fallback) for fallback in fallbacks
+            ),
+            pricing_version=record["pricing_version"],  # type: ignore[arg-type]
+            max_request_cost=_record_cost(
+                "max_request_cost", record["max_request_cost"]
+            ),
+            max_episode_cost=_record_cost(
+                "max_episode_cost", record["max_episode_cost"]
+            ),
+        )
+
+    def to_record(self) -> dict[str, object]:
+        """Return the schema-compatible JSON representation of this route."""
+        return {
+            "route_id": self.route_id,
+            "mode": self.mode,
+            "renderer": self.renderer.to_record(),
+            "transcriber": self.transcriber.to_record(),
+            "fallbacks": [fallback.to_record() for fallback in self.fallbacks],
+            "pricing_version": self.pricing_version,
+            "max_request_cost": format(self.max_request_cost, "f"),
+            "max_episode_cost": format(self.max_episode_cost, "f"),
+        }
+
+
+def _record_cost(name: str, value: object) -> Decimal:
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a Decimal string")
+    try:
+        return _cost_limit(name, Decimal(value))
+    except Exception as error:
+        raise ValueError(f"{name} must be a finite non-negative Decimal") from error
 
 
 __all__ = ["ProviderBinding", "ProviderRoute"]
