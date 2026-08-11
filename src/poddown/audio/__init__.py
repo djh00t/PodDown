@@ -51,6 +51,12 @@ from poddown.audio.selection import (
     rank_candidates,
     select_candidate,
 )
+from poddown.audio.speech import (
+    LocalSpeechError,
+    LocalSpeechRenderer,
+    SpeechProcessRunner,
+    SubprocessSpeechRunner,
+)
 from poddown.audio.workflow import (
     EpisodeRenderWorkflow,
     EpisodeWorkflowInput,
@@ -84,6 +90,8 @@ __all__ = [
     "EpisodeWorkflowResult",
     "LocalEpisodeWorkflowService",
     "LocalOrchestrationError",
+    "LocalSpeechError",
+    "LocalSpeechRenderer",
     "FfmpegResult",
     "FfmpegRunner",
     "Mp3Inspector",
@@ -95,6 +103,8 @@ __all__ = [
     "MasteringSegment",
     "MasteringService",
     "SubprocessMp3Inspector",
+    "SubprocessSpeechRunner",
+    "SpeechProcessRunner",
     "SubprocessFfmpegRunner",
     "MalformedAudioError",
     "ProviderCostEvent",

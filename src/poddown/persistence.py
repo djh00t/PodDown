@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, DecimalException
 from pathlib import Path
+from threading import Lock
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 from uuid import UUID
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
 _TEXT = re.compile(r"^\S[\s\S]{0,254}$")
 _COMMANDS = frozenset({"create", "render", "publish"})
+_DATABASE_INIT_LOCK = Lock()
 
 
 class PersistenceError(ValueError):
@@ -280,16 +282,17 @@ def _migrate_command_receipts_schema(connection: sqlite3.Connection) -> None:
 
 
 def _initialize_database(path: Path) -> None:
-    connection = sqlite3.connect(path, timeout=10.0)
-    try:
-        connection.execute("PRAGMA busy_timeout = 10000")
-        connection.execute("PRAGMA journal_mode = WAL")
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.executescript(_SCHEMA)
-        _migrate_command_receipts_schema(connection)
-        connection.commit()
-    finally:
-        connection.close()
+    with _DATABASE_INIT_LOCK:
+        connection = sqlite3.connect(path, timeout=10.0)
+        try:
+            connection.execute("PRAGMA busy_timeout = 10000")
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.executescript(_SCHEMA)
+            _migrate_command_receipts_schema(connection)
+            connection.commit()
+        finally:
+            connection.close()
 
 
 @contextmanager

@@ -3,12 +3,73 @@
 from __future__ import annotations
 
 import json
+import wave
+from decimal import Decimal
+from io import BytesIO
 
+import pytest
 from pytest_bdd import given, scenarios, then, when
 
+from poddown.audio import DeterministicLocalRenderer
+from poddown.audio.contracts import RenderedAudio, RenderRequest
+from poddown.domain import ProviderUsage
 from poddown.packages import REQUIRED_PACKAGE_ARTIFACTS
 
 scenarios("../features/reference_demo.feature")
+
+
+class FakeLocalSpeechRenderer:
+    """Render local-speech BDD fixtures without invoking a host speech engine."""
+
+    capabilities = DeterministicLocalRenderer.capabilities
+    provider = "host-local"
+    model = "host-local-tts-v1"
+    mode = "local-system-tts-demo"
+
+    def __init__(
+        self,
+        *,
+        frames: int = 220_500,
+        sample: int = 500,
+        provenance: dict[str, object] | None = None,
+        audio_bytes: bytes | None = None,
+    ) -> None:
+        self.requests: list[RenderRequest] = []
+        self._frames = frames
+        self._sample = sample
+        self._provenance = provenance
+        self._audio_bytes = audio_bytes
+
+    def provenance(self) -> dict[str, object]:
+        """Return the stable fake engine evidence asserted by this feature."""
+        if self._provenance is not None:
+            return self._provenance
+        return {"engine": "fake-local-speech", "mode": self.mode}
+
+    async def render(self, request: RenderRequest) -> RenderedAudio:
+        """Return a quiet five-second WAV with the requested provider identity."""
+        self.requests.append(request)
+        audio_bytes = self._audio_bytes
+        if audio_bytes is None:
+            stream = BytesIO()
+            with wave.open(stream, "wb") as output:
+                output.setnchannels(1)
+                output.setsampwidth(2)
+                output.setframerate(request.sample_rate_hz)
+                output.writeframes(
+                    self._sample.to_bytes(2, "little", signed=True) * self._frames
+                )
+            audio_bytes = stream.getvalue()
+        return RenderedAudio(
+            audio_bytes,
+            request.provider,
+            request.model,
+            f"fake-{request.segment_id}-{request.take_index}",
+            ProviderUsage(len(request.expected_spoken_text), len(audio_bytes)),
+            Decimal("0"),
+            "wav",
+            request.sample_rate_hz,
+        )
 
 
 @given("an empty reference demo output directory")
@@ -21,6 +82,134 @@ def run_demo(context):
     from poddown.demo import run_reference_demo
 
     context.values["result"] = run_reference_demo(context.values["output_dir"])
+
+
+@given("an empty local speech reference demo output directory")
+def empty_local_speech_output(context, tmp_path):
+    context.values["output_dir"] = tmp_path / "reference-demo-local-speech"
+
+
+@when("the local speech reference episode demo is run")
+def run_local_speech_demo(context):
+    from poddown.demo import run_reference_demo
+
+    renderer = FakeLocalSpeechRenderer()
+    context.values["result"] = run_reference_demo(
+        context.values["output_dir"], renderer=renderer
+    )
+    context.values["renderer"] = renderer
+
+
+@then("the result records host-local speech provenance")
+def local_speech_provenance(context):
+    result = context.values["result"].to_dict()
+    package = json.loads(
+        next((context.values["output_dir"] / "packages").glob("*.json")).read_text(
+            encoding="utf-8"
+        )
+    )
+    details = package["provenance"]["details"]
+
+    assert result["mode"] == "local-system-tts-demo"
+    assert details["provider"]["provider"] == "host-local"
+    assert details["provider"]["model"] == "host-local-tts-v1"
+    assert details["workflow"]["renderer"]["provenance"]["engine"] == (
+        "fake-local-speech"
+    )
+
+
+@then("the local speech renderer receives canonical pronunciation text")
+def renderer_receives_canonical_pronunciation_text(context):
+    request = next(
+        request
+        for request in context.values["renderer"].requests
+        if "LiDAR" in request.expected_spoken_text
+        or "LIE-dar" in request.expected_spoken_text
+    )
+
+    assert "LIE-dar" in request.expected_spoken_text
+    assert "LiDAR" not in request.expected_spoken_text
+    assert context.values["result"].critical_token_accuracy == 1.0
+
+
+@given("a completed local speech reference episode demo")
+def completed_local_speech_demo(context, tmp_path):
+    from poddown.demo import run_reference_demo
+
+    context.values["output_dir"] = tmp_path / "reference-demo-local-speech"
+    run_reference_demo(context.values["output_dir"], renderer=FakeLocalSpeechRenderer())
+
+
+@when("it is resumed with mismatched local renderer provenance")
+def resume_with_mismatched_local_renderer(context):
+    from poddown.demo import run_reference_demo
+
+    renderer = FakeLocalSpeechRenderer(
+        provenance={"engine": "other-local-speech", "mode": "local-system-tts-demo"}
+    )
+    context.values["renderer"] = renderer
+    context.values["resume_error"] = pytest.raises(
+        ValueError,
+        run_reference_demo,
+        context.values["output_dir"],
+        resume=True,
+        renderer=renderer,
+    )
+
+
+@then("local speech resume fails before renderer dispatch")
+def resume_fails_before_dispatch(context):
+    assert "renderer identity" in str(context.values["resume_error"].value)
+    assert context.values["renderer"].requests == []
+
+
+@when("unsafe local speech renderers are run")
+def run_unsafe_local_speech_renderers(context):
+    from poddown.demo import run_reference_demo
+
+    cases = (
+        FakeLocalSpeechRenderer(frames=44_100),
+        FakeLocalSpeechRenderer(sample=32_767),
+        FakeLocalSpeechRenderer(provenance={}),
+    )
+    errors: list[ValueError] = []
+    for index, renderer in enumerate(cases):
+        with pytest.raises(ValueError) as error:
+            run_reference_demo(
+                context.values["output_dir"] / str(index), renderer=renderer
+            )
+        errors.append(error.value)
+    context.values["unsafe_errors"] = errors
+    context.values["unsafe_renderers"] = cases
+
+
+@then("each unsafe local speech renderer fails before publication")
+def unsafe_local_speech_fails(context):
+    assert "media inspection" in str(context.values["unsafe_errors"][0])
+    assert "failed hard gates" in str(context.values["unsafe_errors"][1])
+    assert "provenance" in str(context.values["unsafe_errors"][2])
+    assert context.values["unsafe_renderers"][2].requests == []
+
+
+@when("malformed local speech renderer output is run")
+def run_malformed_local_speech_renderer(context):
+    from poddown.audio.render import RenderRejectedError
+    from poddown.demo import run_reference_demo
+
+    output = context.values["output_dir"]
+    with pytest.raises(RenderRejectedError) as error:
+        run_reference_demo(
+            output, renderer=FakeLocalSpeechRenderer(audio_bytes=b"not-a-wav")
+        )
+    context.values["malformed_output_error"] = error.value
+
+
+@then("malformed local speech output fails before packaging and publication")
+def malformed_local_speech_fails(context):
+    output = context.values["output_dir"]
+    assert "truncated WAV container" in str(context.values["malformed_output_error"])
+    assert not (output / "packages").exists()
+    assert not (output / "published").exists()
 
 
 @then("the result records a validated source profile and two speakers")

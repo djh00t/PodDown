@@ -25,6 +25,12 @@ disabled or bounded and observable to prevent multiplicative retries.
 
 ## ElevenLabs rendering
 
+ElevenLabs is a separate, explicit live rendering mode. It requires
+`ELEVENLABS_API_KEY`, an approved provider voice mapping, durable rights/consent
+evidence, and spending authorization before dispatch. It is never a fallback for
+the `local-system-tts-demo` reference demo, which uses host speech without API
+keys or provider spend and fails closed when its local tools are unavailable.
+
 - Use an explicit production model and provider voice ID resolved from an
   authorized, tenant-scoped `VoiceAsset`.
 - Send one immutable segment per candidate request. Use performance controls only;

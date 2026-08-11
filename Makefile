@@ -35,4 +35,4 @@ publish: build
 	uv publish
 
 demo:
-	uv run poddown-demo --output "$(DEMO_OUTPUT)"
+	uv run poddown-demo --audio-mode local-speech --output "$(DEMO_OUTPUT)"
