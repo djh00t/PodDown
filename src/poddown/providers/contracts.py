@@ -2,13 +2,94 @@
 
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
+from types import MappingProxyType
 from typing import Protocol
 
 from poddown.domain import CandidateResult, ProviderUsage
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_PROVIDER_EVIDENCE_OPERATIONS = frozenset({"adapt", "render", "transcribe", "publish"})
+_PROVIDER_EVIDENCE_KINDS = frozenset({"synthetic", "host-local", "provider-live"})
+
+
+@dataclass(frozen=True)
+class ProviderEvidence:
+    """Normalized immutable metadata for one provider operation."""
+
+    operation: str
+    provider: str
+    request_id: str
+    model: str
+    input_sha256: str
+    output_sha256: str
+    usage: Mapping[str, int]
+    currency: str
+    estimated_cost: Decimal
+    reconciled_cost: Decimal | None
+    latency_ms: int
+    retry_count: int
+    occurred_at: datetime
+    evidence_kind: str
+
+    def __post_init__(self) -> None:
+        if self.operation not in _PROVIDER_EVIDENCE_OPERATIONS:
+            raise ValueError("operation must be a supported provider operation")
+        if self.evidence_kind not in _PROVIDER_EVIDENCE_KINDS:
+            raise ValueError("evidence_kind must be a supported evidence kind")
+        for name, value in (
+            ("provider", self.provider),
+            ("request_id", self.request_id),
+            ("model", self.model),
+            ("currency", self.currency),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be non-empty")
+        for name, value in (
+            ("input_sha256", self.input_sha256),
+            ("output_sha256", self.output_sha256),
+        ):
+            if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
+                raise ValueError(f"{name} must be a lowercase SHA-256 digest")
+        if not isinstance(self.usage, Mapping) or not self.usage:
+            raise ValueError("usage must be a non-empty Mapping[str, int]")
+        normalized_usage: dict[str, int] = {}
+        for usage_key, usage_value in self.usage.items():
+            if (
+                not isinstance(usage_key, str)
+                or not usage_key
+                or type(usage_value) is not int
+                or usage_value < 0
+            ):
+                raise ValueError(
+                    "usage must contain non-empty keys and non-negative integers"
+                )
+            normalized_usage[usage_key] = usage_value
+        object.__setattr__(self, "usage", MappingProxyType(normalized_usage))
+        for cost_name, cost_value in (
+            ("estimated_cost", self.estimated_cost),
+            ("reconciled_cost", self.reconciled_cost),
+        ):
+            if cost_value is not None and (
+                not isinstance(cost_value, Decimal)
+                or not cost_value.is_finite()
+                or cost_value < 0
+            ):
+                raise ValueError(f"{cost_name} must be a finite non-negative Decimal")
+        for counter_name, counter_value in (
+            ("latency_ms", self.latency_ms),
+            ("retry_count", self.retry_count),
+        ):
+            if type(counter_value) is not int or counter_value < 0:
+                raise ValueError(f"{counter_name} must be a non-negative integer")
+        if (
+            not isinstance(self.occurred_at, datetime)
+            or self.occurred_at.tzinfo is not UTC
+        ):
+            raise ValueError("occurred_at must be a UTC datetime")
 
 
 @dataclass(frozen=True)
