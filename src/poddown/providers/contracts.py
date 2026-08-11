@@ -4,16 +4,25 @@ import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import MappingProxyType
 from typing import Protocol
 
 from poddown.domain import CandidateResult, ProviderUsage
+from poddown.evidence import EvidenceKind
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_CURRENCY = re.compile(r"^[A-Z]{3}$")
+_TEXT = re.compile(r"^\S[\s\S]{0,254}$")
 _PROVIDER_EVIDENCE_OPERATIONS = frozenset({"adapt", "render", "transcribe", "publish"})
-_PROVIDER_EVIDENCE_KINDS = frozenset({"synthetic", "host-local", "provider-live"})
+
+
+def provider_usage_to_mapping(usage: ProviderUsage) -> dict[str, int]:
+    """Convert established provider usage to frozen evidence metering names."""
+    if not isinstance(usage, ProviderUsage):
+        raise ValueError("usage must be ProviderUsage")
+    return {"input_units": usage.input_units, "output_units": usage.output_units}
 
 
 @dataclass(frozen=True)
@@ -36,18 +45,25 @@ class ProviderEvidence:
     evidence_kind: str
 
     def __post_init__(self) -> None:
-        if self.operation not in _PROVIDER_EVIDENCE_OPERATIONS:
+        if (
+            not isinstance(self.operation, str)
+            or self.operation not in _PROVIDER_EVIDENCE_OPERATIONS
+        ):
             raise ValueError("operation must be a supported provider operation")
-        if self.evidence_kind not in _PROVIDER_EVIDENCE_KINDS:
+        if self.evidence_kind not in EvidenceKind:
             raise ValueError("evidence_kind must be a supported evidence kind")
         for name, value in (
             ("provider", self.provider),
             ("request_id", self.request_id),
             ("model", self.model),
-            ("currency", self.currency),
         ):
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} must be non-empty")
+        if (
+            not isinstance(self.currency, str)
+            or _CURRENCY.fullmatch(self.currency) is None
+        ):
+            raise ValueError("currency must be an uppercase ISO-4217 code")
         for name, value in (
             ("input_sha256", self.input_sha256),
             ("output_sha256", self.output_sha256),
@@ -60,7 +76,7 @@ class ProviderEvidence:
         for usage_key, usage_value in self.usage.items():
             if (
                 not isinstance(usage_key, str)
-                or not usage_key
+                or _TEXT.fullmatch(usage_key) is None
                 or type(usage_value) is not int
                 or usage_value < 0
             ):
@@ -87,9 +103,10 @@ class ProviderEvidence:
                 raise ValueError(f"{counter_name} must be a non-negative integer")
         if (
             not isinstance(self.occurred_at, datetime)
-            or self.occurred_at.tzinfo is not UTC
+            or self.occurred_at.utcoffset() != timedelta(0)
         ):
             raise ValueError("occurred_at must be a UTC datetime")
+        object.__setattr__(self, "occurred_at", self.occurred_at.astimezone(UTC))
 
 
 @dataclass(frozen=True)
