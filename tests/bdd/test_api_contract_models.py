@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from pytest_bdd import given, scenarios, then
+from decimal import Decimal
 
-from poddown.api.models import EpisodeFailure, EpisodeStatusResponse
+from pydantic import ValidationError
+from pytest_bdd import given, scenarios, then, when
+
+from poddown.api.models import (
+    EpisodeFailure,
+    EpisodeStatusResponse,
+    RenderCommandRequest,
+)
 
 scenarios("../features/api_contract_models.feature")
 
@@ -47,3 +54,31 @@ def safe_status_projection(status: EpisodeStatusResponse) -> None:
         "package_manifest_checksum": "a" * 64,
         "publication_id": "publication-001",
     }
+
+
+@given(
+    "a JSON render request with a decimal-string cost ceiling",
+    target_fixture="render_request",
+)
+def decimal_string_render_request() -> RenderCommandRequest:
+    """Build a request from its JSON wire representation."""
+    return RenderCommandRequest.model_validate_json('{"cost_ceiling":"12.50"}')
+
+
+@when("numeric JSON cost ceiling is submitted", target_fixture="numeric_rejected")
+def numeric_json_cost_ceiling() -> bool:
+    """Attempt a numeric JSON cost ceiling through the real model boundary."""
+    try:
+        RenderCommandRequest.model_validate_json('{"cost_ceiling":12.50}')
+    except ValidationError:
+        return True
+    return False
+
+
+@then("the string ceiling is preserved and the numeric ceiling is rejected")
+def decimal_string_cost_contract(
+    render_request: RenderCommandRequest, numeric_rejected: bool
+) -> None:
+    """Require the frozen JSON contract to reject a numeric cost ceiling."""
+    assert render_request.cost_ceiling == Decimal("12.50")
+    assert numeric_rejected is True

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema, field_validator
 
 
 class _FrozenModel(BaseModel):
@@ -89,7 +89,17 @@ class RenderCommandRequest(_FrozenModel):
     execution_mode: Literal[
         "deterministic-local", "host-local", "live-provider"
     ] | None = None
-    cost_ceiling: Decimal | None = Field(default=None, gt=0)
+    cost_ceiling: (
+        Annotated[Decimal, WithJsonSchema({"type": "string"})] | None
+    ) = Field(default=None, gt=0)
+
+    @field_validator("cost_ceiling", mode="before")
+    @classmethod
+    def require_decimal_string_cost_ceiling(cls, value: object) -> object:
+        """Reject non-string cost ceilings before Decimal coercion."""
+        if value is None or isinstance(value, str):
+            return value
+        raise ValueError("cost_ceiling must be a decimal string")
 
 
 class PublishCommandRequest(_FrozenModel):
@@ -97,6 +107,14 @@ class PublishCommandRequest(_FrozenModel):
 
     target_id: str = Field(min_length=1)
     approval_id: UUID
+
+    @field_validator("target_id")
+    @classmethod
+    def reject_blank_target_id(cls, value: str) -> str:
+        """Reject whitespace-only publication targets without normalizing IDs."""
+        if not value.strip():
+            raise ValueError("target_id must not be blank")
+        return value
 
     @field_validator("approval_id")
     @classmethod

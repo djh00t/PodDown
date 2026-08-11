@@ -151,7 +151,7 @@ def test_render_command_request_preserves_optional_route_mode_and_cost_ceiling(
     request = RenderCommandRequest(
         provider_route_id="01986e76-4ec6-7b00-8000-000000000003",
         execution_mode="live-provider",
-        cost_ceiling=Decimal("12.50"),
+        cost_ceiling="12.50",
     )
 
     assert request.model_dump(mode="json") == {
@@ -159,6 +159,26 @@ def test_render_command_request_preserves_optional_route_mode_and_cost_ceiling(
         "execution_mode": "live-provider",
         "cost_ceiling": "12.50",
     }
+
+
+def test_render_command_cost_ceiling_has_a_decimal_string_json_contract() -> None:
+    """Catch wire schemas that admit numeric cost ceilings."""
+    schema = RenderCommandRequest.model_json_schema()
+    wire_types = {
+        option["type"]
+        for option in schema["properties"]["cost_ceiling"]["anyOf"]
+    }
+    accepted = RenderCommandRequest.model_validate_json(
+        '{"cost_ceiling":"12.50"}'
+    )
+    bodyless = RenderCommandRequest.model_validate_json("{}")
+
+    with pytest.raises(ValidationError):
+        RenderCommandRequest.model_validate_json('{"cost_ceiling":12.50}')
+
+    assert wire_types == {"string", "null"}
+    assert accepted.cost_ceiling == Decimal("12.50")
+    assert bodyless.cost_ceiling is None
 
 
 def test_publish_command_request_requires_target_and_uuidv7_approval() -> None:
@@ -172,6 +192,25 @@ def test_publish_command_request_requires_target_and_uuidv7_approval() -> None:
         "target_id": "transistor-show-001",
         "approval_id": "01986e76-4ec6-7b00-8000-000000000004",
     }
+
+
+@pytest.mark.parametrize("target_id", ["", "   ", "\n"])
+def test_publish_command_request_rejects_blank_target_id(target_id: str) -> None:
+    """Catch publish requests that accept unusable target identifiers."""
+    with pytest.raises(ValidationError):
+        PublishCommandRequest(
+            target_id=target_id,
+            approval_id="01986e76-4ec6-7b00-8000-000000000004",
+        )
+
+
+def test_publish_command_request_rejects_non_uuidv7_approval() -> None:
+    """Catch publish approvals that do not use the required UUIDv7 identity."""
+    with pytest.raises(ValidationError, match="UUIDv7"):
+        PublishCommandRequest(
+            target_id="transistor-show-001",
+            approval_id="550e8400-e29b-41d4-a716-446655440000",
+        )
 
 
 def test_status_exposes_production_links_and_only_safe_failure_fields() -> None:
