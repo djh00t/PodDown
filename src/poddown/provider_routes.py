@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
@@ -9,6 +10,7 @@ from decimal import Decimal
 _MODES = frozenset({"deterministic-local", "host-local", "live-provider"})
 _PROVIDERS = frozenset({"local", "host-local", "elevenlabs", "openai"})
 _SECRET_REFERENCE_PREFIXES = ("env://", "keychain://", "secret://", "vault://")
+_DECIMAL_PATTERN = re.compile(r"^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$")
 _MODE_PROVIDERS = {
     "deterministic-local": frozenset({"local"}),
     "host-local": frozenset({"host-local"}),
@@ -72,10 +74,15 @@ class ProviderBinding:
             "required_capabilities",
             "secret_ref",
         }
-        if set(record) - allowed:
-            raise ValueError("provider binding record has unknown fields")
+        required = {"provider", "model", "required_capabilities"}
+        if set(record) - allowed or not required <= set(record):
+            raise ValueError("provider binding record fields are invalid")
         capabilities = record.get("required_capabilities")
-        if not isinstance(capabilities, list):
+        if (
+            not isinstance(capabilities, list)
+            or not all(isinstance(capability, str) for capability in capabilities)
+            or len(set(capabilities)) != len(capabilities)
+        ):
             raise ValueError("required_capabilities must be a JSON array")
         return cls(
             provider=record.get("provider"),  # type: ignore[arg-type]
@@ -190,7 +197,7 @@ class ProviderRoute:
 
 
 def _record_cost(name: str, value: object) -> Decimal:
-    if not isinstance(value, str):
+    if not isinstance(value, str) or _DECIMAL_PATTERN.fullmatch(value) is None:
         raise ValueError(f"{name} must be a Decimal string")
     try:
         return _cost_limit(name, Decimal(value))

@@ -4,7 +4,10 @@
   "title": "PodDown provider route",
   "type": "object",
   "additionalProperties": false,
-  "x-poddown-cost-ceiling": true,
+  "x-poddown-cost-ceiling": {
+    "description": "max_episode_cost must be at least max_request_cost",
+    "enforced_by": "ProviderRoute.from_record"
+  },
   "required": [
     "route_id",
     "mode",
