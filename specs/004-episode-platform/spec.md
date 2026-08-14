@@ -51,3 +51,17 @@ reconciled cost. Correctness gates never depend on billing state in the MVP.
 6. Usage and provider costs reconcile to every dispatched provider request.
 7. State transitions reject regression and illegal publish-before-QA paths.
 
+## Production-closure API and persistence contract
+
+Render requests accept an optional provider route, execution mode and Decimal-string
+cost ceiling; bodyless requests retain the configured default route. Publish requests
+require a target ID and scoped UUIDv7 approval ID. Command receipts use the states
+`queued`, `dispatched`, `running`, `completed` and `failed`, and status responses
+include immutable episode version, workflow ID, package manifest checksum, publication
+ID and safe structured failure where available.
+
+PostgreSQL is authoritative for tenant/project/episode/version, command, workflow,
+artifact, QA, publication, approval, usage/cost and outbox state. UUIDv7 keys,
+optimistic versions, tenant predicates and row-level security enforce isolation.
+Provider request IDs are unique in usage/cost records so workflow replay cannot create
+duplicate provider requests or charges.

@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
+from hashlib import sha256
 from pathlib import Path
 from uuid import UUID
 
@@ -96,6 +97,25 @@ def test_episode_survives_restart_and_hides_other_tenants(tmp_path: Path) -> Non
         second.get(OTHER_TENANT_ID, EPISODE_ID)
     with pytest.raises(EpisodeNotFound):
         second.get(TENANT_ID, UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b16"))
+
+
+def test_episode_persists_package_and_manifest_digests_as_distinct_fields(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "poddown.sqlite3"
+    package_bytes = b"package bytes"
+    record = replace(
+        episode_record(),
+        package_sha256=sha256(package_bytes).hexdigest(),
+        package_manifest_sha256="c" * 64,
+    )
+
+    SQLiteEpisodeRepository(database).create(record)
+
+    restored = SQLiteEpisodeRepository(database).get(TENANT_ID, EPISODE_ID)
+    assert restored.package_sha256 == record.package_sha256
+    assert restored.package_manifest_sha256 == record.package_manifest_sha256
+    assert restored.package_sha256 != restored.package_manifest_sha256
 
 
 def test_database_initializes_wal_mode(tmp_path: Path) -> None:

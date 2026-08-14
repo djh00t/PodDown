@@ -56,3 +56,20 @@ naturalness, pacing, turn-taking, consistency, artifact absence and subscription
 readiness; every dimension is at least 4/5 and mean subscription readiness is at
 least 4/5 before the vertical slice is accepted.
 
+## Production-closure evidence contract
+
+Every execution records the versioned evidence taxonomy in
+`contracts/execution-evidence.schema.json`. Deterministic-local output uses
+`synthetic-bytes`/`script-derived` evidence, host-local speech uses `host-tts`, and
+only an explicitly opted-in live-provider run may use `provider-response` and
+`provider-asr`. Script-derived transcription is structural QA evidence and cannot
+claim provider fidelity. `live_eligible` is true only when live renderer and ASR
+evidence, complete provider metadata, valid voice consent, cost evidence and 100%
+critical-token accuracy are all present. Missing or inconsistent evidence blocks
+packaging and publication.
+
+The high-level `EpisodeProductionWorkflow` executes immutable stages in order:
+`validate_source`, `prepare_content`, `render_segments`, `master`,
+`final_master_transcription`, `package`, and optional `publish`. Every stage commits
+authoritative state and its outbox event transactionally, is replay-safe, and
+rerenders only failed segments.

@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poddown.dev/schemas/v1/provider-route.schema.json",
+  "title": "PodDown provider route",
+  "type": "object",
+  "additionalProperties": false,
+  "x-poddown-validation-boundary": {
+    "description": "JSON Schema validates route-record structure; ProviderRoute.from_record is the package-owned normalizer and enforces max_episode_cost >= max_request_cost.",
+    "normalizer": "ProviderRoute.from_record",
+    "normalizer_enforces": ["max_episode_cost >= max_request_cost"]
+  },
+  "required": [
+    "route_id",
+    "mode",
+    "renderer",
+    "transcriber",
+    "fallbacks",
+    "pricing_version",
+    "max_request_cost",
+    "max_episode_cost"
+  ],
+  "properties": {
+    "route_id": {"$ref": "#/$defs/nonWhitespaceString"},
+    "mode": {
+      "enum": ["deterministic-local", "host-local", "live-provider"]
+    },
+    "renderer": {"$ref": "#/$defs/providerBinding"},
+    "transcriber": {"$ref": "#/$defs/providerBinding"},
+    "fallbacks": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/providerBinding"}
+    },
+    "pricing_version": {"$ref": "#/$defs/nonWhitespaceString"},
+    "max_request_cost": {"$ref": "#/$defs/decimal"},
+    "max_episode_cost": {"$ref": "#/$defs/decimal"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"mode": {"const": "deterministic-local"}}},
+      "then": {
+        "properties": {
+          "renderer": {"$ref": "#/$defs/localBinding"},
+          "transcriber": {"$ref": "#/$defs/localBinding"},
+          "fallbacks": {"items": {"$ref": "#/$defs/localBinding"}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"mode": {"const": "host-local"}}},
+      "then": {
+        "properties": {
+          "renderer": {"$ref": "#/$defs/hostLocalBinding"},
+          "transcriber": {"$ref": "#/$defs/hostLocalBinding"},
+          "fallbacks": {"items": {"$ref": "#/$defs/hostLocalBinding"}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"mode": {"const": "live-provider"}}},
+      "then": {
+        "properties": {
+          "renderer": {"$ref": "#/$defs/liveBinding"},
+          "transcriber": {"$ref": "#/$defs/liveBinding"},
+          "fallbacks": {"items": {"$ref": "#/$defs/liveBinding"}}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonWhitespaceString": {
+      "type": "string",
+      "pattern": ".*\\S.*"
+    },
+    "decimal": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+    },
+    "providerBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model", "required_capabilities"],
+      "properties": {
+        "provider": {
+          "enum": ["local", "host-local", "elevenlabs", "openai"]
+        },
+        "model": {"$ref": "#/$defs/nonWhitespaceString"},
+        "voice_asset_id": {
+          "type": ["string", "null"],
+          "pattern": ".*\\S.*"
+        },
+        "required_capabilities": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/nonWhitespaceString"},
+          "uniqueItems": true
+        },
+        "secret_ref": {
+          "type": ["string", "null"],
+          "pattern": "^(?:env|keychain|secret|vault)://\\S+$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"provider": {"enum": ["local", "host-local"]}}},
+          "then": {"properties": {"secret_ref": {"const": null}}},
+          "else": {
+            "required": ["secret_ref"],
+            "properties": {
+              "secret_ref": {"type": "string", "pattern": "^(?:env|keychain|secret|vault)://\\S+$"}
+            }
+          }
+        }
+      ]
+    },
+    "localBinding": {
+      "allOf": [
+        {"$ref": "#/$defs/providerBinding"},
+        {"properties": {"provider": {"const": "local"}}}
+      ]
+    },
+    "hostLocalBinding": {
+      "allOf": [
+        {"$ref": "#/$defs/providerBinding"},
+        {"properties": {"provider": {"const": "host-local"}}}
+      ]
+    },
+    "liveBinding": {
+      "allOf": [
+        {"$ref": "#/$defs/providerBinding"},
+        {"properties": {"provider": {"enum": ["elevenlabs", "openai"]}}}
+      ]
+    }
+  }
+}

@@ -33,6 +33,7 @@ CREATED_AT = datetime(2026, 8, 10, 12, 0, tzinfo=UTC)
 SOURCE = b"---\npoddown:\n  profile: spoken-word\n---\n# Tenant-scoped episode\n"
 PACKAGE_CHECKSUM = sha256(b"verified immutable package bytes").hexdigest()
 PACKAGE_BYTES = b"verified immutable package bytes"
+PACKAGE_MANIFEST_SHA256 = "b" * 64
 
 
 def _service() -> EpisodeApplicationService:
@@ -426,6 +427,7 @@ def test_publish_requires_explicit_authorization_and_preserves_package_identity(
         expected_version=qa_passed.version,
         package_sha256=PACKAGE_CHECKSUM,
         package_bytes=PACKAGE_BYTES,
+        package_manifest_sha256=PACKAGE_MANIFEST_SHA256,
     )
 
     with pytest.raises(PublishAuthorizationError):
@@ -445,6 +447,7 @@ def test_publish_requires_explicit_authorization_and_preserves_package_identity(
 
     assert published.state is EpisodeState.PUBLISHED
     assert published.package_sha256 == PACKAGE_CHECKSUM
+    assert published.package_manifest_sha256 == PACKAGE_MANIFEST_SHA256
 
 
 def test_transition_rejects_a_stale_optimistic_version_without_mutating_record():
