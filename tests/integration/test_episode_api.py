@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
+from hashlib import sha256
 from uuid import UUID
 
 import pytest
@@ -281,6 +282,64 @@ def test_failed_status_projects_only_safe_failure_fields() -> None:
     assert "SECRET_SOURCE" not in str(response.json())
     assert "TOKEN" not in str(response.json())
     assert "parser trace" not in str(response.json())
+
+
+def test_status_reports_manifest_digest_separately_from_package_bytes_digest() -> None:
+    repository = InMemoryEpisodeRepository()
+    service = EpisodeApplicationService(
+        repository=repository,
+        available_profiles={PROFILE},
+    )
+    record = service.create_episode(
+        EpisodeCreateCommand(
+            tenant_id=UUID(TENANT_ID),
+            project_id=UUID(PROJECT_ID),
+            idempotency_key="manifest-status-001",
+            source_bytes=SOURCE.encode("utf-8"),
+            profile_name=PROFILE,
+        )
+    )
+    scripted = service.transition(
+        UUID(TENANT_ID),
+        record.episode_id,
+        EpisodeState.SCRIPTED,
+        expected_version=record.version,
+    )
+    rendered = service.transition(
+        UUID(TENANT_ID),
+        record.episode_id,
+        EpisodeState.RENDERED,
+        expected_version=scripted.version,
+    )
+    qa_passed = service.transition(
+        UUID(TENANT_ID),
+        record.episode_id,
+        EpisodeState.QA_PASSED,
+        expected_version=rendered.version,
+        qa_evidence={"status": "pass"},
+    )
+    package_bytes = b"package bytes have a different identity"
+    package_sha256 = sha256(package_bytes).hexdigest()
+    manifest_sha256 = "b" * 64
+    packaged = service.transition(
+        UUID(TENANT_ID),
+        record.episode_id,
+        EpisodeState.PACKAGED,
+        expected_version=qa_passed.version,
+        package_sha256=package_sha256,
+        package_bytes=package_bytes,
+        package_manifest_sha256=manifest_sha256,
+    )
+
+    with TestClient(create_app(service)) as packaged_client:
+        response = packaged_client.get(
+            f"/v1/episodes/{packaged.episode_id}/status",
+            headers=_headers(key="manifest-status-read-001"),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["package_manifest_sha256"] == manifest_sha256
+    assert response.json()["package_manifest_sha256"] != package_sha256
 
 
 @pytest.mark.parametrize(

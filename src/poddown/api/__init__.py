@@ -414,7 +414,7 @@ def create_app(
             failure=_safe_failure(record.failure)
             if record.failure is not None
             else None,
-            package_manifest_sha256=record.package_sha256,
+            package_manifest_sha256=record.package_manifest_sha256,
         )
 
     @app.post("/v1/episodes/{episode_id}/render", status_code=202)

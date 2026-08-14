@@ -29,6 +29,38 @@ def test_accepts_explicitly_labelled_deterministic_and_host_local_evidence() -> 
 
 
 @pytest.mark.parametrize(
+    ("mode", "render_evidence", "transcript_evidence", "publication_scope"),
+    [
+        ("deterministic-local", "provider-response", "script-derived", "filesystem"),
+        ("deterministic-local", "synthetic-bytes", "provider-asr", "filesystem"),
+        ("deterministic-local", "synthetic-bytes", "script-derived", "external"),
+        ("host-local", "synthetic-bytes", "script-derived", "filesystem"),
+        ("host-local", "host-tts", "provider-asr", "filesystem"),
+        ("host-local", "host-tts", "script-derived", "external"),
+        ("live-provider", "synthetic-bytes", "script-derived", "object-storage"),
+        ("live-provider", "provider-response", "script-derived", "object-storage"),
+    ],
+)
+def test_rejects_evidence_that_does_not_match_its_execution_mode(
+    mode: str,
+    render_evidence: str,
+    transcript_evidence: str,
+    publication_scope: str,
+) -> None:
+    record = {
+        "schema_version": "1.0",
+        "mode": mode,
+        "render_evidence": render_evidence,
+        "transcript_evidence": transcript_evidence,
+        "publication_scope": publication_scope,
+        "live_eligible": False,
+    }
+
+    with pytest.raises(ValueError, match=mode):
+        validate_execution_evidence(record)
+
+
+@pytest.mark.parametrize(
     ("field", "value", "message"),
     [
         ("mode", "sandbox", "mode"),
@@ -188,6 +220,40 @@ def test_accepts_complete_live_provider_evidence_with_request_id_arrays() -> Non
     }
 
     assert validate_execution_evidence(record) == record
+
+
+@pytest.mark.parametrize(
+    ("field", "provider"),
+    [("renderer", "local"), ("transcriber", "host-local")],
+)
+def test_rejects_live_eligible_evidence_from_nonproduction_provider(
+    field: str, provider: str
+) -> None:
+    record = {
+        "schema_version": "1.0",
+        "mode": "live-provider",
+        "render_evidence": "provider-response",
+        "transcript_evidence": "provider-asr",
+        "publication_scope": "object-storage",
+        "live_eligible": True,
+        "renderer": {
+            "provider": "elevenlabs",
+            "model": "eleven_multilingual_v2",
+            "request_ids": ["render-1"],
+        },
+        "transcriber": {
+            "provider": "openai",
+            "model": "gpt-4o-transcribe",
+            "request_ids": ["asr-1"],
+        },
+        "consent_valid": True,
+        "critical_token_accuracy": 1.0,
+        "cost_evidence": {"currency": "USD", "estimated": 1.5, "reconciled": 1.5},
+    }
+    record[field]["provider"] = provider
+
+    with pytest.raises(ValueError, match=f"{field}\\.provider"):
+        validate_execution_evidence(record)
 
 
 def test_rejects_live_eligible_evidence_with_boolean_token_accuracy() -> None:

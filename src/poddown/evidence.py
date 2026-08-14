@@ -25,6 +25,24 @@ class EvidenceKind(StrEnum):
 _RENDER_EVIDENCE = frozenset({"synthetic-bytes", "host-tts", "provider-response"})
 _TRANSCRIPT_EVIDENCE = frozenset({"script-derived", "provider-asr"})
 _PUBLICATION_SCOPES = frozenset({"filesystem", "object-storage", "external"})
+_MODE_EVIDENCE = {
+    ExecutionMode.DETERMINISTIC_LOCAL.value: (
+        "synthetic-bytes",
+        "script-derived",
+        frozenset({"filesystem", "object-storage"}),
+    ),
+    ExecutionMode.HOST_LOCAL.value: (
+        "host-tts",
+        "script-derived",
+        frozenset({"filesystem", "object-storage"}),
+    ),
+    ExecutionMode.LIVE_PROVIDER.value: (
+        "provider-response",
+        "provider-asr",
+        _PUBLICATION_SCOPES,
+    ),
+}
+_LIVE_PROVIDERS = {"renderer": "elevenlabs", "transcriber": "openai"}
 _PROVIDER_FIELDS = ("provider", "model", "request_ids")
 _COST_FIELDS = ("currency", "estimated", "reconciled")
 _TOP_LEVEL_FIELDS = frozenset(
@@ -55,6 +73,7 @@ def validate_execution_evidence(record: Mapping[str, object]) -> dict[str, objec
     _require_member(validated, "render_evidence", _RENDER_EVIDENCE)
     _require_member(validated, "transcript_evidence", _TRANSCRIPT_EVIDENCE)
     _require_member(validated, "publication_scope", _PUBLICATION_SCOPES)
+    _validate_mode_evidence(validated)
     if type(validated.get("live_eligible")) is not bool:
         raise ValueError("live_eligible must be a boolean")
     if "consent_valid" in validated and type(validated["consent_valid"]) is not bool:
@@ -114,6 +133,17 @@ def _validate_provider_metadata(field: str, value: object) -> None:
         raise ValueError(f"{field}.request_ids must be a non-empty array of strings")
 
 
+def _validate_mode_evidence(record: Mapping[str, object]) -> None:
+    mode = cast(str, record["mode"])
+    expected_render, expected_transcript, allowed_publication = _MODE_EVIDENCE[mode]
+    if record["render_evidence"] != expected_render:
+        raise ValueError(f"{mode} does not allow this render evidence")
+    if record["transcript_evidence"] != expected_transcript:
+        raise ValueError(f"{mode} does not allow this transcript evidence")
+    if record["publication_scope"] not in allowed_publication:
+        raise ValueError(f"{mode} does not allow this publication scope")
+
+
 def _validate_live_eligibility(record: Mapping[str, object]) -> None:
     _require_equal(record, "mode", ExecutionMode.LIVE_PROVIDER.value)
     _require_equal(record, "render_evidence", "provider-response")
@@ -129,6 +159,16 @@ def _validate_live_eligibility(record: Mapping[str, object]) -> None:
         )
     _validate_provider_metadata("renderer", record.get("renderer"))
     _validate_provider_metadata("transcriber", record.get("transcriber"))
+    for field, expected_provider in _LIVE_PROVIDERS.items():
+        metadata = record[field]
+        if (
+            not isinstance(metadata, Mapping)
+            or metadata.get("provider") != expected_provider
+        ):
+            raise ValueError(
+                f"live-provider evidence requires {field}.provider to be "
+                f"{expected_provider!r}"
+            )
     _validate_cost_evidence(record.get("cost_evidence"))
 
 

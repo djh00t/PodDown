@@ -200,6 +200,7 @@ CREATE TABLE IF NOT EXISTS episodes (
     updated_at TEXT NOT NULL,
     qa_evidence TEXT,
     package_sha256 TEXT,
+    package_manifest_sha256 TEXT,
     failure TEXT,
     UNIQUE (tenant_id, idempotency_key)
 );
@@ -281,6 +282,14 @@ def _migrate_command_receipts_schema(connection: sqlite3.Connection) -> None:
     connection.execute("DROP TABLE command_receipts_legacy")
 
 
+def _migrate_episode_manifest_column(connection: sqlite3.Connection) -> None:
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(episodes)")}
+    if "package_manifest_sha256" not in columns:
+        connection.execute(
+            "ALTER TABLE episodes ADD COLUMN package_manifest_sha256 TEXT"
+        )
+
+
 def _initialize_database(path: Path) -> None:
     with _DATABASE_INIT_LOCK:
         connection = sqlite3.connect(path, timeout=10.0)
@@ -289,6 +298,7 @@ def _initialize_database(path: Path) -> None:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.execute("PRAGMA foreign_keys = ON")
             connection.executescript(_SCHEMA)
+            _migrate_episode_manifest_column(connection)
             _migrate_command_receipts_schema(connection)
             connection.commit()
         finally:
@@ -339,6 +349,7 @@ def _episode_values(record: EpisodeRecord) -> tuple[object, ...]:
         _timestamp(record.updated_at),
         _json_text(record.qa_evidence) if record.qa_evidence is not None else None,
         record.package_sha256,
+        record.package_manifest_sha256,
         _json_text(record.failure.to_dict()) if record.failure is not None else None,
     )
 
@@ -380,6 +391,7 @@ def _episode_from_row(row: sqlite3.Row) -> EpisodeRecord:
             updated_at=_parse_timestamp(row["updated_at"]),
             qa_evidence=qa_value,
             package_sha256=row["package_sha256"],
+            package_manifest_sha256=row["package_manifest_sha256"],
             failure=failure,
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
@@ -426,8 +438,9 @@ class SQLiteEpisodeRepository(EpisodeRepository):
                         tenant_id, project_id, episode_id, idempotency_key,
                         profile_name, source_sha256, source_bytes,
                         request_fingerprint, state, version, created_at,
-                        updated_at, qa_evidence, package_sha256, failure
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        updated_at, qa_evidence, package_sha256,
+                        package_manifest_sha256, failure
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     _episode_values(record),
                 )
             except sqlite3.IntegrityError as error:
@@ -471,7 +484,7 @@ class SQLiteEpisodeRepository(EpisodeRepository):
             result = connection.execute(
                 """UPDATE episodes SET
                     state = ?, version = ?, updated_at = ?, qa_evidence = ?,
-                    package_sha256 = ?, failure = ?
+                    package_sha256 = ?, package_manifest_sha256 = ?, failure = ?
                     WHERE tenant_id = ? AND episode_id = ? AND version = ?""",
                 (
                     record.state.value,
@@ -481,6 +494,7 @@ class SQLiteEpisodeRepository(EpisodeRepository):
                     if record.qa_evidence is not None
                     else None,
                     record.package_sha256,
+                    record.package_manifest_sha256,
                     _json_text(record.failure.to_dict())
                     if record.failure is not None
                     else None,

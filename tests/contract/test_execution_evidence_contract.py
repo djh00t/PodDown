@@ -54,6 +54,33 @@ def test_execution_evidence_schema_freezes_production_closure_vocabulary() -> No
         "minItems": 1,
         "items": {"type": "string", "minLength": 1},
     }
+    mode_constraints = {
+        item["if"]["properties"]["mode"]["const"]: item["then"]["properties"]
+        for item in schema["allOf"][:3]
+    }
+    assert mode_constraints == {
+        "deterministic-local": {
+            "render_evidence": {"const": "synthetic-bytes"},
+            "transcript_evidence": {"const": "script-derived"},
+            "publication_scope": {"enum": ["filesystem", "object-storage"]},
+        },
+        "host-local": {
+            "render_evidence": {"const": "host-tts"},
+            "transcript_evidence": {"const": "script-derived"},
+            "publication_scope": {"enum": ["filesystem", "object-storage"]},
+        },
+        "live-provider": {
+            "render_evidence": {"const": "provider-response"},
+            "transcript_evidence": {"const": "provider-asr"},
+        },
+    }
+    live_constraints = schema["allOf"][3]["then"]["properties"]
+    assert live_constraints["renderer"]["properties"]["provider"] == {
+        "const": "elevenlabs"
+    }
+    assert live_constraints["transcriber"]["properties"]["provider"] == {
+        "const": "openai"
+    }
     assert [kind.value for kind in EvidenceKind] == [
         "synthetic",
         "host-local",

@@ -31,6 +31,39 @@
   },
   "allOf": [
     {
+      "if": {"properties": {"mode": {"const": "deterministic-local"}}},
+      "then": {
+        "properties": {
+          "render_evidence": {"const": "synthetic-bytes"},
+          "transcript_evidence": {"const": "script-derived"},
+          "publication_scope": {
+            "enum": ["filesystem", "object-storage"]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"mode": {"const": "host-local"}}},
+      "then": {
+        "properties": {
+          "render_evidence": {"const": "host-tts"},
+          "transcript_evidence": {"const": "script-derived"},
+          "publication_scope": {
+            "enum": ["filesystem", "object-storage"]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"mode": {"const": "live-provider"}}},
+      "then": {
+        "properties": {
+          "render_evidence": {"const": "provider-response"},
+          "transcript_evidence": {"const": "provider-asr"}
+        }
+      }
+    },
+    {
       "if": {"properties": {"live_eligible": {"const": true}}},
       "then": {
         "required": [
@@ -45,7 +78,13 @@
           "render_evidence": {"const": "provider-response"},
           "transcript_evidence": {"const": "provider-asr"},
           "consent_valid": {"const": true},
-          "critical_token_accuracy": {"const": 1.0}
+          "critical_token_accuracy": {"const": 1.0},
+          "renderer": {
+            "properties": {"provider": {"const": "elevenlabs"}}
+          },
+          "transcriber": {
+            "properties": {"provider": {"const": "openai"}}
+          }
         }
       }
     }

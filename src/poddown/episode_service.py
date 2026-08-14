@@ -263,6 +263,7 @@ class EpisodeRecord:
     updated_at: datetime
     qa_evidence: Mapping[str, object] | None = None
     package_sha256: str | None = None
+    package_manifest_sha256: str | None = None
     failure: StructuredFailure | None = None
 
     def __post_init__(self) -> None:
@@ -297,6 +298,8 @@ class EpisodeRecord:
             object.__setattr__(self, "qa_evidence", frozen_qa)
         if self.package_sha256 is not None:
             _require_sha256("package_sha256", self.package_sha256)
+        if self.package_manifest_sha256 is not None:
+            _require_sha256("package_manifest_sha256", self.package_manifest_sha256)
         if self.failure is not None and not isinstance(self.failure, StructuredFailure):
             raise ValueError("failure must be StructuredFailure")
         object.__setattr__(self, "profile_name", profile_name)
@@ -309,6 +312,7 @@ class EpisodeRecord:
             "version": self.version,
             "source_sha256": self.source_sha256,
             "profile_name": self.profile_name,
+            "package_manifest_sha256": self.package_manifest_sha256,
             "failure": self.failure.to_dict() if self.failure else None,
         }
 
@@ -490,6 +494,7 @@ class EpisodeApplicationService:
         qa_evidence: Mapping[str, object] | None = None,
         package_sha256: str | None = None,
         package_bytes: bytes | None = None,
+        package_manifest_sha256: str | None = None,
         failure: StructuredFailure | None = None,
     ) -> EpisodeRecord:
         """Apply one explicit lifecycle transition with optimistic locking."""
@@ -501,6 +506,7 @@ class EpisodeApplicationService:
             qa_evidence=qa_evidence,
             package_sha256=package_sha256,
             package_bytes=package_bytes,
+            package_manifest_sha256=package_manifest_sha256,
             failure=failure,
             publish_authorized=False,
         )
@@ -524,6 +530,7 @@ class EpisodeApplicationService:
             qa_evidence=None,
             package_sha256=None,
             package_bytes=None,
+            package_manifest_sha256=None,
             failure=None,
             publish_authorized=True,
         )
@@ -538,6 +545,7 @@ class EpisodeApplicationService:
         qa_evidence: Mapping[str, object] | None,
         package_sha256: str | None,
         package_bytes: bytes | None,
+        package_manifest_sha256: str | None,
         failure: StructuredFailure | None,
         publish_authorized: bool,
     ) -> EpisodeRecord:
@@ -569,7 +577,18 @@ class EpisodeApplicationService:
                 or hashlib.sha256(package_bytes).hexdigest() != package_sha256
             ):
                 raise InvalidEpisodeTransition("package bytes do not match checksum")
-        elif package_sha256 is not None or package_bytes is not None:
+            if (
+                package_manifest_sha256 is not None
+                and _SHA256.fullmatch(package_manifest_sha256) is None
+            ):
+                raise InvalidEpisodeTransition(
+                    "a verified package manifest checksum is required"
+                )
+        elif (
+            package_sha256 is not None
+            or package_bytes is not None
+            or package_manifest_sha256 is not None
+        ):
             raise InvalidEpisodeTransition()
         if target_state is EpisodeState.FAILED:
             if failure is None:
@@ -590,6 +609,9 @@ class EpisodeApplicationService:
                 package_sha256=package_sha256
                 if target_state is EpisodeState.PACKAGED
                 else current.package_sha256,
+                package_manifest_sha256=package_manifest_sha256
+                if target_state is EpisodeState.PACKAGED
+                else current.package_manifest_sha256,
                 failure=failure if target_state is EpisodeState.FAILED else None,
             )
         except ValueError as error:
