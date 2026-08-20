@@ -6,15 +6,9 @@ assets:
     demo_only: true
     consent_status: approved
     consent_id: consent-reference-host-v1
-    local_voice:
-      macos_say_name: Samantha
-      espeak_name: en-us
   - asset_id: demo-reference-analyst-v1
     label: synthetic reference analyst
     synthetic: true
     demo_only: true
     consent_status: approved
     consent_id: consent-reference-analyst-v1
-    local_voice:
-      macos_say_name: Daniel
-      espeak_name: en-gb

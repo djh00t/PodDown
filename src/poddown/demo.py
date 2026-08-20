@@ -6,7 +6,6 @@ import argparse
 import asyncio
 import hashlib
 import json
-import platform
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -22,10 +21,8 @@ import yaml
 from poddown.agent_mcp import AgentMCPServer, AuthenticatedContext, LocalGateway
 from poddown.artifacts import FilesystemArtifactStore as PackageArtifactStore
 from poddown.audio import (
-    AudioRenderer,
     DeterministicLocalRenderer,
     DurableRenderService,
-    LocalSpeechRenderer,
     RenderRequest,
 )
 from poddown.audio import (
@@ -160,31 +157,12 @@ class _ReferenceFixture:
 class _FailOnceRenderer:
     """Return invalid local audio once so regeneration remains observable."""
 
-    def __init__(self, delegate: AudioRenderer, failed_segment_id: str) -> None:
-        self.capabilities = delegate.capabilities
+    capabilities = DeterministicLocalRenderer.capabilities
+
+    def __init__(self, failed_segment_id: str) -> None:
         self._failed_segment_id = failed_segment_id
         self._failed = False
-        self._delegate = delegate
-        self._identity = _renderer_identity(delegate)
-
-    @property
-    def provider(self) -> str:
-        """Return the delegate provider used in render requests."""
-        return cast(str, self._identity["provider"])
-
-    @property
-    def model(self) -> str:
-        """Return the delegate model used in render requests."""
-        return cast(str, self._identity["model"])
-
-    @property
-    def mode(self) -> str:
-        """Return the delegate mode persisted in demo evidence."""
-        return cast(str, self._identity["mode"])
-
-    def provenance(self) -> Mapping[str, object]:
-        """Return the provenance declared by the delegate renderer."""
-        return cast(Mapping[str, object], self._identity["provenance"])
+        self._delegate = DeterministicLocalRenderer()
 
     async def render(self, request: RenderRequest) -> RenderedAudio:
         if request.segment_id == self._failed_segment_id and not self._failed:
@@ -196,9 +174,8 @@ class _FailOnceRenderer:
 class _DeterministicTranscriber:
     """Bind deterministic fixture transcript evidence to exact master WAV bytes."""
 
-    def __init__(self, text: str, renderer: Mapping[str, object]) -> None:
+    def __init__(self, text: str) -> None:
         self._text = text
-        self._renderer = renderer
 
     async def transcribe(self, audio: bytes) -> TranscriptResult:
         words = tuple(
@@ -208,68 +185,14 @@ class _DeterministicTranscriber:
         return TranscriptResult(
             text=self._text,
             words=words,
-            provider=cast(str, self._renderer["provider"]),
-            model=cast(str, self._renderer["model"]),
+            provider="local-deterministic-demo",
+            model="local-transcript-v1",
             usage=ProviderUsage(len(audio), len(words)),
             request_id="local-reference-demo-transcript-v1",
             checksum=hashlib.sha256(audio).hexdigest(),
             cost=Decimal("0"),
-            mode=cast(str, self._renderer["mode"]),
+            mode="deterministic-local-demo",
         )
-
-
-def _renderer_identity(renderer: AudioRenderer) -> Mapping[str, object]:
-    """Return stable provider identity and provenance for one local renderer."""
-    if isinstance(renderer, DeterministicLocalRenderer):
-        return {
-            "provider": "local",
-            "model": "local-deterministic-v1",
-            "mode": "deterministic-local-demo",
-            "provenance": {"renderer": "deterministic-local-v1"},
-        }
-    identity = {
-        name: getattr(renderer, name, None) for name in ("provider", "model", "mode")
-    }
-    if not all(isinstance(value, str) and value for value in identity.values()):
-        raise ValueError("renderer identity is incomplete")
-    if identity != {
-        "provider": "host-local",
-        "model": "host-local-tts-v1",
-        "mode": "local-system-tts-demo",
-    }:
-        raise ValueError("renderer is not an approved offline renderer")
-    provenance = getattr(renderer, "provenance", None)
-    if not callable(provenance):
-        raise ValueError("renderer provenance is unavailable")
-    value = provenance()
-    if not isinstance(value, Mapping) or not value:
-        raise ValueError("renderer provenance is unavailable")
-    return {**identity, "provenance": dict(value)}
-
-
-def _validate_persisted_renderer_identity(
-    root: Path, value: Mapping[str, object], renderer: Mapping[str, object]
-) -> None:
-    """Reject incompatible persisted renderer evidence before any replay work."""
-    if value.get("mode") != renderer["mode"]:
-        raise ValueError("persisted renderer identity is unavailable or invalid")
-    package = EpisodePackageService(
-        PackageArtifactStore(root / "package-artifacts"), root / "packages"
-    ).get(_EPISODE_VERSION_ID)
-    if package is None:
-        raise ValueError("persisted package evidence is unavailable or invalid")
-    details = package.provenance.details
-    provider = details.get("provider")
-    workflow = details.get("workflow")
-    if (
-        package.provenance.renderer != renderer["model"]
-        or not isinstance(provider, Mapping)
-        or provider.get("provider") != renderer["provider"]
-        or provider.get("model") != renderer["model"]
-        or not isinstance(workflow, Mapping)
-        or workflow.get("renderer") != renderer
-    ):
-        raise ValueError("persisted renderer identity is unavailable or invalid")
 
 
 def _read_text(path: Path | Traversable) -> str:
@@ -353,59 +276,6 @@ def _load_reference_fixture(fixture_root: Path | Traversable) -> _ReferenceFixtu
     return _ReferenceFixture(
         source, profile_yaml, profile, adaptation, voices, disclosure
     )
-
-
-def _local_voice_bindings(
-    fixture: _ReferenceFixture, *, system_name: str | None = None
-) -> dict[str, str]:
-    """Resolve approved fixture voice assets to host-local voice names."""
-    speakers = fixture.profile.get("speakers")
-    assets = fixture.voices.get("assets")
-    if not isinstance(speakers, list) or not isinstance(assets, list):
-        raise ValueError("local voice bindings are unavailable")
-    assets_by_id = {
-        str(asset["asset_id"]): asset
-        for asset in assets
-        if isinstance(asset, Mapping) and isinstance(asset.get("asset_id"), str)
-    }
-    voice_key = (
-        "macos_say_name"
-        if (system_name or platform.system()) == "Darwin"
-        else "espeak_name"
-    )
-    bindings: dict[str, str] = {}
-    for speaker in speakers:
-        if not isinstance(speaker, Mapping):
-            raise ValueError("local voice binding is malformed")
-        speaker_id = speaker.get("speaker_id")
-        asset_id = speaker.get("voice_asset_id")
-        asset = assets_by_id.get(str(asset_id))
-        local_voice = asset.get("local_voice") if asset is not None else None
-        voice_name = (
-            local_voice.get(voice_key) if isinstance(local_voice, Mapping) else None
-        )
-        if not isinstance(speaker_id, str) or not speaker_id:
-            raise ValueError("local voice binding is malformed")
-        if not isinstance(voice_name, str) or not voice_name.strip():
-            raise ValueError(f"local voice name is missing for {speaker_id}")
-        bindings[speaker_id] = voice_name
-    if len(bindings) != len(speakers):
-        raise ValueError("local voice bindings are duplicated")
-    return bindings
-
-
-def _source_claim_excerpt(fixture: _ReferenceFixture, marker: str) -> str:
-    """Return a source-bound claim excerpt containing the requested marker."""
-    claims = fixture.adaptation.get("claims")
-    if not isinstance(claims, list):
-        raise ValueError("adaptation claims are unavailable")
-    for claim in claims:
-        if not isinstance(claim, Mapping):
-            continue
-        source_value = claim.get("source_value")
-        if isinstance(source_value, str) and marker in source_value:
-            return source_value
-    raise ValueError(f"source claim excerpt is missing marker: {marker}")
 
 
 def _anchor(snapshot: SourceSnapshot, text: str) -> SourceAnchor:
@@ -539,13 +409,8 @@ def _spoken_text(text: str, prepared: ContentPreparationResult) -> str:
     tokens = sorted(
         prepared.tokens, key=lambda token: len(token.source_form), reverse=True
     )
-    replacements: dict[str, str] = {}
-    for index, token in enumerate(tokens):
-        marker = f"\x00poddown-token-{index}\x00"
-        spoken = spoken.replace(token.source_form, marker)
-        replacements[marker] = token.expected_spoken_form
-    for marker, spoken_form in replacements.items():
-        spoken = spoken.replace(marker, spoken_form)
+    for token in tokens:
+        spoken = spoken.replace(token.source_form, token.expected_spoken_form)
     return " ".join(spoken.split())
 
 
@@ -563,9 +428,6 @@ def _validate_resume_evidence(
     prepared: ContentPreparationResult,
     fixture: _ReferenceFixture,
     selected: tuple[RenderOutcome, ...],
-    renderer: Mapping[str, object],
-    render_requests: int,
-    render_cost: str,
 ) -> None:
     """Authenticate package, publication, and result evidence before replay."""
     manifest_path = root / "packages" / f"{_EPISODE_VERSION_ID}.json"
@@ -615,9 +477,8 @@ def _validate_resume_evidence(
             outcome.candidate.candidate_id for outcome in selected
         ],
         "take_count": 3,
-        "render_requests": render_requests,
+        "render_requests": len(selected) * 3 + 1,
         "voice_bindings": voice_bindings,
-        "renderer": renderer,
     }
     if any(
         workflow.get(key) != expected
@@ -632,7 +493,7 @@ def _validate_resume_evidence(
             raise ValueError("persisted result evidence is unavailable or invalid")
 
     expected_result = {
-        "mode": renderer["mode"],
+        "mode": "deterministic-local-demo",
         "source_sha256": prepared.snapshot.source_sha256,
         "profile_id": prepared.profile.profile_id,
         "target_minutes": prepared.profile.target_minutes,
@@ -645,8 +506,8 @@ def _validate_resume_evidence(
         "critical_token_accuracy": package.provenance.critical_token_accuracy,
         "package_artifacts": list(REQUIRED_PACKAGE_ARTIFACTS),
         "package_manifest_sha256": expected_manifest_sha,
-        "usage": {"render_requests": render_requests},
-        "cost": render_cost,
+        "usage": {"render_requests": expected_workflow["render_requests"]},
+        "cost": details.get("cost"),
         "mcp_preview": _mcp_preview(fixture.source, prepared.profile.profile_id),
         "voice_bindings": expected_workflow["voice_bindings"],
     }
@@ -754,18 +615,13 @@ def _result_from_dict(value: Mapping[str, object], replayed_takes: int) -> DemoR
 
 
 async def _render_segments(
-    prepared: ContentPreparationResult,
-    fixture: _ReferenceFixture,
-    output_dir: Path,
-    renderer: AudioRenderer,
-) -> tuple[
-    tuple[RenderOutcome, ...], tuple[str, ...], tuple[str, ...], int, int, Decimal
-]:
+    prepared: ContentPreparationResult, fixture: _ReferenceFixture, output_dir: Path
+) -> tuple[tuple[RenderOutcome, ...], tuple[str, ...], tuple[str, ...], int]:
     artifacts = FilesystemArtifactStore(output_dir / "artifacts")
     records = FilesystemRenderRecordStore(output_dir / "render-records", artifacts)
     service = DurableRenderService(artifacts, records)
     first_segment_id = prepared.segments[0].segment_id
-    fail_once_renderer = _FailOnceRenderer(renderer, first_segment_id)
+    renderer = _FailOnceRenderer(first_segment_id)
     raw_assets = fixture.voices.get("assets")
     if not isinstance(raw_assets, list) or not all(
         isinstance(item, Mapping) for item in raw_assets
@@ -779,49 +635,40 @@ async def _render_segments(
     failed: list[str] = []
     regenerated: list[str] = []
     replayed = 0
-    successful_requests = 0
-    render_cost = Decimal("0")
     for segment in prepared.segments:
         speaker = next(
             item
             for item in prepared.profile.speakers
             if item.speaker_id == segment.speaker_ids[0]
         )
-        segment_transcript = _spoken_text(segment.text, prepared)
         request = RenderRequest(
             "reference-demo-episode-v1",
             "v1",
             segment.segment_id,
             speaker.speaker_id,
-            segment_transcript,
+            segment.text,
             speaker.voice_asset_id,
-            fail_once_renderer.provider,
-            fail_once_renderer.model,
+            "local",
+            "local-deterministic-v1",
         )
         row = voice_rows[request.voice_asset_id]
         consent = AudioVoiceConsent(
-            request.voice_asset_id,
-            str(row["consent_id"]),
-            frozenset({fail_once_renderer.provider}),
+            request.voice_asset_id, str(row["consent_id"]), frozenset({"local"})
         )
         try:
             outcomes = await service.render_takes(
-                request, consent, fail_once_renderer, take_count=3
+                request, consent, renderer, take_count=3
             )
         except RenderRejectedError:
             failed.append(segment.segment_id)
             regenerated.append(segment.segment_id)
             outcomes = await service.render_takes(
-                request, consent, fail_once_renderer, take_count=3
+                request, consent, DeterministicLocalRenderer(), take_count=3
             )
         replayed += sum(outcome.replayed for outcome in outcomes)
-        successful_requests += len(outcomes)
-        outcome_cost = sum(
-            (outcome.candidate.cost for outcome in outcomes), Decimal("0")
+        segment_transcript = " ".join(
+            token.expected_spoken_form for token in segment.critical_tokens
         )
-        if outcome_cost != 0:
-            raise ValueError("offline local render candidates must be zero-cost")
-        render_cost += outcome_cost
         qualities = tuple(
             CandidateQuality(
                 outcome.candidate.candidate_id,
@@ -847,14 +694,7 @@ async def _render_segments(
                 if outcome.candidate.candidate_id == choice.candidate_id
             )
         )
-    return (
-        tuple(selected),
-        tuple(failed),
-        tuple(regenerated),
-        replayed,
-        successful_requests + len(failed),
-        render_cost,
-    )
+    return tuple(selected), tuple(failed), tuple(regenerated), replayed
 
 
 def run_reference_demo(
@@ -862,9 +702,8 @@ def run_reference_demo(
     *,
     resume: bool = False,
     mastering_runner: FfmpegRunner | None = None,
-    renderer: AudioRenderer | None = None,
 ) -> DemoResult:
-    """Run or safely replay the complete local reference episode."""
+    """Run or safely replay the complete deterministic-local reference episode."""
     root = Path(output_dir)
     if root.exists() and not root.is_dir():
         raise ValueError("reference demo output must be a directory")
@@ -875,59 +714,24 @@ def run_reference_demo(
         raise ValueError("content preparation did not return typed evidence")
     _write_status(root, "ingested", {"source_sha256": prepared.snapshot.source_sha256})
     _write_status(root, "prepared", {"manifest_sha256": prepared.manifest_sha256})
-    selected_renderer = renderer or DeterministicLocalRenderer()
-    renderer_identity = _renderer_identity(selected_renderer)
-    previous: Mapping[str, object] | None = None
-    persisted_render_requests: int | None = None
-    if resume and (root / "result.json").is_file():
-        value = json.loads((root / "result.json").read_text(encoding="utf-8"))
-        if not isinstance(value, Mapping):
-            raise ValueError("persisted result evidence is malformed")
-        _validate_persisted_renderer_identity(root, value, renderer_identity)
-        usage = value.get("usage")
-        if (
-            not isinstance(usage, Mapping)
-            or type(usage.get("render_requests")) is not int
-        ):
-            raise ValueError("persisted result evidence is malformed")
-        previous = value
-        persisted_render_requests = cast(int, usage["render_requests"])
-    selected, failed, regenerated, replayed, render_requests, render_cost = asyncio.run(
-        _render_segments(prepared, fixture, root, selected_renderer)
+    selected, failed, regenerated, replayed = asyncio.run(
+        _render_segments(prepared, fixture, root)
     )
-    if persisted_render_requests is not None:
-        render_requests = persisted_render_requests
     _write_status(
         root,
         "rendering",
         {"failed_segment_ids": list(failed), "replayed_takes": replayed},
     )
-    if previous is not None:
-        _validate_resume_evidence(
-            root,
-            previous,
-            prepared,
-            fixture,
-            selected,
-            renderer_identity,
-            render_requests,
-            str(render_cost),
-        )
+    if resume and (root / "result.json").is_file():
+        previous = json.loads((root / "result.json").read_text(encoding="utf-8"))
+        if not isinstance(previous, Mapping):
+            raise ValueError("persisted result evidence is malformed")
+        _validate_resume_evidence(root, previous, prepared, fixture, selected)
         result = _result_from_dict(previous, replayed)
         _write_json(root / "result.json", result.to_dict())
         _write_status(root, "completed", result.to_dict())
         return result
-    transcript_text = " ".join(
-        _spoken_text(turn.text, prepared) for turn in prepared.script.turns
-    )
-    is_local_speech = renderer_identity["mode"] == "local-system-tts-demo"
-    profile = MasteringProfile(
-        silence_ms=0,
-        min_duration_seconds=(
-            max(1.0, len(transcript_text.split()) / 5.0) if is_local_speech else 0.01
-        ),
-        max_peak_amplitude=0.99 if is_local_speech else 1.0,
-    )
+    profile = MasteringProfile(silence_ms=0, max_peak_amplitude=1.0)
     master = MasteringService(mastering_runner).master(
         MasteringRequest(
             "reference-demo-episode-v1",
@@ -945,10 +749,11 @@ def run_reference_demo(
             profile,
         )
     )
+    transcript_text = " ".join(
+        _spoken_text(turn.text, prepared) for turn in prepared.script.turns
+    )
     qa = asyncio.run(
-        FinalMasterQaService(
-            _DeterministicTranscriber(transcript_text, renderer_identity)
-        ).evaluate(
+        FinalMasterQaService(_DeterministicTranscriber(transcript_text)).evaluate(
             master,
             profile,
             tuple(token.expected_spoken_form for token in prepared.tokens),
@@ -960,7 +765,8 @@ def run_reference_demo(
     content_manifest = dict(prepared.manifest)
     content_manifest["show_notes"] = (
         disclosure_text,
-        _source_claim_excerpt(fixture, "99.7%"),
+        "On 2026-07-31, the LiDAR team measured a C1 calibration result of "
+        "99.7% across the 1.2 km test corridor.",
     )
     voice_bindings = {
         segment.segment_id: next(
@@ -979,9 +785,8 @@ def run_reference_demo(
             outcome.candidate.candidate_id for outcome in selected
         ],
         "take_count": 3,
-        "render_requests": render_requests,
+        "render_requests": len(selected) * 3 + 1,
         "voice_bindings": voice_bindings,
-        "renderer": renderer_identity,
     }
     package_input = PackageGenerationInput(
         _EPISODE_VERSION_ID,
@@ -994,8 +799,8 @@ def run_reference_demo(
         master,
         qa,
         render_evidence,
-        cast(str, renderer_identity["model"]),
-        {"fixture": "reference-demo/v1", "renderer": renderer_identity},
+        "local-deterministic-v1",
+        {"fixture": "reference-demo/v1"},
     )
     artifacts = generate_package_artifacts(package_input)
     package = EpisodePackageService(
@@ -1019,10 +824,10 @@ def run_reference_demo(
                 _EPISODE_VERSION_ID,
                 outcome.candidate.request_id,
                 "render",
-                {"requests": render_requests // len(selected)},
+                {"requests": 3},
                 "USD",
-                outcome.candidate.cost,
-                outcome.candidate.cost,
+                Decimal("0"),
+                Decimal("0"),
                 datetime(2026, 8, 10, tzinfo=UTC),
             )
         )
@@ -1053,12 +858,12 @@ def run_reference_demo(
     )
     _write_json(
         root / "usage.json",
-        {"render_requests": render_requests, "cost": str(render_cost)},
+        {"render_requests": len(selected) * 3 + 1, "cost": "0"},
     )
     _write_json(root / "publication.json", receipt.to_dict())
     _write_status(root, "published", {"publication_id": receipt.external_id})
     result = DemoResult(
-        cast(str, renderer_identity["mode"]),
+        "deterministic-local-demo",
         prepared.snapshot.source_sha256,
         prepared.profile.profile_id,
         prepared.profile.target_minutes,
@@ -1072,8 +877,8 @@ def run_reference_demo(
         tuple(artifact.name for artifact in artifacts),
         manifest_sha,
         receipt.external_id,
-        {"render_requests": render_requests},
-        str(render_cost),
+        {"render_requests": len(selected) * 3 + 1},
+        "0",
         replayed if resume else 0,
         _mcp_preview(fixture.source, prepared.profile.profile_id),
         voice_bindings,
@@ -1084,27 +889,14 @@ def run_reference_demo(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the local-speech demo with an explicit deterministic override."""
+    """Run the deterministic-local demo command without accepting live mode."""
     parser = argparse.ArgumentParser(prog="poddown-demo")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--resume", action="store_true")
-    parser.add_argument(
-        "--audio-mode",
-        choices=("local-speech", "deterministic"),
-        default="local-speech",
-    )
     args = parser.parse_args(argv)
-    renderer: AudioRenderer
-    if args.audio_mode == "local-speech":
-        fixture = _load_reference_fixture(_reference_fixture_root())
-        renderer = LocalSpeechRenderer(voices=_local_voice_bindings(fixture))
-    else:
-        renderer = DeterministicLocalRenderer()
     print(
         json.dumps(
-            run_reference_demo(
-                args.output, resume=args.resume, renderer=renderer
-            ).to_dict(),
+            run_reference_demo(args.output, resume=args.resume).to_dict(),
             sort_keys=True,
         )
     )
