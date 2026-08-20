@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -33,6 +34,7 @@ EPISODE_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b14")
 OTHER_EPISODE_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b16")
 JOB_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b15")
 CREATED_AT = datetime(2026, 8, 10, 4, 0, tzinfo=UTC)
+SOURCE_CONTENT = b"source-bound durable persistence fixture".ljust(48, b"!")
 
 scenarios("../features/durable_persistence.feature")
 
@@ -49,8 +51,9 @@ def _episode() -> EpisodeRecord:
         episode_id=EPISODE_ID,
         idempotency_key="create-1",
         profile_name="technical-dialogue",
-        source_sha256="b" * 64,
+        source_sha256=hashlib.sha256(SOURCE_CONTENT).hexdigest(),
         source_bytes=48,
+        source_content=SOURCE_CONTENT,
         request_fingerprint="a" * 64,
         state=EpisodeState.VALIDATED,
         version=1,

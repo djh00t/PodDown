@@ -6,11 +6,13 @@ import json
 import os
 import re
 import stat
+from base64 import b64encode
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -21,6 +23,8 @@ _O_DIRECTORY = getattr(os, "O_DIRECTORY", 0)
 _DIRECTORY_FLAGS = os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW
 _READ_FLAGS = os.O_RDONLY | _O_NOFOLLOW
 _METADATA_SUFFIX = ".metadata.json"
+_S3_OBJECT_SCHEMA = "poddown.object"
+_S3_OBJECT_SCHEMA_VERSION = "1.0"
 
 
 class ObjectStorageError(ValueError):
@@ -76,6 +80,14 @@ def _validate_media_type(value: str) -> str:
         or value.count("/") != 1
     ):
         raise ObjectValidationError("media type is invalid")
+    return value
+
+
+def _validate_discovery_prefix(value: str) -> str:
+    if not isinstance(value, str) or not value or len(value) > _MAX_NAME_LENGTH:
+        raise ObjectValidationError("object discovery prefix is invalid")
+    if "\x00" in value or "/" in value or "\\" in value:
+        raise ObjectValidationError("object discovery prefix contains path syntax")
     return value
 
 
@@ -161,6 +173,359 @@ class ObjectStore(Protocol):
         reference: ObjectRef,
     ) -> None:
         """Delete one verified object only within the caller's scope."""
+
+
+@runtime_checkable
+class ObjectStoreDiscovery(Protocol):
+    """Optional port for discovering verified object references by display name."""
+
+    def list(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        *,
+        name_prefix: str,
+    ) -> tuple[ObjectRef, ...]:
+        """Return scoped immutable references whose names share the prefix."""
+
+
+class S3Client(Protocol):
+    """The minimal injected boto3 S3-client surface used by ``S3ObjectStore``."""
+
+    def head_object(
+        self,
+        *,
+        Bucket: str,
+        Key: str,
+        ChecksumMode: Literal["ENABLED"],
+    ) -> Mapping[str, object]:
+        """Return S3 object metadata for one bucket key."""
+
+    def put_object(self, **kwargs: object) -> object:
+        """Create one S3 object with its immutable metadata."""
+
+    def get_object(
+        self,
+        *,
+        Bucket: str,
+        Key: str,
+        ChecksumMode: Literal["ENABLED"],
+        VersionId: str | None = None,
+    ) -> Mapping[str, object]:
+        """Return one S3 object and readable body stream."""
+
+    def delete_object(self, *, Bucket: str, Key: str) -> object:
+        """Delete one S3 object by bucket key."""
+
+    def list_objects_v2(self, **kwargs: object) -> Mapping[str, object]:
+        """List S3 objects beneath one scoped prefix."""
+
+
+class S3ObjectStore:
+    """S3-backed implementation of the immutable tenant object-store port."""
+
+    def __init__(self, client: S3Client, *, bucket: str) -> None:
+        if not isinstance(bucket, str) or not bucket:
+            raise ObjectValidationError("S3 bucket is invalid")
+        self._bucket = bucket
+        self._client = client
+
+    def put(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        *,
+        name: str,
+        media_type: str,
+        data: bytes,
+    ) -> ObjectRef:
+        """Create or verify an immutable object with S3 checksum metadata."""
+        reference = self._reference(
+            tenant_id,
+            project_id,
+            name=name,
+            media_type=media_type,
+            data=data,
+        )
+        try:
+            self._verify_stored_object(reference)
+        except ObjectNotFound:
+            try:
+                self._client.put_object(
+                    Bucket=self._bucket,
+                    Key=reference.storage_key,
+                    Body=data,
+                    Metadata=self._metadata(reference),
+                    ChecksumAlgorithm="SHA256",
+                    ChecksumSHA256=self._checksum(reference.sha256),
+                    IfNoneMatch="*",
+                )
+            except Exception as error:
+                if not self._is_precondition_failure(error):
+                    raise ObjectIntegrityError(
+                        "S3 object publication failed"
+                    ) from error
+        self._verify_stored_object(reference)
+        return reference
+
+    def read(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        reference: ObjectRef,
+    ) -> bytes:
+        """Read exact bytes after enforcing scope and persisted metadata."""
+        self._validate_scope(tenant_id, project_id, reference)
+        return self._verify_stored_object(reference)
+
+    def _verify_stored_object(self, reference: ObjectRef) -> bytes:
+        """Verify immutable metadata and bytes for one already-addressed object."""
+        head_response = self._verify_head(reference)
+        return self._read_bytes(
+            reference,
+            version_id=self._version_id(head_response),
+        )
+
+    def _read_bytes(self, reference: ObjectRef, *, version_id: str | None) -> bytes:
+        """Fetch and hash object bytes after HEAD metadata verification."""
+        try:
+            if version_id is None:
+                response = self._client.get_object(
+                    Bucket=self._bucket,
+                    Key=reference.storage_key,
+                    ChecksumMode="ENABLED",
+                )
+            else:
+                response = self._client.get_object(
+                    Bucket=self._bucket,
+                    Key=reference.storage_key,
+                    ChecksumMode="ENABLED",
+                    VersionId=version_id,
+                )
+        except Exception as error:
+            raise self._read_error(error) from error
+        self._verify_response_metadata(response, reference)
+        if version_id is not None and response.get("VersionId") != version_id:
+            raise ObjectIntegrityError("S3 object version does not match HEAD")
+        body = response.get("Body")
+        if not hasattr(body, "read"):
+            raise ObjectIntegrityError("S3 object response body is invalid")
+        data = body.read()
+        if not isinstance(data, bytes):
+            raise ObjectIntegrityError("S3 object response body is invalid")
+        if (
+            len(data) != reference.byte_count
+            or sha256(data).hexdigest() != reference.sha256
+        ):
+            raise ObjectIntegrityError("S3 object bytes do not match reference")
+        return data
+
+    def delete(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        reference: ObjectRef,
+    ) -> None:
+        """Delete one verified immutable object only within the caller's scope."""
+        self.read(tenant_id, project_id, reference)
+        try:
+            self._client.delete_object(
+                Bucket=self._bucket,
+                Key=reference.storage_key,
+            )
+        except Exception as error:
+            raise ObjectIntegrityError("S3 object deletion failed") from error
+
+    def list(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        *,
+        name_prefix: str,
+    ) -> tuple[ObjectRef, ...]:
+        """Discover verified references using S3 list plus checksum-bound HEADs."""
+        _validate_uuid7(tenant_id, field="tenant_id")
+        _validate_uuid7(project_id, field="project_id")
+        _validate_discovery_prefix(name_prefix)
+        prefix = f"tenants/{tenant_id}/projects/{project_id}/objects/"
+        continuation: str | None = None
+        references: list[ObjectRef] = []
+        while True:
+            request: dict[str, object] = {"Bucket": self._bucket, "Prefix": prefix}
+            if continuation is not None:
+                request["ContinuationToken"] = continuation
+            try:
+                response = self._client.list_objects_v2(**request)
+            except Exception as error:
+                raise ObjectIntegrityError("S3 object discovery failed") from error
+            contents = response.get("Contents", [])
+            if not isinstance(contents, list):
+                raise ObjectIntegrityError("S3 object listing is invalid")
+            for entry in contents:
+                if not isinstance(entry, Mapping) or not isinstance(
+                    entry.get("Key"), str
+                ):
+                    raise ObjectIntegrityError("S3 object listing is invalid")
+                key = entry["Key"]
+                try:
+                    head = self._client.head_object(
+                        Bucket=self._bucket, Key=key, ChecksumMode="ENABLED"
+                    )
+                except Exception as error:
+                    raise self._read_error(error) from error
+                reference = self._reference_from_head(tenant_id, project_id, key, head)
+                if reference.name.startswith(name_prefix):
+                    references.append(reference)
+            if response.get("IsTruncated") is not True:
+                break
+            next_token = response.get("NextContinuationToken")
+            if not isinstance(next_token, str) or not next_token:
+                raise ObjectIntegrityError("S3 object listing continuation is invalid")
+            continuation = next_token
+        return tuple(sorted(references, key=lambda reference: reference.storage_key))
+
+    @staticmethod
+    def _reference(
+        tenant_id: UUID,
+        project_id: UUID,
+        *,
+        name: str,
+        media_type: str,
+        data: bytes,
+    ) -> ObjectRef:
+        _validate_uuid7(tenant_id, field="tenant_id")
+        _validate_uuid7(project_id, field="project_id")
+        _validate_name(name)
+        _validate_media_type(media_type)
+        if not isinstance(data, bytes):
+            raise ObjectValidationError("data must be bytes")
+        digest = sha256(data).hexdigest()
+        return ObjectRef(
+            tenant_id=tenant_id,
+            project_id=project_id,
+            name=name,
+            media_type=media_type,
+            byte_count=len(data),
+            sha256=digest,
+            storage_key=storage_key_for(tenant_id, project_id, digest),
+        )
+
+    @staticmethod
+    def _validate_scope(
+        tenant_id: UUID,
+        project_id: UUID,
+        reference: ObjectRef,
+    ) -> None:
+        _validate_uuid7(tenant_id, field="tenant_id")
+        _validate_uuid7(project_id, field="project_id")
+        if not isinstance(reference, ObjectRef):
+            raise ObjectValidationError("reference must be an ObjectRef")
+        if reference.tenant_id != tenant_id or reference.project_id != project_id:
+            raise ObjectScopeError("object reference is outside caller scope")
+
+    @staticmethod
+    def _metadata(reference: ObjectRef) -> dict[str, str]:
+        return {
+            "schema": _S3_OBJECT_SCHEMA,
+            "schema-version": _S3_OBJECT_SCHEMA_VERSION,
+            "tenant-id": str(reference.tenant_id),
+            "project-id": str(reference.project_id),
+            "name": reference.name,
+            "media-type": reference.media_type,
+            "byte-count": str(reference.byte_count),
+            "sha256": reference.sha256,
+            "storage-key": reference.storage_key,
+        }
+
+    @staticmethod
+    def _checksum(digest: str) -> str:
+        return b64encode(bytes.fromhex(digest)).decode("ascii")
+
+    def _verify_head(self, reference: ObjectRef) -> Mapping[str, object]:
+        try:
+            response = self._client.head_object(
+                Bucket=self._bucket,
+                Key=reference.storage_key,
+                ChecksumMode="ENABLED",
+            )
+        except Exception as error:
+            raise self._read_error(error) from error
+        self._verify_response_metadata(response, reference)
+        return response
+
+    @classmethod
+    def _verify_response_metadata(
+        cls,
+        response: Mapping[str, object],
+        reference: ObjectRef,
+    ) -> None:
+        metadata = response.get("Metadata")
+        if not isinstance(metadata, Mapping) or dict(metadata) != cls._metadata(
+            reference
+        ):
+            raise ObjectIntegrityError("S3 object metadata does not match reference")
+        if response.get("ContentLength") != reference.byte_count:
+            raise ObjectIntegrityError("S3 object length does not match reference")
+        if response.get("ChecksumSHA256") != cls._checksum(reference.sha256):
+            raise ObjectIntegrityError("S3 object checksum does not match reference")
+
+    @classmethod
+    def _reference_from_head(
+        cls,
+        tenant_id: UUID,
+        project_id: UUID,
+        storage_key: str,
+        response: Mapping[str, object],
+    ) -> ObjectRef:
+        metadata = response.get("Metadata")
+        if not isinstance(metadata, Mapping):
+            raise ObjectIntegrityError("S3 object metadata is invalid")
+        try:
+            reference = ObjectRef(
+                tenant_id=UUID(str(metadata["tenant-id"])),
+                project_id=UUID(str(metadata["project-id"])),
+                name=str(metadata["name"]),
+                media_type=str(metadata["media-type"]),
+                byte_count=int(str(metadata["byte-count"])),
+                sha256=str(metadata["sha256"]),
+                storage_key=str(metadata["storage-key"]),
+            )
+        except (KeyError, ValueError) as error:
+            raise ObjectIntegrityError("S3 object metadata is invalid") from error
+        if reference.tenant_id != tenant_id or reference.project_id != project_id:
+            raise ObjectIntegrityError("S3 object metadata scope is invalid")
+        if reference.storage_key != storage_key:
+            raise ObjectIntegrityError("S3 object metadata key is invalid")
+        cls._verify_response_metadata(response, reference)
+        return reference
+
+    @staticmethod
+    def _version_id(response: Mapping[str, object]) -> str | None:
+        version_id = response.get("VersionId")
+        if not isinstance(version_id, str) or not version_id or version_id == "null":
+            return None
+        return version_id
+
+    @staticmethod
+    def _is_precondition_failure(error: Exception) -> bool:
+        return S3ObjectStore._error_code(error) in {"412", "PreconditionFailed"}
+
+    @staticmethod
+    def _read_error(error: Exception) -> ObjectStorageError:
+        if S3ObjectStore._error_code(error) in {"404", "NoSuchKey", "NotFound"}:
+            return ObjectNotFound("S3 object is missing")
+        return ObjectIntegrityError("S3 object could not be read")
+
+    @staticmethod
+    def _error_code(error: Exception) -> str | None:
+        response = getattr(error, "response", None)
+        if not isinstance(response, Mapping):
+            return None
+        details = response.get("Error")
+        if not isinstance(details, Mapping):
+            return None
+        code = details.get("Code")
+        return str(code) if code is not None else None
 
 
 class FilesystemObjectStore:
@@ -317,6 +682,67 @@ class FilesystemObjectStore:
             with suppress(OSError):
                 directory.rmdir()
 
+    def list(
+        self,
+        tenant_id: UUID,
+        project_id: UUID,
+        *,
+        name_prefix: str,
+    ) -> tuple[ObjectRef, ...]:
+        """Discover trusted scoped metadata without following filesystem links."""
+        _validate_uuid7(tenant_id, field="tenant_id")
+        _validate_uuid7(project_id, field="project_id")
+        _validate_discovery_prefix(name_prefix)
+        root_parts = (
+            "tenants",
+            str(tenant_id),
+            "projects",
+            str(project_id),
+            "objects",
+        )
+        try:
+            objects_fd = self._open_directory_chain(root_parts, create=False)
+        except ObjectNotFound:
+            return ()
+        references: list[ObjectRef] = []
+        try:
+            for digest_prefix in os.listdir(objects_fd):
+                if re.fullmatch(r"[0-9a-f]{2}", digest_prefix) is None:
+                    continue
+                try:
+                    directory_fd = os.open(
+                        digest_prefix, _DIRECTORY_FLAGS, dir_fd=objects_fd
+                    )
+                except OSError as error:
+                    raise ObjectIntegrityError(
+                        "object directory is not a safe directory"
+                    ) from error
+                try:
+                    for metadata_name in os.listdir(directory_fd):
+                        if not (
+                            metadata_name.startswith(".")
+                            and metadata_name.endswith(_METADATA_SUFFIX)
+                        ):
+                            continue
+                        metadata_fd = self._open_file(directory_fd, metadata_name)
+                        try:
+                            reference = self._reference_from_metadata(
+                                self._read_fd(metadata_fd)
+                            )
+                        finally:
+                            os.close(metadata_fd)
+                        if (
+                            reference.tenant_id == tenant_id
+                            and reference.project_id == project_id
+                            and reference.name.startswith(name_prefix)
+                        ):
+                            references.append(reference)
+                finally:
+                    os.close(directory_fd)
+        finally:
+            os.close(objects_fd)
+        return tuple(sorted(references, key=lambda reference: reference.storage_key))
+
     @staticmethod
     def _metadata_name(digest: str) -> str:
         """Return the sidecar name for one content-addressed object."""
@@ -331,6 +757,30 @@ class FilesystemObjectStore:
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
+
+    @classmethod
+    def _reference_from_metadata(cls, data: bytes) -> ObjectRef:
+        """Parse and require canonical immutable metadata discovered on disk."""
+        try:
+            payload = json.loads(data)
+            if not isinstance(payload, dict):
+                raise ValueError("metadata is not an object")
+            reference = ObjectRef(
+                tenant_id=UUID(str(payload["tenant_id"])),
+                project_id=UUID(str(payload["project_id"])),
+                name=str(payload["name"]),
+                media_type=str(payload["media_type"]),
+                byte_count=payload["byte_count"],
+                sha256=str(payload["sha256"]),
+                storage_key=str(payload["storage_key"]),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise ObjectIntegrityError(
+                "persisted object metadata is invalid"
+            ) from error
+        if cls._metadata_bytes(reference) != data:
+            raise ObjectIntegrityError("persisted object metadata is not canonical")
+        return reference
 
     def _open_directory_chain(
         self,
@@ -527,8 +977,10 @@ __all__ = [
     "ObjectRef",
     "ObjectScopeError",
     "ObjectStorageError",
+    "ObjectStoreDiscovery",
     "ObjectStore",
     "ObjectValidationError",
+    "S3ObjectStore",
     "storage_key_for",
     "validate_sha256",
 ]

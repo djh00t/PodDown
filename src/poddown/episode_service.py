@@ -256,6 +256,7 @@ class EpisodeRecord:
     profile_name: str
     source_sha256: str
     source_bytes: int
+    source_content: bytes
     request_fingerprint: str
     state: EpisodeState
     version: int
@@ -281,6 +282,13 @@ class EpisodeRecord:
         _require_sha256("request_fingerprint", self.request_fingerprint)
         if type(self.source_bytes) is not int or self.source_bytes < 1:
             raise ValueError("source_bytes must be a positive integer")
+        if (
+            type(self.source_content) is not bytes
+            or len(self.source_content) != self.source_bytes
+        ):
+            raise ValueError("source_content must preserve the source byte count")
+        if hashlib.sha256(self.source_content).hexdigest() != self.source_sha256:
+            raise ValueError("source_content does not match source_sha256")
         if type(self.version) is not int or self.version < 1:
             raise ValueError("version must be a positive integer")
         if self.state not in EpisodeState:
@@ -465,6 +473,7 @@ class EpisodeApplicationService:
                 profile_name=profile_name,
                 source_sha256=source_sha256,
                 source_bytes=len(command.source_bytes),
+                source_content=command.source_bytes,
                 request_fingerprint=fingerprint,
                 state=EpisodeState.VALIDATED,
                 version=1,
@@ -511,6 +520,84 @@ class EpisodeApplicationService:
             publish_authorized=False,
         )
 
+    def record_package_completion(
+        self,
+        tenant_id: UUID,
+        episode_id: UUID,
+        *,
+        qa_evidence: Mapping[str, object],
+        package_sha256: str,
+        package_manifest_sha256: str,
+        max_attempts: int = 5,
+    ) -> EpisodeRecord:
+        """Project one verified worker package into the durable lifecycle.
+
+        The package activity has already re-read every immutable artifact and
+        computed ``package_sha256`` from those exact bytes.  This method binds
+        that verified digest to the episode lifecycle while retaining the
+        normal intermediate state transitions and replay semantics.
+        """
+        if type(max_attempts) is not int or max_attempts < 1:
+            raise ValueError("max_attempts must be positive")
+        if not isinstance(qa_evidence, Mapping):
+            raise InvalidEpisodeTransition("passing QA evidence is required")
+        for _ in range(max_attempts):
+            try:
+                current = self.get_episode(tenant_id, episode_id)
+                if current.state in {EpisodeState.PACKAGED, EpisodeState.PUBLISHED}:
+                    if (
+                        current.package_sha256 != package_sha256
+                        or current.package_manifest_sha256
+                        != package_manifest_sha256
+                    ):
+                        raise InvalidEpisodeTransition(
+                            "package completion conflicts with durable episode state"
+                        )
+                    return current
+                if current.state is EpisodeState.FAILED:
+                    raise InvalidEpisodeTransition(
+                        "failed episode cannot accept package completion"
+                    )
+                if current.state is EpisodeState.VALIDATED:
+                    current = self.transition(
+                        tenant_id,
+                        episode_id,
+                        EpisodeState.SCRIPTED,
+                        expected_version=current.version,
+                    )
+                if current.state is EpisodeState.SCRIPTED:
+                    current = self.transition(
+                        tenant_id,
+                        episode_id,
+                        EpisodeState.RENDERED,
+                        expected_version=current.version,
+                    )
+                if current.state is EpisodeState.RENDERED:
+                    current = self.transition(
+                        tenant_id,
+                        episode_id,
+                        EpisodeState.QA_PASSED,
+                        expected_version=current.version,
+                        qa_evidence=qa_evidence,
+                    )
+                if current.state is EpisodeState.QA_PASSED:
+                    return self._transition(
+                        tenant_id,
+                        episode_id,
+                        EpisodeState.PACKAGED,
+                        expected_version=current.version,
+                        qa_evidence=None,
+                        package_sha256=package_sha256,
+                        package_bytes=None,
+                        package_bytes_digest=package_sha256,
+                        package_manifest_sha256=package_manifest_sha256,
+                        failure=None,
+                        publish_authorized=False,
+                    )
+            except VersionConflict:
+                continue
+        raise VersionConflict()
+
     def publish(
         self,
         tenant_id: UUID,
@@ -545,6 +632,7 @@ class EpisodeApplicationService:
         qa_evidence: Mapping[str, object] | None,
         package_sha256: str | None,
         package_bytes: bytes | None,
+        package_bytes_digest: str | None = None,
         package_manifest_sha256: str | None,
         failure: StructuredFailure | None,
         publish_authorized: bool,
@@ -573,10 +661,22 @@ class EpisodeApplicationService:
             if current.state is not EpisodeState.QA_PASSED:
                 raise InvalidEpisodeTransition("packaging requires passing QA")
             if (
-                type(package_bytes) is not bytes
-                or hashlib.sha256(package_bytes).hexdigest() != package_sha256
+                (
+                    type(package_bytes) is bytes
+                    and package_bytes_digest is not None
+                )
+                or (
+                    type(package_bytes) is not bytes
+                    and package_bytes_digest != package_sha256
+                )
+                or (
+                    type(package_bytes) is bytes
+                    and hashlib.sha256(package_bytes).hexdigest() != package_sha256
+                )
             ):
-                raise InvalidEpisodeTransition("package bytes do not match checksum")
+                raise InvalidEpisodeTransition(
+                    "package bytes do not match checksum"
+                )
             if (
                 package_manifest_sha256 is not None
                 and _SHA256.fullmatch(package_manifest_sha256) is None
@@ -587,6 +687,7 @@ class EpisodeApplicationService:
         elif (
             package_sha256 is not None
             or package_bytes is not None
+            or package_bytes_digest is not None
             or package_manifest_sha256 is not None
         ):
             raise InvalidEpisodeTransition()

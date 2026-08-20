@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Collection, Mapping
+from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
-from typing import cast
+from typing import Protocol, cast
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import FastAPI, Header, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
 from poddown.api.models import (
@@ -17,17 +21,54 @@ from poddown.api.models import (
     EpisodeCreateRequest,
     EpisodeCreateResponse,
     EpisodeFailure,
+    EpisodeResource,
+    EpisodeResourceLinkResponse,
     EpisodeStatusResponse,
     EpisodeSummary,
+    PreviewRequest,
+    PreviewResponse,
     ProblemDetail,
     ProductionStage,
+    PublishCommandRequest,
+    RenderCommandRequest,
     RequestContext,
+    ResourceLink,
 )
-from poddown.api.runtime import CommandDispatcher, InMemoryCommandDispatcher
+from poddown.api.runtime import (
+    CommandDispatcher,
+    CommandName,
+    InMemoryCommandDispatcher,
+)
+from poddown.api.scope import ScopeError, resolve_request_context
+from poddown.api.status import (
+    EpisodeStatusRepository,
+    TemporalEpisodeStatusRepository,
+    TemporalWorkflowStatusReader,
+)
+from poddown.api.temporal_dispatcher import (
+    CommandReceiptStore,
+    TemporalCommandDispatcher,
+    TemporalCommandTransport,
+)
+from poddown.approvals import (
+    ApprovalAlreadyConsumed,
+    ApprovalError,
+    ApprovalRepository,
+)
+from poddown.auth import (
+    AuthenticatedPrincipal,
+    AuthenticationError,
+    AuthMode,
+    AuthSettings,
+    LocalHeaderPrincipalResolver,
+    OIDCPrincipalVerifier,
+    PrincipalVerifier,
+)
 from poddown.episode_service import (
     EpisodeApplicationService,
     EpisodeCreateCommand,
     EpisodeRecord,
+    EpisodeRepository,
     EpisodeServiceError,
     EpisodeState,
     InMemoryEpisodeRepository,
@@ -35,7 +76,18 @@ from poddown.episode_service import (
     StructuredFailure,
 )
 from poddown.persistence import SQLiteCommandDispatcher, SQLiteEpisodeRepository
+from poddown.preview import PreviewValidationError, preview_markdown
 from poddown.production_readiness import DependencyState, HealthEvaluator
+from poddown.resource_links import (
+    ResourceLinkError,
+    ResourceLinkSigner,
+    ResourceReference,
+)
+from poddown.workflow_snapshots import (
+    WorkflowSnapshotError,
+    WorkflowSnapshotFactory,
+    bind_snapshot_to_record,
+)
 
 _PROBLEM_MEDIA_TYPE = "application/problem+json"
 _DEFAULT_PROFILES = frozenset({"default", "technical-dialogue"})
@@ -61,6 +113,21 @@ class ApiProblem(EpisodeServiceError):
                 status=status,
             )
         )
+
+
+class ResourceLinkProvider(Protocol):
+    """Issue an authorized link for an immutable, tenant-scoped resource."""
+
+    def get_resource_link(
+        self,
+        *,
+        tenant_id: UUID,
+        project_id: UUID,
+        episode_id: UUID,
+        episode_version_id: UUID,
+        resource: EpisodeResource,
+    ) -> EpisodeResourceLinkResponse | None:
+        """Return a link or no link without inventing storage URLs."""
 
 
 def _problem_response(failure: StructuredFailure) -> JSONResponse:
@@ -134,6 +201,123 @@ def _parse_context(
     return context
 
 
+def _authenticated_context(
+    *,
+    settings: AuthSettings,
+    verifier: PrincipalVerifier | None,
+    local_resolver: LocalHeaderPrincipalResolver | None,
+    tenant_header: str | None,
+    project_header: str | None,
+    idempotency_header: str | None,
+    authorization_header: str | None,
+    scope: str,
+) -> tuple[RequestContext, AuthenticatedPrincipal]:
+    """Authenticate a request and derive tenant/project scope from trusted context."""
+    principal: AuthenticatedPrincipal | None = None
+    if settings.mode == "local":
+        if local_resolver is None:
+            raise ApiProblem(
+                code="authentication_unavailable",
+                message="local authentication is unavailable",
+                status=503,
+            )
+        context = _parse_context(
+            tenant_header=tenant_header,
+            project_header=project_header,
+            idempotency_header=idempotency_header,
+        )
+        try:
+            principal = local_resolver.resolve(
+                tenant_header=tenant_header,
+                project_header=project_header,
+            )
+        except AuthenticationError as error:
+            raise ApiProblem(
+                code=error.code,
+                message="authentication failed",
+                status=401,
+            ) from error
+    elif settings.mode == "oidc":
+        if verifier is not None:
+            try:
+                if hasattr(verifier, "verify"):
+                    principal = verifier.verify(authorization_header or "")
+                elif callable(verifier):
+                    principal = verifier(None)
+            except AuthenticationError:
+                raise
+            except Exception as error:
+                raise AuthenticationError() from error
+        try:
+            return (
+                resolve_request_context(
+                    principal=principal,
+                    tenant_header=tenant_header,
+                    project_header=project_header,
+                    idempotency_header=idempotency_header,
+                ),
+                cast(AuthenticatedPrincipal, principal),
+            )
+        except ScopeError as error:
+            raise ApiProblem(
+                code=error.code,
+                message=str(error),
+                status=error.status,
+            ) from error
+    else:
+        if tenant_header is not None or project_header is not None:
+            raise ApiProblem(
+                code="scope_headers_forbidden",
+                message="tenant and project headers are local-mode compatibility only",
+                status=400,
+            )
+        if verifier is None:
+            raise ApiProblem(
+                code="authentication_unavailable",
+                message="OIDC authentication is unavailable",
+                status=503,
+            )
+        try:
+            if authorization_header is None:
+                raise AuthenticationError("authorization_missing")
+            principal = verifier.verify(authorization_header)
+        except AuthenticationError as error:
+            raise ApiProblem(
+                code=error.code,
+                message="authentication failed",
+                status=401,
+            ) from error
+        if len(principal.project_ids) != 1:
+            raise ApiProblem(
+                code="project_scope_required",
+                message="one project scope is required for this API operation",
+                status=403,
+            )
+        try:
+            context = RequestContext(
+                tenant_id=principal.tenant_id,
+                project_id=next(iter(principal.project_ids)),
+                idempotency_key=idempotency_header or "",
+            )
+        except ValidationError as error:
+            if idempotency_header is None or not idempotency_header.strip():
+                raise ApiProblem(
+                    code="missing_idempotency_key",
+                    message="Idempotency-Key is required",
+                ) from error
+            raise ApiProblem(
+                code="invalid_idempotency_key",
+                message="request context is invalid",
+            ) from error
+    if not principal.has_scope(scope):
+        raise ApiProblem(
+            code="scope_forbidden",
+            message="authenticated principal lacks the required scope",
+            status=403,
+        )
+    return context, principal
+
+
 async def _parse_create_body(request: Request) -> EpisodeCreateRequest:
     """Decode and validate JSON while distinguishing invalid source encoding."""
     raw = await request.body()
@@ -169,6 +353,134 @@ async def _parse_create_body(request: Request) -> EpisodeCreateRequest:
         ) from error
 
 
+async def _parse_preview_body(request: Request) -> PreviewRequest:
+    """Decode preview JSON while keeping source and validation errors redacted."""
+    raw = await request.body()
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+        return PreviewRequest.model_validate(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as error:
+        fields = {
+            str(location[0])
+            for item in getattr(error, "errors", lambda: ())()
+            for location in [item.get("loc", ())]
+            if location
+        }
+        code = "invalid_profile" if "profile" in fields else "invalid_source"
+        raise ApiProblem(
+            code=code,
+            message="profile is invalid"
+            if code == "invalid_profile"
+            else "request source is invalid",
+            status=422,
+        ) from error
+
+
+async def _parse_publish_body(request: Request) -> PublishCommandRequest | None:
+    """Decode an optional publish body while preserving local header compatibility."""
+    raw = await request.body()
+    if not raw.strip():
+        return None
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+        return PublishCommandRequest.model_validate(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as error:
+        raise ApiProblem(
+            code="invalid_publish_request",
+            message="publish request is invalid",
+            status=422,
+        ) from error
+
+
+async def _parse_render_body(request: Request) -> RenderCommandRequest | None:
+    """Decode optional render controls without accepting ambiguous values."""
+    raw = await request.body()
+    if not raw.strip():
+        return None
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+        return RenderCommandRequest.model_validate(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as error:
+        raise ApiProblem(
+            code="invalid_render_request",
+            message="render request is invalid",
+            status=422,
+        ) from error
+
+
+def _workflow_command_payload(
+    *,
+    factory: WorkflowSnapshotFactory | None,
+    required: bool,
+    record: EpisodeRecord,
+    command: CommandName,
+    payload: Mapping[str, object] | None,
+) -> Mapping[str, object] | None:
+    """Bind an optional command payload to an immutable source snapshot."""
+    if factory is None:
+        if required:
+            raise ApiProblem(
+                code="workflow_snapshot_unavailable",
+                message="an immutable workflow snapshot factory is not configured",
+                status=503,
+            )
+        return payload
+    try:
+        snapshot = bind_snapshot_to_record(
+            factory.build(record=record, command=command, payload=payload), record
+        )
+    except WorkflowSnapshotError as error:
+        raise ApiProblem(
+            code="workflow_snapshot_unavailable",
+            message="an immutable workflow snapshot could not be composed",
+            status=503,
+        ) from error
+    bound_payload = dict(payload or {})
+    bound_payload.update(snapshot.to_payload())
+    return bound_payload
+
+
+def _publication_handoff_payload(
+    *,
+    record: EpisodeRecord,
+    context: RequestContext,
+    principal: AuthenticatedPrincipal,
+    request: PublishCommandRequest,
+) -> dict[str, object]:
+    """Build the compact API-to-worker publication handoff.
+
+    The command carries immutable references and authorization provenance only;
+    package bytes, manifests, target configuration, and secrets stay in the worker.
+    """
+    if record.package_sha256 is None or record.package_manifest_sha256 is None:
+        raise ApiProblem(
+            code="package_not_ready",
+            message="package and manifest checksums are required before publication",
+            status=409,
+        )
+    return {
+        "target_id": request.target_id,
+        "approval_id": str(request.approval_id),
+        "tenant_id": str(context.tenant_id),
+        "project_id": str(context.project_id),
+        "episode_id": str(record.episode_id),
+        "idempotency_key": context.idempotency_key,
+        "package_reference": {
+            # The current episode repository has one immutable version identity;
+            # the durable version repository will replace this with its version ID.
+            "episode_version_id": str(record.episode_id),
+            "package_sha256": record.package_sha256,
+            "package_manifest_sha256": record.package_manifest_sha256,
+        },
+        "authorization": {
+            "actor_id": principal.subject,
+            "decision_id": str(request.approval_id),
+            "reason": "scoped publication approval",
+            "operation": "publish",
+        },
+    }
+
+
 def _scoped_episode(
     service: EpisodeApplicationService,
     *,
@@ -201,8 +513,71 @@ def _scoped_episode(
     return record
 
 
-def _summary(record: EpisodeRecord) -> EpisodeSummary:
+def _validate_resource_link(
+    response: EpisodeResourceLinkResponse,
+    *,
+    tenant_id: UUID,
+    project_id: UUID,
+    episode_id: UUID,
+    episode_version_id: UUID,
+    resource: EpisodeResource,
+) -> EpisodeResourceLinkResponse:
+    """Revalidate and bind provider output before returning it to a caller."""
+    try:
+        validated = EpisodeResourceLinkResponse.model_validate(
+            response.model_dump(mode="python")
+        )
+        parsed_url = urlsplit(validated.url)
+        expiry_offset = validated.expires_at.utcoffset()
+        if (
+            parsed_url.scheme not in {"http", "https"}
+            or not parsed_url.netloc
+            or any(character.isspace() for character in validated.url)
+            or not re.fullmatch(r"[0-9a-f]{64}", validated.sha256)
+            or expiry_offset is None
+            or expiry_offset.total_seconds() != 0
+            or validated.expires_at <= datetime.now(UTC)
+            or (
+                validated.tenant_id,
+                validated.project_id,
+                validated.episode_id,
+                validated.episode_version_id,
+                validated.resource,
+            )
+            != (tenant_id, project_id, episode_id, episode_version_id, resource)
+        ):
+            raise ValueError("resource link identity or integrity is invalid")
+    except Exception as error:
+        raise ApiProblem(
+            code="resource_link_unavailable",
+            message="resource links are unavailable",
+            status=503,
+        ) from error
+    return validated
+
+
+def _summary(
+    record: EpisodeRecord,
+    *,
+    resource_link_signer: ResourceLinkSigner | None = None,
+) -> EpisodeSummary:
     """Map the internal record to a source-safe API summary."""
+    resources: list[ResourceLink] = []
+    if resource_link_signer is not None and record.package_manifest_sha256 is not None:
+        resources.append(
+            ResourceLink(
+                uri=resource_link_signer.issue(
+                    tenant_id=record.tenant_id,
+                    project_id=record.project_id,
+                    episode_id=record.episode_id,
+                    resource="manifest",
+                    media_type="application/json",
+                    sha256=record.package_manifest_sha256,
+                    now=datetime.now(UTC),
+                ),
+                mime_type="application/json",
+            )
+        )
     return EpisodeSummary(
         id=record.episode_id,
         tenant_id=record.tenant_id,
@@ -214,6 +589,7 @@ def _summary(record: EpisodeRecord) -> EpisodeSummary:
         source_bytes=record.source_bytes,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        resources=resources,
     )
 
 
@@ -260,19 +636,46 @@ def create_app(
     service: EpisodeApplicationService | None = None,
     *,
     dispatcher: CommandDispatcher | None = None,
+    status_repository: EpisodeStatusRepository | None = None,
+    temporal_transport: TemporalCommandTransport | None = None,
+    temporal_task_queue: str | None = None,
     available_profiles: Collection[str] | None = None,
     database_path: Path | str | None = None,
+    episode_repository: EpisodeRepository | None = None,
+    command_receipt_store: CommandReceiptStore | None = None,
     health_dependencies: Mapping[str, DependencyState] | None = None,
     health_probes: Mapping[str, Callable[[], bool]] | None = None,
+    auth_mode: AuthMode | None = None,
+    auth_settings: AuthSettings | None = None,
+    principal_verifier: PrincipalVerifier | None = None,
+    approval_repository: ApprovalRepository | None = None,
+    workflow_snapshot_factory: WorkflowSnapshotFactory | None = None,
+    require_workflow_snapshot: bool = False,
+    resource_link_signer: ResourceLinkSigner | None = None,
+    resource_reader: Callable[[ResourceReference], bytes] | None = None,
+    resource_link_provider: ResourceLinkProvider | None = None,
 ) -> FastAPI:
     """Create an offline or restart-safe app with injected lifecycle ports."""
-    if service is not None and database_path is not None:
-        raise ValueError("service and database_path are mutually exclusive")
+    if service is not None and (
+        database_path is not None or episode_repository is not None
+    ):
+        raise ValueError("service and persistence repository are mutually exclusive")
+    if database_path is not None and episode_repository is not None:
+        raise ValueError("database_path and episode_repository are mutually exclusive")
+    if (temporal_transport is None) != (temporal_task_queue is None):
+        raise ValueError(
+            "temporal_transport and temporal_task_queue must be configured together"
+        )
     profiles = frozenset(
         _DEFAULT_PROFILES if available_profiles is None else available_profiles
     )
     if service is not None:
         application_service = service
+    elif episode_repository is not None:
+        application_service = EpisodeApplicationService(
+            repository=episode_repository,
+            available_profiles=profiles,
+        )
     elif database_path is not None:
         application_service = EpisodeApplicationService(
             repository=SQLiteEpisodeRepository(database_path),
@@ -283,21 +686,78 @@ def create_app(
             repository=InMemoryEpisodeRepository(),
             available_profiles=profiles,
         )
+    sqlite_receipt_store = (
+        SQLiteCommandDispatcher(database_path) if database_path is not None else None
+    )
+    temporal_receipt_store: CommandReceiptStore | None = command_receipt_store
+    if temporal_receipt_store is None and sqlite_receipt_store is not None:
+        temporal_receipt_store = cast(CommandReceiptStore, sqlite_receipt_store)
     command_dispatcher = (
         dispatcher
         if dispatcher is not None
         else (
-            SQLiteCommandDispatcher(database_path)
-            if database_path is not None
-            else InMemoryCommandDispatcher()
+            TemporalCommandDispatcher(
+                temporal_transport,
+                task_queue=temporal_task_queue,
+                receipt_store=temporal_receipt_store,
+            )
+            if temporal_transport is not None and temporal_task_queue is not None
+            else (
+                sqlite_receipt_store
+                if sqlite_receipt_store is not None
+                else InMemoryCommandDispatcher()
+            )
         )
     )
+    if (
+        status_repository is None
+        and temporal_transport is not None
+        and hasattr(temporal_transport, "get_workflow_status")
+    ):
+        status_repository = TemporalEpisodeStatusRepository(
+            application_service,
+            dispatcher=cast(CommandDispatcher, command_dispatcher),
+            workflow_reader=cast(
+                TemporalWorkflowStatusReader,
+                temporal_transport,
+            ),
+        )
     app = FastAPI(
         title="PodDown Episode API", version="v1", docs_url=None, redoc_url=None
     )
     health_evaluator = HealthEvaluator()
     dependency_states = {} if health_dependencies is None else dict(health_dependencies)
     dependency_probes = {} if health_probes is None else dict(health_probes)
+    if auth_mode is not None and auth_settings is not None:
+        raise ValueError("auth_mode and auth_settings are mutually exclusive")
+    if auth_mode is not None:
+        if auth_mode == "local":
+            effective_auth_settings = AuthSettings(mode="local")
+        elif auth_mode == "oidc":
+            effective_auth_settings = AuthSettings(mode="oidc")
+        else:
+            raise ValueError("auth_mode must be local or oidc")
+    else:
+        effective_auth_settings = (
+            auth_settings
+            if auth_settings is not None
+            else AuthSettings.from_environment()
+        )
+    oidc_verifier = (
+        principal_verifier
+        if effective_auth_settings.mode in {"api", "oidc"}
+        and principal_verifier is not None
+        else (
+            OIDCPrincipalVerifier(effective_auth_settings)
+            if effective_auth_settings.mode == "api"
+            else None
+        )
+    )
+    local_resolver = (
+        LocalHeaderPrincipalResolver(effective_auth_settings)
+        if effective_auth_settings.mode == "local"
+        else None
+    )
 
     @app.get("/health/live")
     def health_live() -> dict[str, object]:
@@ -319,6 +779,99 @@ def create_app(
             liveness=True, dependencies=dependency_states, probes=dependency_probes
         ).to_dict()
 
+    @app.get(
+        "/v1/resources/{resource_tenant_id}/{resource_project_id}/"
+        "{resource_episode_id}/{resource_kind}"
+    )
+    def get_resource(
+        request: Request,
+        resource_tenant_id: str,
+        resource_project_id: str,
+        resource_episode_id: str,
+        resource_kind: str,
+        x_tenant_id: str | None = Header(default=None, alias="X-Tenant-ID"),
+        x_project_id: str | None = Header(default=None, alias="X-Project-ID"),
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> Response:
+        """Serve one verified resource without exposing storage internals."""
+        context, _principal = _authenticated_context(
+            settings=effective_auth_settings,
+            verifier=oidc_verifier,
+            local_resolver=local_resolver,
+            tenant_header=x_tenant_id,
+            project_header=x_project_id,
+            idempotency_header="resource-read",
+            authorization_header=authorization,
+            scope="resources:read",
+        )
+        if resource_link_signer is None:
+            raise ApiProblem(
+                code="resource_links_unavailable",
+                message="resource links are unavailable",
+                status=503,
+            )
+        try:
+            tenant_id = UUID(resource_tenant_id)
+            project_id = UUID(resource_project_id)
+            episode_id = UUID(resource_episode_id)
+        except ValueError as error:
+            raise ApiProblem(
+                code="resource_not_found",
+                message="resource was not found",
+                status=404,
+            ) from error
+        if (tenant_id, project_id) != (context.tenant_id, context.project_id):
+            raise ApiProblem(
+                code="resource_not_found",
+                message="resource was not found",
+                status=404,
+            )
+        try:
+            reference = resource_link_signer.verify(
+                str(request.url),
+                tenant_id=tenant_id,
+                project_id=project_id,
+                episode_id=episode_id,
+                now=datetime.now(UTC),
+            )
+        except ResourceLinkError as error:
+            raise ApiProblem(
+                code="resource_not_found",
+                message="resource was not found",
+                status=404,
+            ) from error
+        if reference.resource != resource_kind:
+            raise ApiProblem(
+                code="resource_not_found",
+                message="resource was not found",
+                status=404,
+            )
+        if resource_reader is None:
+            raise ApiProblem(
+                code="resource_store_unavailable",
+                message="resource storage is unavailable",
+                status=503,
+            )
+        try:
+            data = resource_reader(reference)
+        except Exception as error:
+            raise ApiProblem(
+                code="resource_store_unavailable",
+                message="resource storage is unavailable",
+                status=503,
+            ) from error
+        if not isinstance(data, bytes) or sha256(data).hexdigest() != reference.sha256:
+            raise ApiProblem(
+                code="resource_integrity_failed",
+                message="resource integrity verification failed",
+                status=502,
+            )
+        return Response(
+            content=data,
+            media_type=reference.media_type,
+            headers={"Cache-Control": "private, no-store"},
+        )
+
     @app.exception_handler(EpisodeServiceError)
     async def handle_service_error(
         _request: Request,
@@ -335,11 +888,17 @@ def create_app(
             default=None,
             alias="Idempotency-Key",
         ),
+        authorization: str | None = Header(default=None, alias="Authorization"),
     ) -> EpisodeCreateResponse:
-        context = _parse_context(
+        context, _principal = _authenticated_context(
+            settings=effective_auth_settings,
+            verifier=oidc_verifier,
+            local_resolver=local_resolver,
             tenant_header=x_tenant_id,
             project_header=x_project_id,
             idempotency_header=idempotency_key,
+            authorization_header=authorization,
+            scope="episodes:write",
         )
         payload = await _parse_create_body(request)
         if payload.profile not in profiles:
@@ -357,25 +916,97 @@ def create_app(
                 profile_name=payload.profile,
             )
         )
+        command_payload = _workflow_command_payload(
+            factory=workflow_snapshot_factory,
+            required=require_workflow_snapshot,
+            record=record,
+            command="create",
+            payload=None,
+        )
         receipt = command_dispatcher.submit(
             tenant_id=context.tenant_id,
             project_id=context.project_id,
             episode_id=record.episode_id,
             command="create",
             idempotency_key=context.idempotency_key,
+            payload=command_payload,
         )
         return EpisodeCreateResponse(episode=_summary(record), receipt=receipt)
+
+    @app.post("/v1/preview", response_model=PreviewResponse)
+    async def preview_episode(
+        request: Request,
+        x_tenant_id: str | None = Header(default=None, alias="X-Tenant-ID"),
+        x_project_id: str | None = Header(default=None, alias="X-Project-ID"),
+        idempotency_key: str | None = Header(
+            default=None,
+            alias="Idempotency-Key",
+        ),
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> PreviewResponse:
+        """Validate source locally without dispatching provider or workflow work."""
+        _context, _principal = _authenticated_context(
+            settings=effective_auth_settings,
+            verifier=oidc_verifier,
+            local_resolver=local_resolver,
+            tenant_header=x_tenant_id,
+            project_header=x_project_id,
+            idempotency_header=idempotency_key,
+            authorization_header=authorization,
+            scope="episodes:read",
+        )
+        payload = await _parse_preview_body(request)
+        if payload.profile is not None and payload.profile not in profiles:
+            raise ApiProblem(
+                code="invalid_profile",
+                message="profile is invalid",
+                status=422,
+            )
+        try:
+            result = preview_markdown(
+                payload.source.encode("utf-8"),
+                source_name="api-preview.md",
+                flag_profile=payload.profile,
+                project_config={"profiles": profiles},
+                user_config=None,
+            )
+        except PreviewValidationError as error:
+            code = (
+                "invalid_profile"
+                if any("profile" in message.casefold() for message in error.errors)
+                else "invalid_source"
+            )
+            raise ApiProblem(
+                code=code,
+                message="profile is invalid"
+                if code == "invalid_profile"
+                else "request source is invalid",
+                status=422,
+            ) from error
+        return PreviewResponse(
+            source_sha256=result.source_sha256,
+            profile_id=result.profile_id,
+            source_bytes=result.source_bytes,
+            block_count=result.block_count,
+            provider_calls=result.provider_calls,
+        )
 
     @app.get("/v1/episodes/{episode_id}", response_model=EpisodeSummary)
     def get_episode(
         episode_id: str,
         x_tenant_id: str | None = Header(default=None, alias="X-Tenant-ID"),
         x_project_id: str | None = Header(default=None, alias="X-Project-ID"),
+        authorization: str | None = Header(default=None, alias="Authorization"),
     ) -> EpisodeSummary:
-        context = _parse_context(
+        context, _principal = _authenticated_context(
+            settings=effective_auth_settings,
+            verifier=oidc_verifier,
+            local_resolver=local_resolver,
             tenant_header=x_tenant_id,
             project_header=x_project_id,
             idempotency_header="read-only",
+            authorization_header=authorization,
+            scope="episodes:read",
         )
         return _summary(
             _scoped_episode(
@@ -383,7 +1014,77 @@ def create_app(
                 tenant_id=context.tenant_id,
                 project_id=context.project_id,
                 episode_id=episode_id,
+            ),
+            resource_link_signer=resource_link_signer,
+        )
+
+    @app.get(
+        "/v1/episodes/{episode_id}/resources/{resource}",
+        response_model=EpisodeResourceLinkResponse,
+    )
+    def get_episode_resource(
+        episode_id: str,
+        resource: EpisodeResource,
+        x_tenant_id: str | None = Header(default=None, alias="X-Tenant-ID"),
+        x_project_id: str | None = Header(default=None, alias="X-Project-ID"),
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> EpisodeResourceLinkResponse:
+        """Return a validated provider link without inventing storage URLs."""
+        context, _principal = _authenticated_context(
+            settings=effective_auth_settings,
+            verifier=oidc_verifier,
+            local_resolver=local_resolver,
+            tenant_header=x_tenant_id,
+            project_header=x_project_id,
+            idempotency_header="read-only",
+            authorization_header=authorization,
+            scope="resources:read",
+        )
+        record = _scoped_episode(
+            application_service,
+            tenant_id=context.tenant_id,
+            project_id=context.project_id,
+            episode_id=episode_id,
+        )
+        if resource_link_provider is None:
+            raise ApiProblem(
+                code="resource_link_unavailable",
+                message="resource links are unavailable",
+                status=503,
             )
+        try:
+            response = resource_link_provider.get_resource_link(
+                tenant_id=context.tenant_id,
+                project_id=context.project_id,
+                episode_id=record.episode_id,
+                episode_version_id=record.episode_id,
+                resource=resource,
+            )
+        except Exception as error:
+            raise ApiProblem(
+                code="resource_link_unavailable",
+                message="resource links are unavailable",
+                status=503,
+            ) from error
+        if response is None:
+            raise ApiProblem(
+                code="resource_not_found",
+                message="resource was not found",
+                status=404,
+            )
+        if not isinstance(response, EpisodeResourceLinkResponse):
+            raise ApiProblem(
+                code="resource_link_unavailable",
+                message="resource links are unavailable",
+                status=503,
+            )
+        return _validate_resource_link(
+            response,
+            tenant_id=context.tenant_id,
+            project_id=context.project_id,
+            episode_id=record.episode_id,
+            episode_version_id=record.episode_id,
+            resource=resource,
         )
 
     @app.get("/v1/episodes/{episode_id}/status", response_model=EpisodeStatusResponse)
@@ -391,17 +1092,46 @@ def create_app(
         episode_id: str,
         x_tenant_id: str | None = Header(default=None, alias="X-Tenant-ID"),
         x_project_id: str | None = Header(default=None, alias="X-Project-ID"),
+        authorization: str | None = Header(default=None, alias="Authorization"),
     ) -> EpisodeStatusResponse:
-        context = _parse_context(
+        context, _principal = _authenticated_context(
+            settings=effective_auth_settings,
+            verifier=oidc_verifier,
+            local_resolver=local_resolver,
             tenant_header=x_tenant_id,
             project_header=x_project_id,
             idempotency_header="read-only",
+            authorization_header=authorization,
+            scope="episodes:read",
         )
+        if status_repository is not None:
+            try:
+                parsed_id = UUID(episode_id)
+            except ValueError as error:
+                raise ApiProblem(
+                    code="episode_not_found",
+                    message="episode was not found",
+                    status=404,
+                ) from error
+            status = status_repository.get_status(
+                tenant_id=context.tenant_id,
+                project_id=context.project_id,
+                episode_id=parsed_id,
+            )
+            if status is not None:
+                return status
         record = _scoped_episode(
             application_service,
             tenant_id=context.tenant_id,
             project_id=context.project_id,
             episode_id=episode_id,
+        )
+        create_receipt = command_dispatcher.replay(
+            tenant_id=context.tenant_id,
+            project_id=context.project_id,
+            episode_id=record.episode_id,
+            command="create",
+            idempotency_key=record.idempotency_key,
         )
         return EpisodeStatusResponse(
             episode_id=record.episode_id,
@@ -414,11 +1144,13 @@ def create_app(
             failure=_safe_failure(record.failure)
             if record.failure is not None
             else None,
+            workflow_id=(create_receipt.workflow_id if create_receipt else None),
             package_manifest_sha256=record.package_manifest_sha256,
         )
 
     @app.post("/v1/episodes/{episode_id}/render", status_code=202)
-    def render_episode(
+    async def render_episode(
+        request: Request,
         episode_id: str,
         x_tenant_id: str | None = Header(default=None, alias="X-Tenant-ID"),
         x_project_id: str | None = Header(default=None, alias="X-Project-ID"),
@@ -426,11 +1158,23 @@ def create_app(
             default=None,
             alias="Idempotency-Key",
         ),
+        authorization: str | None = Header(default=None, alias="Authorization"),
     ) -> CommandReceipt:
-        context = _parse_context(
+        render_request = await _parse_render_body(request)
+        render_payload = (
+            render_request.model_dump(mode="json", exclude_none=True)
+            if render_request is not None
+            else None
+        )
+        context, _principal = _authenticated_context(
+            settings=effective_auth_settings,
+            verifier=oidc_verifier,
+            local_resolver=local_resolver,
             tenant_header=x_tenant_id,
             project_header=x_project_id,
             idempotency_header=idempotency_key,
+            authorization_header=authorization,
+            scope="episodes:render",
         )
         record = _scoped_episode(
             application_service,
@@ -440,24 +1184,35 @@ def create_app(
         )
         replay = command_dispatcher.replay(
             tenant_id=context.tenant_id,
+            project_id=context.project_id,
             episode_id=record.episode_id,
             command="render",
             idempotency_key=context.idempotency_key,
+            payload=render_payload,
         )
         if replay is not None:
             return replay
         if record.state == EpisodeState.PUBLISHED:
             raise InvalidEpisodeTransition("published episode cannot be rendered")
+        command_payload = _workflow_command_payload(
+            factory=workflow_snapshot_factory,
+            required=require_workflow_snapshot,
+            record=record,
+            command="render",
+            payload=render_payload,
+        )
         return command_dispatcher.submit(
             tenant_id=context.tenant_id,
             project_id=context.project_id,
             episode_id=record.episode_id,
             command="render",
             idempotency_key=context.idempotency_key,
+            payload=command_payload,
         )
 
     @app.post("/v1/episodes/{episode_id}/publish", status_code=202)
-    def publish_episode(
+    async def publish_episode(
+        request: Request,
         episode_id: str,
         x_tenant_id: str | None = Header(default=None, alias="X-Tenant-ID"),
         x_project_id: str | None = Header(default=None, alias="X-Project-ID"),
@@ -469,11 +1224,18 @@ def create_app(
             default=None,
             alias="X-Publish-Authorization",
         ),
+        authorization: str | None = Header(default=None, alias="Authorization"),
     ) -> CommandReceipt:
-        context = _parse_context(
+        publish_request = await _parse_publish_body(request)
+        context, principal = _authenticated_context(
+            settings=effective_auth_settings,
+            verifier=oidc_verifier,
+            local_resolver=local_resolver,
             tenant_header=x_tenant_id,
             project_header=x_project_id,
             idempotency_header=idempotency_key,
+            authorization_header=authorization,
+            scope="episodes:publish",
         )
         record = _scoped_episode(
             application_service,
@@ -481,7 +1243,134 @@ def create_app(
             project_id=context.project_id,
             episode_id=episode_id,
         )
-        if x_publish_authorization != "true":
+        publish_payload = (
+            _publication_handoff_payload(
+                record=record,
+                context=context,
+                principal=principal,
+                request=publish_request,
+            )
+            if publish_request is not None
+            else None
+        )
+        command_payload = _workflow_command_payload(
+            factory=workflow_snapshot_factory,
+            required=require_workflow_snapshot,
+            record=record,
+            command="publish",
+            payload=publish_payload,
+        )
+        replay = command_dispatcher.replay(
+            tenant_id=context.tenant_id,
+            project_id=context.project_id,
+            episode_id=record.episode_id,
+            command="publish",
+            idempotency_key=context.idempotency_key,
+            payload=command_payload,
+        )
+        if replay is not None:
+            return replay
+        if effective_auth_settings.mode == "api":
+            if publish_request is None:
+                raise ApiProblem(
+                    code="publish_authorization_required",
+                    message="target and scoped approval are required",
+                    status=403,
+                )
+            if approval_repository is None:
+                raise ApiProblem(
+                    code="approval_store_unavailable",
+                    message="publication approval store is unavailable",
+                    status=503,
+                )
+            if record.package_sha256 is None:
+                raise ApiProblem(
+                    code="package_not_ready",
+                    message="a packaged checksum is required before publication",
+                    status=409,
+                )
+            try:
+                approval = approval_repository.consume(
+                    tenant_id=context.tenant_id,
+                    project_id=context.project_id,
+                    episode_id=record.episode_id,
+                    approval_id=publish_request.approval_id,
+                    target_id=publish_request.target_id,
+                    operation="publish",
+                    package_sha256=record.package_sha256,
+                    actor_id=principal.subject,
+                    now=datetime.now(UTC),
+                )
+                if (
+                    approval.approval_id != publish_request.approval_id
+                    or approval.actor_id != principal.subject
+                ):
+                    raise ApiProblem(
+                        code="publish_authorization_required",
+                        message="publication approval is inconsistent",
+                        status=403,
+                    )
+            except ApprovalAlreadyConsumed as error:
+                raise ApiProblem(
+                    code="publish_authorization_required",
+                    message="publication approval is no longer usable",
+                    status=403,
+                ) from error
+            except ApprovalError as error:
+                raise ApiProblem(
+                    code="publish_authorization_required",
+                    message="publication approval is invalid or expired",
+                    status=403,
+                ) from error
+        elif publish_request is not None:
+            if approval_repository is None:
+                raise ApiProblem(
+                    code="approval_store_unavailable",
+                    message="publication approval store is unavailable",
+                    status=503,
+                )
+            if record.package_sha256 is None:
+                raise ApiProblem(
+                    code="package_not_ready",
+                    message="a packaged checksum is required before publication",
+                    status=409,
+                )
+            if record.package_manifest_sha256 is None:
+                raise ApiProblem(
+                    code="package_not_ready",
+                    message=(
+                        "a package manifest checksum is required before publication"
+                    ),
+                    status=409,
+                )
+            try:
+                approval = approval_repository.consume(
+                    tenant_id=context.tenant_id,
+                    project_id=context.project_id,
+                    episode_id=record.episode_id,
+                    approval_id=publish_request.approval_id,
+                    target_id=publish_request.target_id,
+                    operation="publish",
+                    package_sha256=record.package_sha256,
+                    actor_id=principal.subject,
+                    now=datetime.now(UTC),
+                )
+                if (
+                    approval.approval_id != publish_request.approval_id
+                    or approval.actor_id != principal.subject
+                ):
+                    raise ApiProblem(
+                        code="publish_authorization_required",
+                        message="publication approval is inconsistent",
+                        status=403,
+                    )
+            except ApprovalError as error:
+                raise ApiProblem(
+                    code="publish_authorization_required",
+                    message="publication approval is invalid or expired",
+                    status=403,
+                ) from error
+        elif x_publish_authorization != "true":
             raise ApiProblem(
                 code="publish_authorization_required",
                 message="explicit publish authorization is required",
@@ -495,6 +1384,7 @@ def create_app(
             episode_id=record.episode_id,
             command="publish",
             idempotency_key=context.idempotency_key,
+            payload=command_payload,
         )
 
     return app

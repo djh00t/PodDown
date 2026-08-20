@@ -14,12 +14,20 @@ def test_approval_registry_requires_trusted_one_time_time_bounded_approval():
     now = datetime(2026, 8, 10, tzinfo=UTC)
     registry = InMemoryApprovalRegistry(clock=lambda: now)
     registry.issue(
-        "tenant-a", "episode-1", "approval-1", expires_at=now + timedelta(minutes=5)
+        "tenant-a",
+        "episode-1",
+        "approval-1",
+        target_id="target-1",
+        expires_at=now + timedelta(minutes=5),
     )
     server = AgentMCPServer(
         LocalGateway(), AuthenticatedContext("tenant-a"), approval_verifier=registry
     )
-    valid = {"episode_id": "episode-1", "approval_id": "approval-1"}
+    valid = {
+        "episode_id": "episode-1",
+        "approval_id": "approval-1",
+        "target_id": "target-1",
+    }
     assert (
         server.call("poddown_publish", valid)["result"]["side_effect"]
         == "external_publish"
@@ -31,15 +39,31 @@ def test_stale_tampered_and_cross_tenant_approvals_fail_closed():
     now = datetime(2026, 8, 10, tzinfo=UTC)
     registry = InMemoryApprovalRegistry(clock=lambda: now)
     registry.issue(
-        "tenant-a", "episode-1", "approval-1", expires_at=now - timedelta(seconds=1)
+        "tenant-a",
+        "episode-1",
+        "approval-1",
+        target_id="target-1",
+        expires_at=now - timedelta(seconds=1),
     )
     server = AgentMCPServer(
         LocalGateway(), AuthenticatedContext("tenant-a"), approval_verifier=registry
     )
     for args in (
-        {"episode_id": "episode-1", "approval_id": "approval-1"},
-        {"episode_id": "episode-2", "approval_id": "approval-1"},
-        {"episode_id": "episode-1", "approval_id": "missing"},
+        {
+            "episode_id": "episode-1",
+            "approval_id": "approval-1",
+            "target_id": "target-1",
+        },
+        {
+            "episode_id": "episode-2",
+            "approval_id": "approval-1",
+            "target_id": "target-1",
+        },
+        {
+            "episode_id": "episode-1",
+            "approval_id": "missing",
+            "target_id": "target-1",
+        },
     ):
         assert (
             server.call("poddown_publish", args)["error"]["code"] == "approval_required"
@@ -48,7 +72,11 @@ def test_stale_tampered_and_cross_tenant_approvals_fail_closed():
 
 def test_default_verifier_is_fail_closed_and_model_flags_are_not_authority():
     server = AgentMCPServer(LocalGateway(), AuthenticatedContext("tenant-a"))
-    args = {"episode_id": "episode-1", "approval_id": "model-made"}
+    args = {
+        "episode_id": "episode-1",
+        "approval_id": "model-made",
+        "target_id": "target-1",
+    }
     assert server.call("poddown_publish", args)["error"]["code"] == "approval_required"
 
 
@@ -109,7 +137,7 @@ def test_nested_allowed_values_are_shape_checked_and_redacted():
 
 def test_approval_verifier_failure_is_a_stable_redacted_error():
     class BrokenVerifier:
-        def verify_and_consume(self, tenant_id, episode_id, approval_id):
+        def verify_and_consume(self, tenant_id, episode_id, approval_id, target_id):
             raise RuntimeError("credential=SECRET backing store unavailable")
 
     server = AgentMCPServer(
@@ -118,7 +146,12 @@ def test_approval_verifier_failure_is_a_stable_redacted_error():
         approval_verifier=BrokenVerifier(),
     )
     assert server.call(
-        "poddown_publish", {"episode_id": "episode-1", "approval_id": "a1"}
+        "poddown_publish",
+        {
+            "episode_id": "episode-1",
+            "approval_id": "a1",
+            "target_id": "target-1",
+        },
     ) == {
         "error": {
             "code": "internal_error",

@@ -13,9 +13,11 @@ from poddown.publishing import (
     FilesystemPublicationAdapter,
     PublicationConflictError,
     PublicationTarget,
+    PublishingAuthorizationError,
     RecordedTransistorAdapter,
     RssPublicationAdapter,
     S3CompatiblePublicationAdapter,
+    TransistorPublicationAdapter,
 )
 
 TENANT = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b10")
@@ -249,3 +251,11 @@ def test_transistor_adapter_uses_recorded_fixture_only(tmp_path: Path) -> None:
         adapter.publish(package, _target("transistor"), artifacts)
         == "transistor-episode-1"
     )
+
+
+def test_live_transistor_transport_requires_explicit_opt_in() -> None:
+    with pytest.raises(PublishingAuthorizationError, match="explicit opt-in"):
+        TransistorPublicationAdapter(
+            "https://api.example.test/v1",
+            secret_resolver=lambda _reference: "test-header-value",
+        )

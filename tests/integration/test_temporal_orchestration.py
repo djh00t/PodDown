@@ -22,6 +22,7 @@ from poddown.audio.workflow import (
     SegmentWorkflowInput,
 )
 from poddown.domain import FidelityResult
+from tests.temporal_support import retry_local_temporal_environment
 
 TASK_QUEUE = "poddown-temporal-orchestration-tests"
 
@@ -116,7 +117,9 @@ async def _run_temporal_integration() -> None:
         )
 
     async with (
-        await WorkflowEnvironment.start_local() as environment,
+        retry_local_temporal_environment(
+            WorkflowEnvironment.start_local
+        ) as environment,
         Worker(
             environment.client,
             task_queue=TASK_QUEUE,
@@ -133,6 +136,11 @@ async def _run_temporal_integration() -> None:
     assert first_result.status == "completed"
     assert [decision.attempt for decision in first_result.decisions] == [1, 2]
     assert len(state.calls) == 4 + 3 + 3
+    assert all(
+        len(call["episode"]["segments"]) == 1
+        for call in state.calls
+        if isinstance(call.get("episode"), dict)
+    )
     assert all(
         call["segment"]["segment_id"] != "segment-1" or call["attempt"] == 1
         for call in state.calls

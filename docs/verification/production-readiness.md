@@ -1,69 +1,61 @@
-# M7 production-readiness verification
+# Production-readiness boundary verification
 
 ## Scope
 
-This slice adds a versioned local Compose topology for PostgreSQL, Temporal,
-NATS JetStream, MinIO, API, and worker; offline health endpoints; and immutable
-tenant-safe operational event/metric contracts. Kubernetes, live services, and
-credentials are outside the default test boundary.
+The current local overlay contains a versioned Compose topology for
+PostgreSQL, Temporal, NATS JetStream, MinIO, API, and worker services;
+provider-free health/readiness contracts; redacted operational event and metric
+contracts; explicit runtime configuration; and fail-closed release evidence.
+The topology is a local integration target, not proof of deployed production
+readiness.
 
-## Evidence
+## Local evidence
 
-Focused contract tests:
+- The full non-live regression passed `1999 passed, 11 skipped, 2 deselected, 14
+  compatibility warnings` at `80.05%` branch coverage.
+- `docker compose config --quiet` passed with explicit local-only database,
+  object-store, resource-link, and service endpoint values.
+- A fresh local Compose run on 2026-08-16 started PostgreSQL, Temporal, NATS,
+  MinIO, API, and worker services healthy; the MinIO initialization job exited
+  successfully. An API create command then completed the host-local production
+  workflow through Temporal and package completion. The API status response
+  reported `packaged`, progress `0.9`, and manifest SHA-256
+  `cd7fb13afcbb30d97aa4dc40e69e506800a99891a340f46828ac26810c8de15e`; the
+  worker's canonical package-manifest calculation matched that digest. The
+  run used zero provider cost and no external publication.
+- The Compose/Dockerfile and worker lifecycle contracts are covered by the
+  repository test suite; missing Temporal, database, authentication, and
+  resource-link configuration fails closed.
+- A disposable Compose restart drill accepted a real API command, restarted
+  the API and worker while the Temporal status was `rendering`, and recovered
+  to `packaged` with progress `0.9` and manifest SHA-256
+  `32a9ebebbb342b97cdd7c7a837d0a36d6482af6bf52c76bff28c15c85765472b`. The
+  drill also verified that concurrent API/worker PostgreSQL bootstrap is
+  serialized by a transaction-scoped advisory lock. Its project and volumes
+  were removed after the run.
+- A fresh CycloneDX 1.5 SBOM contains 60 locked components.
+- Gitleaks scanned approximately 35.20 MB with no leaks.
+- Trivy library scanning exited `0` with no unfixed findings.
+- The controlled live-provider procedure is documented in the [live-provider
+  runbook](live-provider-runbook.md); it has not been activated.
 
-```text
-rtk uv run pytest -q tests/unit/test_production_contracts.py tests/unit/test_compose_contract.py tests/integration/test_health_boundary.py tests/unit/test_runtime_entrypoints.py tests/bdd/test_production_readiness.py
-27 passed, including the worker lifecycle and API environment/readiness
-contracts.
-```
+These are local contract, build, and scanner results. No external credentials,
+live provider request, external publication, or hosted service was used.
 
-The first correction run was intentionally RED during test-first development:
-pytest collection failed with `ImportError: cannot import name
-'runtime_dependency_probes' from poddown.runtime`. Production edits followed
-that captured failure.
+## Explicit evidence boundary
 
-The dependency-advisor decision for the direct API server dependency was
-`uvicorn==0.51.0` under the Python conservative policy with a 720-hour minimum
-package age. `uv.lock` was regenerated and `uv pip check` passed.
+The Compose results are disposable local cross-process evidence only. They do
+not prove hosted deployment, hosted restart/recovery, production capacity,
+provider-live fidelity, or authenticated customer use. The temporary local
+Compose stacks and their volumes were removed after verification.
 
-The packaged entrypoints are `poddown-api` and `poddown-worker`. The API uses
-the existing `create_app()` through uvicorn. The worker reads
-`PODDOWN_TEMPORAL_ADDRESS`, `PODDOWN_TEMPORAL_NAMESPACE`, and
-`PODDOWN_TEMPORAL_TASK_QUEUE`, then registers the existing
-`EpisodeRenderWorkflow` and `render_segment_activity` contracts. Missing
-required worker configuration fails before a network connection.
+The following remain required before production readiness can be claimed:
 
-The worker marker is removed before connection, created only after the entered
-Temporal worker reports `is_running`, and removed in the shutdown path. Static
-Compose/Dockerfile assertions and the lifecycle test cover PATH, non-secret
-Temporal environment, marker healthcheck, and cleanup wiring.
-
-The final stacked changed-scope `rtk make check` completed with 861 passed,
-one live-provider test deselected, and 86.43% coverage; its full output is
-local command evidence, not Compose E2E evidence.
-
-`rtk make build`, `rtk make docs`, `rtk uv lock --check`, `rtk uv pip check`,
-`rtk uv run python -m compileall -q src tests`, and `rtk git diff --check`
-completed successfully. The changed-file credential scan found no credential
-values. Ruff formatting and focused Ruff checks also passed.
-
-With Docker available, `docker build --tag poddown-m7-verify:local .` completed
-successfully and installed `uvicorn==0.51.0`. No Compose services were started,
-so Compose E2E and service restart evidence remain unclaimed.
-
-The Compose YAML, Dockerfile, packaged scripts, and commands are statically
-validated only. Docker/Compose E2E was not run locally, so no clean Compose E2E
-or live-service readiness claim is made.
-
-## Explicit deferrals
-
-- Hosted PostgreSQL/Temporal/NATS/MinIO migrations and deployment configuration.
-- Real backup/restore and disaster-recovery drills.
-- Provider outage, budget exhaustion, and load/capacity testing.
-- Signing, SBOM, vulnerability scanning, and staged deployment.
-- Deployment credentials and live provider credentials.
-- Kubernetes manifests or hosted migration adapters (Kubernetes is explicitly
-  excluded from this local Compose contract).
-
-Docker/Compose execution was not run; service availability and the Docker
-daemon were not assumed.
+- hosted PostgreSQL/MinIO/NATS/Temporal migrations, isolation, and
+  restart/recovery evidence beyond the disposable local service and transport
+  smokes;
+- credentialed ElevenLabs/OpenAI provider-ASR execution with complete evidence
+  and 100% critical-token fidelity;
+- deployed OIDC key/issuer validation and authenticated customer UAT;
+- backup/restore, outage/load/capacity, telemetry/SLO, signing, and staged
+  deployment evidence.

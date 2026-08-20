@@ -144,6 +144,18 @@ checked against tenant, project, commercial use, and revocation time before each
 render. Secrets are adapter configuration, never profile content. Logs and events
 contain stable IDs and costs but exclude source text and credentials by default.
 
+PostgreSQL adds defense-in-depth row-level security for every tenant-owned table.
+The production DB-API usage, command, and publication-approval repositories enter
+`poddown.tenant_context.tenant_transaction` with an authenticated UUIDv7 tenant
+before issuing tenant SQL. PostgreSQL executes a
+parameterized, transaction-local `set_config('app.tenant_id', %s, true)` call; an
+absent or empty setting resolves to `NULL`, so both reads and writes are denied.
+Table owners remain subject to these policies through `FORCE ROW LEVEL SECURITY`;
+application tenant predicates remain required. SQLite is inferred locally; test
+fakes must explicitly identify themselves as test connections. Neither SQLite nor
+fake tests implement PostgreSQL RLS or provide evidence of database-enforced
+isolation.
+
 ## Initial deployment decision
 
 Keep one Python distribution with independently runnable API and worker processes.

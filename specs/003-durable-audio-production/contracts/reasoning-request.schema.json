@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poddown.dev/schemas/v1/reasoning-request.schema.json",
+  "title": "PodDown reasoning request",
+  "$comment": "Draft 2020-12 validates this closed structural shape. validate_reasoning_request_record additionally enforces ordered source-anchor and critical-token spans because JSON Schema cannot compare sibling numeric fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_sha256",
+    "treatment_id",
+    "profile",
+    "treatment",
+    "source_anchors"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "treatment_id": {"$ref": "#/$defs/nonEmptyString"},
+    "profile": {"$ref": "#/$defs/profile"},
+    "treatment": {"$ref": "#/$defs/treatment"},
+    "source_anchors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/sourceAnchor"}
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {"type": "string", "minLength": 1},
+    "formatType": {"enum": ["narration", "dialogue"]},
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "version",
+        "format_type",
+        "target_minutes",
+        "style",
+        "quality",
+        "speakers"
+      ],
+      "properties": {
+        "profile_id": {"$ref": "#/$defs/nonEmptyString"},
+        "version": {"$ref": "#/$defs/nonEmptyString"},
+        "format_type": {"$ref": "#/$defs/formatType"},
+        "target_minutes": {"type": "integer", "minimum": 1, "maximum": 180},
+        "style": {"$ref": "#/$defs/jsonMetadata"},
+        "quality": {"$ref": "#/$defs/jsonMetadata"},
+        "speakers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/profileSpeaker"}
+        }
+      }
+    },
+    "profileSpeaker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["speaker_id", "display_name"],
+      "properties": {
+        "speaker_id": {"$ref": "#/$defs/nonEmptyString"},
+        "display_name": {"$ref": "#/$defs/nonEmptyString"}
+      }
+    },
+    "treatment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format_type",
+        "target_minutes",
+        "narrative_arc",
+        "sections",
+        "speaker_roles",
+        "expected_turn_ids"
+      ],
+      "properties": {
+        "format_type": {"$ref": "#/$defs/formatType"},
+        "target_minutes": {"type": "integer", "minimum": 1, "maximum": 180},
+        "narrative_arc": {"$ref": "#/$defs/stringList"},
+        "sections": {"$ref": "#/$defs/stringList"},
+        "speaker_roles": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/speakerRole"}
+        },
+        "expected_turn_ids": {"$ref": "#/$defs/stringList"}
+      }
+    },
+    "speakerRole": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["speaker_id", "role"],
+      "properties": {
+        "speaker_id": {"$ref": "#/$defs/nonEmptyString"},
+        "role": {"$ref": "#/$defs/nonEmptyString"}
+      }
+    },
+    "stringList": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/nonEmptyString"},
+      "uniqueItems": true
+    },
+    "sourceAnchor": {
+      "type": "object",
+      "$comment": "validate_reasoning_request_record enforces start <= end.",
+      "additionalProperties": false,
+      "required": ["block_id", "start", "end", "text", "critical_tokens"],
+      "properties": {
+        "block_id": {"$ref": "#/$defs/nonEmptyString"},
+        "start": {"type": "integer", "minimum": 0},
+        "end": {"type": "integer", "minimum": 0},
+        "text": {"type": "string"},
+        "critical_tokens": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/criticalToken"}
+        }
+      }
+    },
+    "criticalToken": {
+      "type": "object",
+      "$comment": "validate_reasoning_request_record enforces start < end.",
+      "additionalProperties": false,
+      "required": [
+        "occurrence_id",
+        "category",
+        "normalized",
+        "source_form",
+        "start",
+        "end",
+        "expected_spoken_form",
+        "pronunciation_source"
+      ],
+      "properties": {
+        "occurrence_id": {"$ref": "#/$defs/nonEmptyString"},
+        "category": {
+          "enum": [
+            "name",
+            "organization",
+            "product",
+            "acronym",
+            "technical_term",
+            "number",
+            "currency",
+            "percentage",
+            "date",
+            "unit",
+            "ticker",
+            "negation"
+          ]
+        },
+        "normalized": {"$ref": "#/$defs/nonEmptyString"},
+        "source_form": {"type": "string"},
+        "start": {"type": "integer", "minimum": 0},
+        "end": {"type": "integer", "minimum": 0},
+        "expected_spoken_form": {"$ref": "#/$defs/nonEmptyString"},
+        "pronunciation_source": {
+          "type": ["string", "null"],
+          "minLength": 1
+        }
+      }
+    },
+    "jsonMetadata": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/jsonValue"}
+    },
+    "jsonValue": {
+      "anyOf": [
+        {"type": "null"},
+        {"type": "boolean"},
+        {"type": "number"},
+        {"type": "string"},
+        {"type": "array", "items": {"$ref": "#/$defs/jsonValue"}},
+        {"type": "object", "additionalProperties": {"$ref": "#/$defs/jsonValue"}}
+      ]
+    }
+  }
+}

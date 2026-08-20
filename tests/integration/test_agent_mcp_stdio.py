@@ -135,6 +135,7 @@ def test_stdio_registers_trusted_environment_approval_without_printing_token():
         "PODDOWN_TENANT_ID": "tenant-a",
         "PODDOWN_APPROVAL_TOKEN": token,
         "PODDOWN_APPROVAL_EPISODE_ID": "episode-1",
+        "PODDOWN_APPROVAL_TARGET_ID": "target-1",
         "PODDOWN_APPROVAL_EXPIRES_AT": "2099-01-01T00:00:00+00:00",
     }
     request = {
@@ -143,7 +144,11 @@ def test_stdio_registers_trusted_environment_approval_without_printing_token():
         "method": "tools/call",
         "params": {
             "name": "poddown_publish",
-            "arguments": {"episode_id": "episode-1", "approval_id": token},
+            "arguments": {
+                "episode_id": "episode-1",
+                "approval_id": token,
+                "target_id": "target-1",
+            },
         },
     }
     process = subprocess.run(
@@ -174,6 +179,7 @@ def test_stdio_does_not_authorize_model_fresh_flag_without_trusted_environment()
             "arguments": {
                 "episode_id": "episode-1",
                 "approval_id": "model-token",
+                "target_id": "target-1",
                 "fresh": True,
                 "nonce": "model-nonce",
             },

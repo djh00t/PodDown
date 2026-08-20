@@ -57,6 +57,26 @@ def test_body_only_markdown_uses_resolved_default_profile():
     assert result.source_sha256 == hashlib.sha256(source.encode()).hexdigest()
 
 
+def test_reference_fixture_metadata_is_accepted():
+    """Established reference-fixture metadata remains valid PodDown input."""
+    source = """---
+poddown:
+  profile: reference-demo-dialogue-v1
+  episode_id: reference-demo-episode-v1
+  duration_minutes: 12
+  source_blocks: 125
+  source_turns: 125
+  source_locale: en-AU
+---
+# Reference demo
+"""
+
+    result = validate_markdown(source, {"reference-demo-dialogue-v1"})
+
+    assert result.accepted is True
+    assert result.source_sha256 == hashlib.sha256(source.encode()).hexdigest()
+
+
 @pytest.mark.parametrize(
     "override",
     ["'': spoken", "term: ''"],

@@ -22,6 +22,10 @@ from poddown.audio.diagnostics import (
     diagnose_wav,
 )
 
+_FFMPEG_MIN_TIMEOUT_SECONDS = 120.0
+_FFMPEG_DURATION_MULTIPLIER = 2.0
+_FFMPEG_FIXED_BUFFER_SECONDS = 30.0
+
 
 class MasteringError(ValueError):
     """Raised when mastering cannot produce a verified result."""
@@ -281,6 +285,7 @@ class SubprocessFfmpegRunner:
     ) -> FfmpegResult:
         """Assemble and encode ordered segments through two bitexact commands."""
         assembled = _assemble_wav(segments, profile)
+        timeout_seconds = _ffmpeg_timeout_for_wav(assembled)
         filters = _filters(profile)
         wav_command = (
             self.executable,
@@ -333,8 +338,8 @@ class SubprocessFfmpegRunner:
         with tempfile.TemporaryDirectory(prefix="poddown-master-") as directory:
             root = Path(directory)
             (root / "input.wav").write_bytes(assembled)
-            self._invoke(wav_command, root)
-            self._invoke(mp3_command, root)
+            self._invoke(wav_command, root, timeout_seconds=timeout_seconds)
+            self._invoke(mp3_command, root, timeout_seconds=timeout_seconds)
             wav_bytes = (root / "episode.wav").read_bytes()
             mp3_bytes = (root / "episode.mp3").read_bytes()
             mp3_metadata = self._inspector.inspect(root / "episode.mp3")
@@ -350,14 +355,20 @@ class SubprocessFfmpegRunner:
             mp3_metadata=mp3_metadata,
         )
 
-    def _invoke(self, command: tuple[str, ...], directory: Path) -> None:
+    def _invoke(
+        self,
+        command: tuple[str, ...],
+        directory: Path,
+        *,
+        timeout_seconds: float,
+    ) -> None:
         try:
             completed = subprocess.run(
                 command,
                 cwd=directory,
                 check=False,
                 capture_output=True,
-                timeout=120,
+                timeout=timeout_seconds,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise MasteringError("ffmpeg mastering process failed") from error
@@ -394,11 +405,15 @@ class MasteringService:
             raise MasteringError("request must be MasteringRequest")
         segments = tuple(sorted(request.segments, key=lambda segment: segment.position))
         self._validate_positions(segments)
-        for segment in segments:
-            _diagnose_segment(segment.audio_bytes, request.profile)
         input_checksums = tuple(
             sha256(segment.audio_bytes).hexdigest() for segment in segments
         )
+        diagnostics_by_checksum: dict[str, AudioDiagnostics] = {}
+        for segment, checksum in zip(segments, input_checksums, strict=True):
+            if checksum not in diagnostics_by_checksum:
+                diagnostics_by_checksum[checksum] = _diagnose_segment(
+                    segment.audio_bytes, request.profile
+                )
         try:
             result = self._runner.run(segments=segments, profile=request.profile)
             wav_bytes = result.wav_bytes
@@ -568,6 +583,21 @@ def _pcm_payload(audio_bytes: bytes) -> bytes:
     if len(payload) != frame_count * 2:
         raise MasteringError("mastering input WAV is truncated")
     return payload
+
+
+def _ffmpeg_timeout_for_wav(audio_bytes: bytes) -> float:
+    """Return a bounded FFmpeg timeout that scales with the episode duration."""
+    try:
+        with wave.open(BytesIO(audio_bytes), "rb") as audio:
+            duration_seconds = audio.getnframes() / audio.getframerate()
+    except (EOFError, OSError, ValueError, ZeroDivisionError, wave.Error) as error:
+        raise MasteringError("assembled WAV duration cannot be determined") from error
+    if not math.isfinite(duration_seconds) or duration_seconds < 0:
+        raise MasteringError("assembled WAV duration is invalid")
+    return max(
+        _FFMPEG_MIN_TIMEOUT_SECONDS,
+        duration_seconds * _FFMPEG_DURATION_MULTIPLIER + _FFMPEG_FIXED_BUFFER_SECONDS,
+    )
 
 
 def _filters(profile: MasteringProfile) -> tuple[str, ...]:

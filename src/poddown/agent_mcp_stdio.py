@@ -25,13 +25,20 @@ def _server_from_environment() -> AgentMCPServer | None:
     registry = InMemoryApprovalRegistry()
     token = os.environ.get("PODDOWN_APPROVAL_TOKEN")
     episode_id = os.environ.get("PODDOWN_APPROVAL_EPISODE_ID")
+    target_id = os.environ.get("PODDOWN_APPROVAL_TARGET_ID")
     expires_at_text = os.environ.get("PODDOWN_APPROVAL_EXPIRES_AT")
-    if token and episode_id and expires_at_text:
+    if token and episode_id and target_id and expires_at_text:
         try:
             expires_at = datetime.fromisoformat(expires_at_text).astimezone(UTC)
         except ValueError:
             expires_at = datetime.now(UTC) - timedelta(seconds=1)
-        registry.issue(tenant_id, episode_id, token, expires_at=expires_at)
+        registry.issue(
+            tenant_id,
+            episode_id,
+            token,
+            target_id=target_id,
+            expires_at=expires_at,
+        )
     return AgentMCPServer(
         LocalGateway(), AuthenticatedContext(tenant_id), approval_verifier=registry
     )

@@ -122,7 +122,12 @@ def test_say_uses_safe_explicit_argv_and_normalizes_to_canonical_wav(monkeypatch
         "-ar",
         "44100",
     )
-    assert ffmpeg_command[8:10] == ("-c:a", "pcm_s16le")
+    assert ffmpeg_command[8:12] == (
+        "-af",
+        "volume=0.95",
+        "-c:a",
+        "pcm_s16le",
+    )
     assert rendered.sample_rate_hz == 44_100
     assert rendered.cost == 0
 

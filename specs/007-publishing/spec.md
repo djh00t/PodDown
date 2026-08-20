@@ -40,3 +40,8 @@ Transistor calls use an injected transport and recorded contract fixtures by def
 live mutations require explicit opt-in and a fresh approval. External publishing
 accepts only packages whose evidence record is `live_eligible`, while filesystem and
 MinIO demos may accept explicitly labelled local evidence.
+Durable publication approvals carry a nonblank actor identifier and a lowercase
+SHA-256 nonce hash. Approval consumption matches tenant, project, episode,
+publication, operation, actor and nonce, and succeeds at most once before expiry.
+Migration 012 adds these fields with `NOT VALID` checks so legacy rows can be
+backfilled and then validated before a later `NOT NULL` enforcement step.

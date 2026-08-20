@@ -199,6 +199,8 @@ class LocalSpeechRenderer:
                     "1",
                     "-ar",
                     "44100",
+                    "-af",
+                    "volume=0.95",
                     "-c:a",
                     "pcm_s16le",
                     str(normalized),

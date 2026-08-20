@@ -3,6 +3,9 @@
 import json
 from pathlib import Path
 
+import pytest
+from jsonschema import Draft202012Validator
+
 from poddown.evidence import EvidenceKind, ExecutionMode
 
 
@@ -54,35 +57,68 @@ def test_execution_evidence_schema_freezes_production_closure_vocabulary() -> No
         "minItems": 1,
         "items": {"type": "string", "minLength": 1},
     }
-    mode_constraints = {
-        item["if"]["properties"]["mode"]["const"]: item["then"]["properties"]
-        for item in schema["allOf"][:3]
-    }
-    assert mode_constraints == {
-        "deterministic-local": {
-            "render_evidence": {"const": "synthetic-bytes"},
-            "transcript_evidence": {"const": "script-derived"},
-            "publication_scope": {"enum": ["filesystem", "object-storage"]},
-        },
-        "host-local": {
-            "render_evidence": {"const": "host-tts"},
-            "transcript_evidence": {"const": "script-derived"},
-            "publication_scope": {"enum": ["filesystem", "object-storage"]},
-        },
-        "live-provider": {
-            "render_evidence": {"const": "provider-response"},
-            "transcript_evidence": {"const": "provider-asr"},
-        },
-    }
-    live_constraints = schema["allOf"][3]["then"]["properties"]
-    assert live_constraints["renderer"]["properties"]["provider"] == {
-        "const": "elevenlabs"
-    }
-    assert live_constraints["transcriber"]["properties"]["provider"] == {
-        "const": "openai"
-    }
     assert [kind.value for kind in EvidenceKind] == [
         "synthetic",
         "host-local",
         "provider-live",
     ]
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        {
+            "schema_version": "1.0",
+            "mode": "deterministic-local",
+            "render_evidence": "provider-response",
+            "transcript_evidence": "script-derived",
+            "publication_scope": "filesystem",
+            "live_eligible": False,
+        },
+        {
+            "schema_version": "1.0",
+            "mode": "host-local",
+            "render_evidence": "host-tts",
+            "transcript_evidence": "script-derived",
+            "publication_scope": "external",
+            "live_eligible": False,
+        },
+        {
+            "schema_version": "1.0",
+            "mode": "live-provider",
+            "render_evidence": "provider-response",
+            "transcript_evidence": "provider-asr",
+            "publication_scope": "object-storage",
+            "live_eligible": True,
+            "renderer": {
+                "provider": "host-local",
+                "model": "host-local-tts-v1",
+                "request_ids": ["render-1"],
+            },
+            "transcriber": {
+                "provider": "openai",
+                "model": "gpt-4o-transcribe",
+                "request_ids": ["asr-1"],
+            },
+            "consent_valid": True,
+            "critical_token_accuracy": 1.0,
+            "cost_evidence": {
+                "currency": "USD",
+                "estimated": 1.0,
+                "reconciled": 1.0,
+            },
+        },
+    ],
+)
+def test_schema_rejects_mode_mismatched_and_local_live_provider_evidence(
+    record: dict[str, object],
+) -> None:
+    schema = json.loads(
+        Path(
+            "specs/003-durable-audio-production/contracts/execution-evidence.schema.json"
+        ).read_text()
+    )
+
+    errors = list(Draft202012Validator(schema).iter_errors(record))
+
+    assert errors

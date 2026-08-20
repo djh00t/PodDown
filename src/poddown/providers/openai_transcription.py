@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import math
 from collections.abc import Callable
 from decimal import Decimal
 
@@ -17,6 +18,7 @@ from poddown.providers.http import (
 _SUPPORTED_MODELS = frozenset(
     {"whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"}
 )
+_WORD_TIMESTAMP_MODEL = "whisper-1"
 
 
 # Preserve the original module-level name for callers of the initial adapter.
@@ -44,11 +46,16 @@ class OpenAITranscriber:
         """Return normalized transcript data without inventing absent fields."""
         if not audio:
             raise ValueError("audio must not be empty")
-        form = {
-            "model": self._model,
-            "response_format": "verbose_json",
-            "timestamp_granularities[]": "word",
-        }
+        form = {"model": self._model}
+        if self._model == _WORD_TIMESTAMP_MODEL:
+            form.update(
+                {
+                    "response_format": "verbose_json",
+                    "timestamp_granularities[]": "word",
+                }
+            )
+        else:
+            form["response_format"] = "json"
         response = await self._transport.request(
             HttpRequest(
                 method="POST",
@@ -69,20 +76,41 @@ class OpenAITranscriber:
             text = payload["text"]
             if not isinstance(text, str):
                 raise TypeError("text must be a string")
-            words = tuple(
-                TranscriptWord(
-                    str(word["word"]), float(word["start"]), float(word["end"])
+            words = (
+                tuple(
+                    TranscriptWord(
+                        str(word["word"]), float(word["start"]), float(word["end"])
+                    )
+                    for word in payload.get("words", [])
                 )
-                for word in payload.get("words", [])
+                if self._model == _WORD_TIMESTAMP_MODEL
+                else ()
             )
             usage = payload.get("usage", {})
-            normalized_usage = ProviderUsage(
-                int(usage.get("input_tokens", 0)),
-                int(usage.get("output_tokens", 0)),
-            )
+            if not isinstance(usage, dict):
+                raise TypeError("usage must be an object")
+            if "seconds" in usage:
+                seconds = usage["seconds"]
+                if (
+                    isinstance(seconds, bool)
+                    or not isinstance(seconds, (int, float))
+                    or not math.isfinite(seconds)
+                    or seconds < 0
+                    or not float(seconds).is_integer()
+                ):
+                    raise TypeError("usage seconds must be a non-negative integer")
+                input_units = int(seconds)
+            else:
+                input_units = usage.get("input_tokens", 0)
+                if type(input_units) is not int or input_units < 0:
+                    raise TypeError("input_tokens must be a non-negative integer")
+            output_units = usage.get("output_tokens", 0)
+            if type(output_units) is not int or output_units < 0:
+                raise TypeError("output_tokens must be a non-negative integer")
+            normalized_usage = ProviderUsage(input_units, output_units)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             raise ValueError("OpenAI returned malformed transcription data") from error
-        if self._model != "whisper-1" and not words:
+        if self._model == _WORD_TIMESTAMP_MODEL and not words:
             raise ValueError("OpenAI returned no word timestamps")
         return TranscriptResult(
             text=text,

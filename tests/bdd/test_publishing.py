@@ -10,6 +10,7 @@ from poddown.packages import (
     REQUIRED_PACKAGE_ARTIFACTS,
     EpisodePackage,
     PackageProvenance,
+    package_sha256_for,
 )
 from poddown.publishing import (
     DisclosurePolicy,
@@ -196,9 +197,9 @@ def change(context):
 
 @then("the publication receipt is immutable and provenance-bound")
 def receipt(context):
-    assert (
-        context.values["receipt"].package_sha256
-        == context.values["package"].provenance.final_sha256
+    assert context.values["receipt"].package_sha256 == package_sha256_for(
+        context.values["package"],
+        context.values["service"].artifact_store,
     )
     assert context.values["receipt"].authorization.actor_id == "actor"
 

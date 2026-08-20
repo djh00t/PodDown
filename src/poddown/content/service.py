@@ -8,6 +8,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date
 from types import MappingProxyType
+from typing import Protocol
 
 import yaml
 
@@ -163,6 +164,18 @@ class ContentPreparationRequest:
         object.__setattr__(self, "consents", consents)
 
 
+class LiveAdaptationPort(Protocol):
+    """Async source-bound adaptation port used by production preparation."""
+
+    async def adapt(
+        self,
+        source: SourceSnapshot,
+        profile: Profile,
+        treatment: EpisodeTreatment,
+    ) -> ScriptVersion:
+        """Return one validated provider adaptation without local fallback."""
+
+
 @dataclass(frozen=True)
 class ContentPreparationResult:
     """Immutable canonical output and its replay-safe manifest."""
@@ -285,19 +298,55 @@ def _serialized(value: Mapping[str, object]) -> str:
     )
 
 
-def _build_result(request: ContentPreparationRequest) -> ContentPreparationResult:
-    """Execute the typed ports in their source-safety dependency order."""
+def _preparation_context(
+    request: ContentPreparationRequest,
+) -> tuple[Profile, SourceSnapshot, Mapping[LexiconScope, PronunciationLexicon]]:
+    """Load the immutable inputs shared by local and live preparation."""
     profile = load_profile(request.profile_yaml, request.voice_assets, request.consents)
     snapshot = snapshot_source(request.markdown)
     profile = resolve_profile_metadata(profile, _profile_override_metadata(snapshot))
     lexicon_layers = _frontmatter_lexicon_layers(snapshot, request.lexicon_layers)
-    script = adapt_source(snapshot, profile, request.treatment, request.reasoning)
-    tokens = _source_bound_tokens(script, snapshot, lexicon_layers)
-    segments = segment_script(script, snapshot, request.capabilities, tokens)
+    return profile, snapshot, lexicon_layers
+
+
+def _build_result_from_script(
+    request: ContentPreparationRequest,
+    profile: Profile,
+    snapshot: SourceSnapshot,
+    lexicon_layers: Mapping[LexiconScope, PronunciationLexicon],
+    script: ScriptVersion,
+    *,
+    provider_calls: int = 0,
+) -> ContentPreparationResult:
+    """Apply canonical source-bound gates to an already selected script."""
+    if script.source_sha256 != snapshot.source_sha256:
+        raise ValueError("live script source identity does not match the request")
+    if script.profile_id != profile.profile_id:
+        raise ValueError("live script profile identity does not match the request")
+    if type(provider_calls) is not int or provider_calls < 0:
+        raise ValueError("provider_calls must be a non-negative integer")
+    # Re-run the existing canonical adaptation gates around a live result. This
+    # keeps provider output from bypassing anchor, literal, negation, speaker,
+    # and dialogue-quality validation, while avoiding a second provider call.
+    canonical_script = adapt_source(
+        snapshot,
+        profile,
+        request.treatment,
+        FixtureReasoningPort(
+            {
+                snapshot.source_sha256: AdaptationProposal(
+                    request.treatment, script.turns
+                )
+            },
+            {},
+        ),
+    )
+    tokens = _source_bound_tokens(canonical_script, snapshot, lexicon_layers)
+    segments = segment_script(canonical_script, snapshot, request.capabilities, tokens)
     payload = _manifest_payload(
         snapshot,
         profile,
-        script,
+        canonical_script,
         tokens,
         segments,
         lexicon_layers,
@@ -306,11 +355,51 @@ def _build_result(request: ContentPreparationRequest) -> ContentPreparationResul
     serialized = _serialized(payload)
     checksum = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
     manifest = _deep_freeze(
-        {**payload, "checksum": checksum, "provider_calls": 0, "serialized": serialized}
+        {
+            **payload,
+            "checksum": checksum,
+            "provider_calls": provider_calls,
+            "serialized": serialized,
+        }
     )
     assert isinstance(manifest, Mapping)
     return ContentPreparationResult(
-        snapshot, profile, script, tokens, segments, manifest, checksum
+        snapshot, profile, canonical_script, tokens, segments, manifest, checksum
+    )
+
+
+def _build_result(request: ContentPreparationRequest) -> ContentPreparationResult:
+    """Execute the typed ports in their source-safety dependency order."""
+    profile, snapshot, lexicon_layers = _preparation_context(request)
+    script = adapt_source(snapshot, profile, request.treatment, request.reasoning)
+    return _build_result_from_script(request, profile, snapshot, lexicon_layers, script)
+
+
+async def prepare_content_live(
+    request: ContentPreparationRequest,
+    adaptation: LiveAdaptationPort,
+) -> ContentPreparationResult:
+    """Prepare content through one explicit live adaptation port.
+
+    The provider is called exactly once by this boundary. Its returned script
+    is then passed through the same canonical source-bound gates used by local
+    preparation. No fixture reasoning or local fallback is consulted.
+    """
+    if not isinstance(request, ContentPreparationRequest):
+        raise TypeError("request must be a ContentPreparationRequest")
+    if not hasattr(adaptation, "adapt"):
+        raise TypeError("live adaptation must expose adapt(source, profile, treatment)")
+    profile, snapshot, lexicon_layers = _preparation_context(request)
+    script = await adaptation.adapt(snapshot, profile, request.treatment)
+    if not isinstance(script, ScriptVersion):
+        raise ValueError("live adaptation returned an invalid script")
+    return _build_result_from_script(
+        request,
+        profile,
+        snapshot,
+        lexicon_layers,
+        script,
+        provider_calls=1,
     )
 
 
@@ -340,7 +429,7 @@ def _frontmatter_lexicon_layers(
     snapshot: SourceSnapshot, layers: Mapping[LexiconScope, PronunciationLexicon]
 ) -> Mapping[LexiconScope, PronunciationLexicon]:
     """Overlay validated document pronunciations onto the episode precedence layer."""
-    metadata = _profile_override_metadata(snapshot)["poddown"]
+    metadata = _profile_override_metadata(snapshot).get("poddown", {})
     assert isinstance(metadata, Mapping)
     raw_overrides = metadata.get("pronunciation_overrides")
     if raw_overrides is None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import wave
+from array import array
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
@@ -14,6 +15,7 @@ import yaml
 
 from poddown.audio import DeterministicLocalRenderer
 from poddown.audio.contracts import RenderedAudio, RenderRequest
+from poddown.audio.mastering import FfmpegResult, MasteringProfile
 from poddown.domain import ProviderUsage
 
 REFERENCE_FIXTURE = Path(__file__).parents[2] / "integrations" / "reference-demo" / "v1"
@@ -125,7 +127,7 @@ class FakeLocalSpeechRenderer:
     def __init__(
         self,
         *,
-        frames: int = 220_500,
+        frames: int = 154_350,
         sample: int = 500,
         cost: Decimal = Decimal("0"),
         provenance: dict[str, object] | None = None,
@@ -136,6 +138,16 @@ class FakeLocalSpeechRenderer:
         self._sample = sample
         self._cost = cost
         self._provenance = provenance
+        if audio_bytes is None:
+            stream = BytesIO()
+            with wave.open(stream, "wb") as output:
+                output.setnchannels(1)
+                output.setsampwidth(2)
+                output.setframerate(44_100)
+                output.writeframes(
+                    self._sample.to_bytes(2, "little", signed=True) * self._frames
+                )
+            audio_bytes = stream.getvalue()
         self._audio_bytes = audio_bytes
 
     def provenance(self) -> dict[str, object]:
@@ -145,19 +157,9 @@ class FakeLocalSpeechRenderer:
         return {"engine": "fake-local-speech", "mode": self.mode}
 
     async def render(self, request: RenderRequest) -> RenderedAudio:
-        """Return a quiet five-second WAV under the requested identity."""
+        """Return a quiet three-and-a-half-second WAV under the requested identity."""
         self.requests.append(request)
         audio_bytes = self._audio_bytes
-        if audio_bytes is None:
-            stream = BytesIO()
-            with wave.open(stream, "wb") as output:
-                output.setnchannels(1)
-                output.setsampwidth(2)
-                output.setframerate(request.sample_rate_hz)
-                output.writeframes(
-                    self._sample.to_bytes(2, "little", signed=True) * self._frames
-                )
-            audio_bytes = stream.getvalue()
         return RenderedAudio(
             audio_bytes=audio_bytes,
             provider=request.provider,
@@ -168,6 +170,96 @@ class FakeLocalSpeechRenderer:
             output_format="wav",
             sample_rate_hz=request.sample_rate_hz,
         )
+
+
+class FastDeterministicRenderer(DeterministicLocalRenderer):
+    """Render one precomputed frame while retaining deterministic identity."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        stream = BytesIO()
+        with wave.open(stream, "wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(44_100)
+            output.writeframes((500).to_bytes(2, "little", signed=True) * 882)
+        self._audio_bytes = stream.getvalue()
+
+    async def render(self, request: RenderRequest) -> RenderedAudio:
+        """Return a compact valid deterministic WAV for safety tests."""
+        self.calls.append(request.idempotency_key)
+        return RenderedAudio(
+            audio_bytes=self._audio_bytes,
+            provider="local",
+            model="local-deterministic-v1",
+            request_id=f"fast-{request.segment_id}-{request.take_index}",
+            usage=ProviderUsage(
+                len(request.expected_spoken_text), len(self._audio_bytes)
+            ),
+            cost=Decimal("0"),
+            output_format="wav",
+            sample_rate_hz=request.sample_rate_hz,
+        )
+
+
+class FakeFfmpegRunner:
+    """Return verified master-shaped bytes without invoking host FFmpeg."""
+
+    def run(
+        self,
+        *,
+        segments: tuple[object, ...],
+        profile: MasteringProfile,
+    ) -> FfmpegResult:
+        frame_count = 0
+        peak_sample = 0
+        for segment in segments:
+            audio_bytes = segment.audio_bytes
+            with wave.open(BytesIO(audio_bytes), "rb") as source:
+                frame_count += source.getnframes()
+                samples = array("h", source.readframes(source.getnframes()))
+            if samples:
+                peak_sample = max(peak_sample, *(abs(sample) for sample in samples))
+        frame_count = max(frame_count, 1)
+        stream = BytesIO()
+        with wave.open(stream, "wb") as output:
+            output.setnchannels(profile.channels)
+            output.setsampwidth(2)
+            output.setframerate(profile.sample_rate_hz)
+            output.writeframes(
+                int(peak_sample).to_bytes(2, "little", signed=True) * frame_count
+            )
+        duration = frame_count / profile.sample_rate_hz
+        return FfmpegResult(
+            wav_bytes=stream.getvalue(),
+            mp3_bytes=b"fake-mastered-mp3",
+            executable="fake-ffmpeg",
+            version="fake-1.0",
+            command=("fake-ffmpeg", "-i", "input.wav"),
+            filters=("aresample=44100",),
+            commands=(("fake-ffmpeg", "-i", "input.wav"),),
+            mp3_metadata={
+                "codec_name": "mp3",
+                "sample_rate": str(profile.sample_rate_hz),
+                "channels": str(profile.channels),
+                "duration": str(duration),
+            },
+        )
+
+
+@pytest.fixture(autouse=True)
+def fake_mastering_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep demo safety tests independent of the host FFmpeg installation."""
+    from poddown import demo
+
+    original = demo.run_reference_demo
+
+    def run_reference_demo(*args: object, **kwargs: object) -> object:
+        kwargs.setdefault("mastering_runner", FakeFfmpegRunner())
+        kwargs.setdefault("renderer", FastDeterministicRenderer())
+        return original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(demo, "run_reference_demo", run_reference_demo)
 
 
 def test_missing_fixture_files_fail_closed(tmp_path: Path) -> None:

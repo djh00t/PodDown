@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poddown.dev/schemas/v1/adaptation-envelope.schema.json",
+  "title": "PodDown adaptation envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_sha256",
+    "treatment_id",
+    "model",
+    "request_id",
+    "turns",
+    "usage",
+    "estimated_cost"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "treatment_id": {"$ref": "#/$defs/nonWhitespaceString"},
+    "model": {"$ref": "#/$defs/nonWhitespaceString"},
+    "request_id": {"$ref": "#/$defs/nonWhitespaceString"},
+    "turns": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/adaptedTurn"}
+    },
+    "usage": {"$ref": "#/$defs/usage"},
+    "estimated_cost": {"$ref": "#/$defs/decimal"}
+  },
+  "$defs": {
+    "nonWhitespaceString": {"type": "string", "pattern": ".*\\S.*"},
+    "decimal": {"type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"},
+    "sourceAnchor": {
+      "type": "object",
+      "$comment": "The parser enforces start <= end for half-open source ranges.",
+      "additionalProperties": false,
+      "required": ["block_id", "start", "end"],
+      "properties": {
+        "block_id": {"$ref": "#/$defs/nonWhitespaceString"},
+        "start": {"type": "integer", "minimum": 0},
+        "end": {"type": "integer", "minimum": 0}
+      }
+    },
+    "adaptedTurn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "turn_id",
+        "speaker_id",
+        "kind",
+        "text",
+        "source_anchors",
+        "claim_anchors"
+      ],
+      "properties": {
+        "turn_id": {"$ref": "#/$defs/nonWhitespaceString"},
+        "speaker_id": {"$ref": "#/$defs/nonWhitespaceString"},
+        "kind": {"enum": ["factual", "editorial"]},
+        "text": {"$ref": "#/$defs/nonWhitespaceString"},
+        "source_anchors": {"type": "array", "items": {"$ref": "#/$defs/sourceAnchor"}},
+        "claim_anchors": {"type": "array", "items": {"$ref": "#/$defs/sourceAnchor"}}
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    }
+  }
+}

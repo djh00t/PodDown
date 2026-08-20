@@ -31,3 +31,8 @@ Feature: Deterministic episode mastering
     Given a short segment and a longer master duration requirement
     When the episode is mastered
     Then the short segment is dispatched and the longer master is returned
+
+  Scenario: Scale the FFmpeg timeout for a long episode
+    Given short and long assembled WAV durations
+    When the FFmpeg timeouts are calculated
+    Then the long episode timeout is greater than the short episode timeout

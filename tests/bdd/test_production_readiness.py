@@ -95,14 +95,44 @@ def parse_compose(context) -> None:
     context.values["parsed"] = context.values["compose"]
 
 
-@then("it contains the six required runtime services and health-gated dependencies")
+@then(
+    "it contains the six required runtime services, the MinIO bootstrap helper, "
+    "and health-gated dependencies"
+)
 def compose_services(context) -> None:
     services = context.values["parsed"]["services"]
-    assert set(services) == {"postgres", "temporal", "nats", "minio", "api", "worker"}
+    assert set(services) == {
+        "postgres",
+        "temporal",
+        "nats",
+        "minio",
+        "minio-init",
+        "api",
+        "worker",
+    }
+    assert services["minio-init"]["depends_on"]["minio"]["condition"] == (
+        "service_healthy"
+    )
     assert services["api"]["depends_on"]["postgres"]["condition"] == "service_healthy"
     assert (
         services["worker"]["depends_on"]["temporal"]["condition"] == "service_healthy"
     )
+
+
+@when("the worker workflow environment is inspected")
+def inspect_worker_workflow_environment(context) -> None:
+    context.values["worker_environment"] = context.values["compose"]["services"][
+        "worker"
+    ]["environment"]
+
+
+@then("the worker receives the host-local reference fixture and mode")
+def worker_receives_reference_fixture(context) -> None:
+    environment = context.values["worker_environment"]
+    assert environment["PODDOWN_WORKFLOW_FIXTURE_ROOT"] == (
+        "/app/integrations/reference-demo/v1"
+    )
+    assert environment["PODDOWN_WORKFLOW_MODE"] == "host-local"
 
 
 @when("the API readiness probe is prepared from the Python image contract")

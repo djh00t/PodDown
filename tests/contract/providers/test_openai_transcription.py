@@ -116,6 +116,36 @@ def test_normalizes_text_words_usage_and_checksum():
     assert result.checksum == sha256(b"RIFF-audio").hexdigest()
 
 
+def test_whisper_duration_usage_is_normalized_to_billable_input_units():
+    """The duration usage variant remains explicit in the normalized contract."""
+    body = (
+        b'{"text":"hello","words":[{"word":"hello",'
+        b'"start":0.0,"end":0.2}],"usage":{"type":"duration",'
+        b'"seconds":30.0}}'
+    )
+    transport = RecordingTransport(HttpResponse(200, {}, body))
+    transcriber = OpenAITranscriber(settings(), "whisper-1", transport)
+
+    result = asyncio.run(transcriber.transcribe(b"RIFF-audio"))
+
+    assert result.usage == ProviderUsage(input_units=30, output_units=0)
+
+
+def test_whisper_rejects_fractional_duration_until_usage_contract_can_preserve_it():
+    """Fractional provider duration must not be silently truncated."""
+    body = (
+        b'{"text":"hello","words":[{"word":"hello",'
+        b'"start":0.0,"end":0.2}],"usage":{"type":"duration",'
+        b'"seconds":30.5}}'
+    )
+    transcriber = OpenAITranscriber(
+        settings(), "whisper-1", RecordingTransport(HttpResponse(200, {}, body))
+    )
+
+    with pytest.raises(ValueError, match="malformed"):
+        asyncio.run(transcriber.transcribe(b"RIFF-audio"))
+
+
 def test_configured_cost_estimator_is_recorded_in_normalized_result():
     transport = RecordingTransport(
         HttpResponse(
@@ -139,13 +169,9 @@ def test_configured_cost_estimator_is_recorded_in_normalized_result():
     assert result.cost == Decimal("0.0042")
 
 
-def test_gpt_transcription_requests_and_preserves_word_timestamps():
+def test_gpt_transcription_uses_json_without_claiming_word_timestamps():
     transport = RecordingTransport(
-        HttpResponse(
-            200,
-            {},
-            b'{"text":"hello","words":[{"word":"hello","start":0.0,"end":0.2}]}',
-        )
+        HttpResponse(200, {}, b'{"text":"hello","usage":{"input_tokens":7}}')
     )
     transcriber = OpenAITranscriber(settings(), "gpt-4o-transcribe", transport)
 
@@ -153,17 +179,15 @@ def test_gpt_transcription_requests_and_preserves_word_timestamps():
 
     assert transport.requests[0].form == {
         "model": "gpt-4o-transcribe",
-        "response_format": "verbose_json",
-        "timestamp_granularities[]": "word",
+        "response_format": "json",
     }
-    assert result.words == (TranscriptWord("hello", 0.0, 0.2),)
+    assert result.words == ()
 
 
-@pytest.mark.parametrize("model", ("gpt-4o-transcribe", "gpt-4o-mini-transcribe"))
-def test_gpt_transcription_rejects_missing_word_timestamps(model):
-    """Package-capable GPT QA must fail before it can emit untimed artifacts."""
+def test_whisper_transcription_rejects_missing_word_timestamps():
+    """Timestamped Whisper QA must fail before it can emit untimed artifacts."""
     transport = RecordingTransport(HttpResponse(200, {}, b'{"text":"hello"}'))
-    transcriber = OpenAITranscriber(settings(), model, transport)
+    transcriber = OpenAITranscriber(settings(), "whisper-1", transport)
 
     with pytest.raises(ValueError, match="word timestamps"):
         asyncio.run(transcriber.transcribe(b"RIFF-audio"))

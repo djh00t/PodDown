@@ -1,6 +1,7 @@
 """Contract tests for immutable workflow and activity identities."""
 
 import asyncio
+import json
 from dataclasses import FrozenInstanceError
 from decimal import Decimal
 
@@ -9,9 +10,11 @@ from temporalio.exceptions import ApplicationError
 
 from poddown.audio.contracts import RenderRequest
 from poddown.audio.diagnostics import AudioDiagnostics
+from poddown.audio.production_workflow import ProductionWorkflowInput
 from poddown.audio.rights import VoiceConsent
 from poddown.audio.selection import CandidateQuality
 from poddown.audio.workflow import (
+    PUBLISH_EPISODE_ACTIVITY_NAME,
     RENDER_SEGMENT_ACTIVITY_NAME,
     EpisodeWorkflowInput,
     EpisodeWorkflowResult,
@@ -19,8 +22,11 @@ from poddown.audio.workflow import (
     SegmentWorkflowInput,
     WorkflowContractError,
     WorkflowFailure,
+    _command_envelope,
+    _command_input,
     _failed_gates_for,
     activity_key_for,
+    publish_episode_activity,
     render_segment_activity,
     workflow_id_for,
 )
@@ -68,6 +74,61 @@ def test_equal_workflow_inputs_have_stable_workflow_and_activity_identities():
     ) == activity_key_for(second, "render", "segment-1", attempt=1, take=0)
 
 
+def test_command_envelope_requires_a_bound_source_snapshot_payload() -> None:
+    envelope = {
+        "command": "render",
+        "payload": {
+            "source_sha256": "a" * 64,
+            "workflow_input": workflow_input().to_json(),
+        },
+    }
+
+    assert _command_input(json.dumps(envelope)) == envelope["payload"]["workflow_input"]
+    with pytest.raises(WorkflowContractError, match="source snapshot"):
+        _command_input(
+            json.dumps({"command": "render", "payload": {"workflow_input": "{}"}})
+        )
+
+
+def test_command_envelope_accepts_source_only_production_snapshot() -> None:
+    production = ProductionWorkflowInput(
+        episode_id="episode-1",
+        episode_version_id="version-1",
+        source_sha256="a" * 64,
+        profile_id="profile-1",
+        prepared_content_reference={
+            "preparation_activity_input": {
+                "tenant_id": "tenant-1",
+                "project_id": "project-1",
+                "episode_id": "episode-1",
+                "episode_version_id": "version-1",
+                "source_markdown": "source",
+                "profile_id": "profile-1",
+            }
+        },
+        execution_mode="host-local",
+    )
+    envelope = {
+        "command": "create",
+        "payload": {
+            "source_sha256": "a" * 64,
+            "production_workflow_input": production.to_json(),
+        },
+    }
+
+    command, render_input = _command_envelope(json.dumps(envelope))
+    assert command == "create"
+    assert render_input is None
+
+
+def test_default_publish_activity_fails_closed() -> None:
+    with pytest.raises(ApplicationError, match="not configured") as error:
+        asyncio.run(publish_episode_activity({}))
+
+    assert error.value.type == "ActivityNotConfigured"
+    assert PUBLISH_EPISODE_ACTIVITY_NAME == "poddown.audio.publish_episode"
+
+
 @pytest.mark.parametrize(
     ("change", "different_argument"),
     [
@@ -110,6 +171,23 @@ def test_activity_identity_changes_for_attempt_or_take(field: str):
     )
 
     assert first != changed
+
+
+def test_activity_identity_reuses_canonical_episode_json_without_changing_bytes():
+    """The worker optimization must preserve the original activity-key contract."""
+    episode = workflow_input()
+    payload = episode.to_dict()
+    canonical_episode = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+    assert activity_key_for(
+        episode,
+        "render",
+        "segment-1",
+        attempt=1,
+        take=0,
+        _episode_payload=payload,
+        _episode_payload_json=canonical_episode,
+    ) == activity_key_for(episode, "render", "segment-1", attempt=1, take=0)
 
 
 def test_workflow_contracts_are_frozen_and_terminal_failure_is_structured():

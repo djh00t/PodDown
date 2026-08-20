@@ -246,10 +246,105 @@ class MetricSample:
         }
 
 
+class SloComparison(StrEnum):
+    """Comparison direction for one service-level objective."""
+
+    AT_LEAST = "at_least"
+    AT_MOST = "at_most"
+
+
+def _validate_slo_text(value: str, *, field: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or len(value) > 128
+        or any(ord(character) < 32 for character in value)
+    ):
+        raise ValueError(f"{field} must be a bounded text value")
+    return value
+
+
+def _validate_slo_number(value: float, *, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be numeric")
+    normalized = float(value)
+    if not math.isfinite(normalized) or normalized < 0:
+        raise ValueError(f"{field} must be finite and non-negative")
+    return normalized
+
+
+@dataclass(frozen=True, slots=True)
+class SloObjective:
+    """Bounded target for one operational SLO without raw event payloads."""
+
+    name: str
+    comparison: SloComparison
+    target: float
+    unit: str
+
+    def __post_init__(self) -> None:
+        _validate_slo_text(self.name, field="SLO name")
+        try:
+            comparison = (
+                self.comparison
+                if isinstance(self.comparison, SloComparison)
+                else SloComparison(self.comparison)
+            )
+        except (TypeError, ValueError) as error:
+            raise ValueError("SLO comparison is unsupported") from error
+        target = _validate_slo_number(self.target, field="SLO target")
+        _validate_slo_text(self.unit, field="SLO unit")
+        object.__setattr__(self, "comparison", comparison)
+        object.__setattr__(self, "target", target)
+
+    def measure(self, *, observed: float, sample_count: int) -> SloMeasurement:
+        """Evaluate one observed value against this objective."""
+        return SloMeasurement(self, observed, sample_count)
+
+
+@dataclass(frozen=True, slots=True)
+class SloMeasurement:
+    """Immutable SLO result suitable for redacted operational telemetry."""
+
+    objective: SloObjective
+    observed: float
+    sample_count: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.objective, SloObjective):
+            raise ValueError("SLO objective is required")
+        observed = _validate_slo_number(self.observed, field="SLO observed value")
+        if type(self.sample_count) is not int or self.sample_count <= 0:
+            raise ValueError("SLO sample_count must be a positive integer")
+        object.__setattr__(self, "observed", observed)
+
+    @property
+    def met(self) -> bool:
+        """Return whether the observed value satisfies the target."""
+        if self.objective.comparison is SloComparison.AT_LEAST:
+            return self.observed >= self.objective.target
+        return self.observed <= self.objective.target
+
+    def to_dict(self) -> dict[str, object]:
+        """Return only bounded SLO identity and numeric evidence."""
+        return {
+            "comparison": self.objective.comparison.value,
+            "met": self.met,
+            "name": self.objective.name,
+            "observed": self.observed,
+            "sample_count": self.sample_count,
+            "target": self.objective.target,
+            "unit": self.objective.unit,
+        }
+
+
 __all__ = [
     "DependencyState",
     "HealthEvaluator",
     "HealthSnapshot",
     "MetricSample",
     "OperationalEvent",
+    "SloComparison",
+    "SloMeasurement",
+    "SloObjective",
 ]

@@ -1,6 +1,8 @@
 """Deterministic diagnostics for decoded PCM WAV audio."""
 
+import sys
 import wave
+from array import array
 from collections.abc import Iterator
 from dataclasses import dataclass
 from io import BytesIO
@@ -114,10 +116,17 @@ def diagnose_wav(
                 if len(payload) != expected_chunk_size:
                     raise AudioDiagnosticsError("truncated WAV frame payload")
                 read_size += len(payload)
-                for sample in _decode_samples(payload, sample_width):
-                    peak = max(peak, abs(sample))
-                    clipping_samples += abs(sample) >= maximum
-                    silent_samples += sample == 0
+                fixed_metrics = _fixed_width_metrics(payload, sample_width, maximum)
+                if fixed_metrics is None:
+                    for sample in _decode_samples(payload, sample_width):
+                        peak = max(peak, abs(sample))
+                        clipping_samples += abs(sample) >= maximum
+                        silent_samples += sample == 0
+                else:
+                    chunk_peak, chunk_clipping, chunk_silence = fixed_metrics
+                    peak = max(peak, chunk_peak)
+                    clipping_samples += chunk_clipping
+                    silent_samples += chunk_silence
                 remaining_frames -= chunk_frames
     except AudioDiagnosticsError:
         raise
@@ -171,9 +180,18 @@ def _validate_bounds(
 def _decode_samples(payload: bytes, sample_width: int) -> Iterator[int]:
     if sample_width == 1:
         yield from (sample - 128 for sample in payload)
-    elif sample_width == 2:
-        for index in range(0, len(payload), 2):
-            yield int.from_bytes(payload[index : index + 2], "little", signed=True)
+    elif sample_width in (2, 4):
+        typecode = "h" if sample_width == 2 else "i"
+        values = array(typecode)
+        if values.itemsize != sample_width:
+            raise AudioDiagnosticsError("unsupported native PCM sample width")
+        try:
+            values.frombytes(payload)
+        except (OverflowError, ValueError) as error:
+            raise AudioDiagnosticsError("invalid PCM sample payload") from error
+        if sys.byteorder != "little":
+            values.byteswap()
+        yield from values
     elif sample_width == 3:
         for index in range(0, len(payload), 3):
             yield int.from_bytes(
@@ -185,3 +203,41 @@ def _decode_samples(payload: bytes, sample_width: int) -> Iterator[int]:
     else:
         for index in range(0, len(payload), 4):
             yield int.from_bytes(payload[index : index + 4], "little", signed=True)
+
+
+def _fixed_width_metrics(
+    payload: bytes, sample_width: int, maximum: int
+) -> tuple[int, int, int] | None:
+    """Aggregate common PCM widths with array's native C-level counters."""
+    if sample_width == 1:
+        typecode = "B"
+    elif sample_width == 2:
+        typecode = "h"
+    elif sample_width == 4:
+        typecode = "i"
+    else:
+        return None
+    values = array(typecode)
+    if values.itemsize != sample_width:
+        raise AudioDiagnosticsError("unsupported native PCM sample width")
+    try:
+        values.frombytes(payload)
+    except (OverflowError, ValueError) as error:
+        raise AudioDiagnosticsError("invalid PCM sample payload") from error
+    if sys.byteorder != "little" and sample_width != 1:
+        values.byteswap()
+    if sample_width == 1:
+        high = max(values) - 128
+        low = min(values) - 128
+        return (
+            max(abs(high), abs(low)),
+            values.count(1) + values.count(255),
+            values.count(128),
+        )
+    high = max(values)
+    low = min(values)
+    return (
+        max(abs(high), abs(low)),
+        values.count(maximum) + values.count(-maximum - 1),
+        values.count(0),
+    )

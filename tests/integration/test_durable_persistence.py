@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
-from hashlib import sha256
 from pathlib import Path
 from uuid import UUID
 
@@ -38,6 +38,7 @@ OTHER_PROJECT_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b13")
 EPISODE_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b14")
 JOB_ID = UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b15")
 CREATED_AT = datetime(2026, 8, 10, 4, 0, tzinfo=UTC)
+SOURCE_CONTENT = b"source-bound durable persistence fixture".ljust(48, b"!")
 
 
 def episode_record(
@@ -56,8 +57,9 @@ def episode_record(
         episode_id=episode_id,
         idempotency_key=idempotency_key,
         profile_name="technical-dialogue",
-        source_sha256="b" * 64,
+        source_sha256=hashlib.sha256(SOURCE_CONTENT).hexdigest(),
         source_bytes=48,
+        source_content=SOURCE_CONTENT,
         request_fingerprint=request_fingerprint,
         state=state,
         version=version,
@@ -99,23 +101,21 @@ def test_episode_survives_restart_and_hides_other_tenants(tmp_path: Path) -> Non
         second.get(TENANT_ID, UUID("018f3c7d-9d04-7c25-8e20-9e8e0c4d3b16"))
 
 
-def test_episode_persists_package_and_manifest_digests_as_distinct_fields(
+def test_package_manifest_digest_survives_restart_separately_from_package_digest(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "poddown.sqlite3"
-    package_bytes = b"package bytes"
     record = replace(
-        episode_record(),
-        package_sha256=sha256(package_bytes).hexdigest(),
-        package_manifest_sha256="c" * 64,
+        episode_record(state=EpisodeState.PACKAGED),
+        package_sha256="a" * 64,
+        package_manifest_sha256="b" * 64,
     )
 
     SQLiteEpisodeRepository(database).create(record)
 
     restored = SQLiteEpisodeRepository(database).get(TENANT_ID, EPISODE_ID)
-    assert restored.package_sha256 == record.package_sha256
-    assert restored.package_manifest_sha256 == record.package_manifest_sha256
-    assert restored.package_sha256 != restored.package_manifest_sha256
+    assert restored.package_sha256 == "a" * 64
+    assert restored.package_manifest_sha256 == "b" * 64
 
 
 def test_database_initializes_wal_mode(tmp_path: Path) -> None:

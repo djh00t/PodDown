@@ -3,11 +3,13 @@
 ## Scope
 
 This slice adds a deterministic local MCP-style boundary and versioned PodDown
-skill/evals. The boundary exposes `poddown_preview`, `poddown_render`,
-`poddown_publish`, `poddown_get_status`, and `poddown_get_episode` through an
-authenticated tenant context. It delegates business work to an injected
-gateway, rejects caller-supplied tenant scope, requires fresh episode-scoped
-publish approval, and returns redacted errors and audio resource links.
+skill/evals. The boundary exposes eight tools through an authenticated tenant
+context: `poddown_preview`, `poddown_render`, `poddown_publish`,
+`poddown_get_status`, `poddown_get_episode`, `poddown_get_audio`,
+`poddown_get_transcript`, and `poddown_get_manifest`. It delegates business
+work to an injected gateway, rejects caller-supplied tenant scope, requires
+fresh episode-scoped publish approval, and returns redacted errors and resource
+links.
 
 The v1 skill teaches preview-before-render, source preservation, side-effect
 distinctions, and refusal of unauthorized publication. `skills/poddown/v1/evals.json`
@@ -15,8 +17,17 @@ is deterministic fixture data; it does not call providers or external services.
 
 Review corrections add a trusted injected approval registry with tenant and
 episode scope, trusted-clock expiry, and one-time consumption. Model-supplied
-`fresh` flags and nonces are ignored. The stdio entrypoint reads only
-`PODDOWN_TENANT_ID`; absent authentication exits with code 2.
+`fresh` flags and nonces are ignored.
+
+The stdio entrypoint requires `PODDOWN_MCP_MODE=local` or `PODDOWN_MCP_MODE=api`.
+Local mode requires `PODDOWN_TENANT_ID`. API mode requires
+`PODDOWN_API_ENDPOINT`, `PODDOWN_TENANT_ID`, `PODDOWN_PROJECT_ID`, and a
+runtime-provisioned `PODDOWN_API_TOKEN` reference/value for an OIDC-compatible
+bearer access token. It forwards that value only as `Authorization: Bearer`
+to the Episode API; it never treats tenant/project context as authentication,
+and it fails closed with exit code 2 when required API configuration is absent.
+Do not put the token in MCP tool arguments, checked-in configuration, logs, or
+verification output.
 
 ## Focused evidence
 
@@ -27,15 +38,18 @@ uv run pytest -p pytest_bdd.plugin -q \
   tests/unit/test_agent_mcp.py \
   tests/unit/test_agent_mcp_review_regressions.py \
   tests/unit/test_agent_mcp_concurrency.py \
+  tests/unit/test_http_agent_gateway.py \
   tests/integration/test_agent_mcp.py \
   tests/integration/test_agent_mcp_stdio.py \
   tests/contract/test_agent_mcp_contract.py
-26 passed
+95 passed
 ```
 
-The final review-fix RED run failed in the trusted-environment stdio publish
-test because approval registration was absent. The final focused run passes
-26 scenarios/tests, including the two-thread one-time-consumption regression.
+The M07 review-fix RED run showed the authenticated API-stdio scenario lacked
+render and status dispatches. The focused run passes 95 scenarios/tests,
+including auth-required API dispatch, unauthorized-result redaction,
+authenticated API-stdio dispatch for all eight tools, and the two-thread
+one-time-consumption regression.
 
 The stdio process registers only a trusted environment token/configuration:
 `PODDOWN_APPROVAL_TOKEN`, `PODDOWN_APPROVAL_EPISODE_ID`, and
@@ -63,7 +77,7 @@ docs, lock, pip, compile, diff, and credential checks also passed. No
   of production transport, authorization middleware, or deployment readiness.
 - The injected local gateway is deterministic evidence, not a claim of live API,
   Temporal, provider, or publication readiness.
-- API schema reuse and real authenticated context wiring require coordinator-only
-  integration with the existing API/runtime boundary; this slice does not edit
-  those shared files.
+- API mode forwards a configured bearer token but does not mint, refresh, or
+  validate OIDC tokens locally; the verified Episode API remains the
+  authentication authority.
 - The versioned skill is repository-local and is not published or registered.

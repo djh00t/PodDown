@@ -18,15 +18,27 @@ services:
   temporal:
     image: temporalio/auto-setup:1.25.0
     environment:
-      DB: postgresql
+      DB: postgres12
       DB_PORT: 5432
       POSTGRES_USER: poddown
       POSTGRES_PWD: ${PODDOWN_POSTGRES_PASSWORD:?set a local-only password}
       POSTGRES_SEEDS: postgres
+      TEMPORAL_ADDRESS: temporal:7233
     depends_on:
       postgres: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8233/health || exit 1"]
+      test:
+        [
+          "CMD",
+          "temporal",
+          "operator",
+          "cluster",
+          "health",
+          "--address",
+          "temporal:7233",
+          "--output",
+          "json",
+        ]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -50,19 +62,48 @@ services:
       timeout: 3s
       retries: 10
     volumes: [minio-data:/data]
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER"
+        "$$MINIO_ROOT_PASSWORD" && mc mb --ignore-existing local/poddown
+    environment:
+      MINIO_ROOT_USER: ${PODDOWN_MINIO_ROOT_USER:?set a local-only user}
+      MINIO_ROOT_PASSWORD: ${PODDOWN_MINIO_ROOT_PASSWORD:?set a local-only password}
+    depends_on:
+      minio: {condition: service_healthy}
   api:
     build: .
     command: ["poddown-api"]
     environment:
       PODDOWN_POSTGRES_HOST: postgres
+      PODDOWN_POSTGRES_DSN: postgresql://poddown@postgres/poddown
+      PGPASSWORD: ${PODDOWN_POSTGRES_PASSWORD:?set a local-only password}
       PODDOWN_TEMPORAL_ADDRESS: temporal:7233
+      PODDOWN_TEMPORAL_NAMESPACE: default
+      PODDOWN_TEMPORAL_TASK_QUEUE: poddown-default
+      PODDOWN_AUTH_MODE: local
+      PODDOWN_WORKFLOW_FIXTURE_ROOT: /app/integrations/reference-demo/v1
+      PODDOWN_WORKFLOW_MODE: host-local
+      PODDOWN_PUBLICATION_MODE: s3
       PODDOWN_NATS_HOST: nats
-      PODDOWN_MINIO_ENDPOINT: minio:9000
+      PODDOWN_MINIO_ENDPOINT: http://minio:9000
+      PODDOWN_MINIO_BUCKET: poddown
+      PODDOWN_MINIO_SECRET_REF: secret://minio/poddown
+      PODDOWN_MINIO_ACCESS_KEY: ${PODDOWN_MINIO_ROOT_USER:?set a local-only user}
+      PODDOWN_MINIO_SECRET_KEY: ${PODDOWN_MINIO_ROOT_PASSWORD:?set a local-only password}
+      PODDOWN_MINIO_ALLOW_INSECURE_LOCAL: "1"
+      PODDOWN_RESOURCE_LINK_BASE_URL: ${PODDOWN_RESOURCE_LINK_BASE_URL:?set an HTTPS resource URL}
+      PODDOWN_RESOURCE_LINK_SECRET: ${PODDOWN_RESOURCE_LINK_SECRET:?set a resource-link secret}
+      PODDOWN_RESOURCE_LINK_TTL_SECONDS: ${PODDOWN_RESOURCE_LINK_TTL_SECONDS:-300}
     depends_on:
       postgres: {condition: service_healthy}
       temporal: {condition: service_healthy}
       nats: {condition: service_healthy}
       minio: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
     healthcheck:
       test:
         [
@@ -81,17 +122,34 @@ services:
       PODDOWN_TEMPORAL_ADDRESS: temporal:7233
       PODDOWN_TEMPORAL_NAMESPACE: default
       PODDOWN_TEMPORAL_TASK_QUEUE: poddown-default
+      PODDOWN_POSTGRES_DSN: postgresql://poddown@postgres/poddown
+      PGPASSWORD: ${PODDOWN_POSTGRES_PASSWORD:?set a local-only password}
+      PODDOWN_NATS_HOST: nats:4222
+      PODDOWN_WORKFLOW_FIXTURE_ROOT: /app/integrations/reference-demo/v1
+      PODDOWN_WORKFLOW_MODE: host-local
+      PODDOWN_PUBLICATION_MODE: s3
+      PODDOWN_MINIO_ENDPOINT: http://minio:9000
+      PODDOWN_MINIO_BUCKET: poddown
+      PODDOWN_MINIO_SECRET_REF: secret://minio/poddown
+      PODDOWN_MINIO_ACCESS_KEY: ${PODDOWN_MINIO_ROOT_USER:?set a local-only user}
+      PODDOWN_MINIO_SECRET_KEY: ${PODDOWN_MINIO_ROOT_PASSWORD:?set a local-only password}
+      PODDOWN_MINIO_ALLOW_INSECURE_LOCAL: "1"
+      PODDOWN_OUTBOX_RELAY_ENABLED: "1"
+      PODDOWN_RENDER_DATA_DIR: /data/render
       PODDOWN_WORKER_READY_FILE: /tmp/poddown-worker-ready
     depends_on:
       temporal: {condition: service_healthy}
       nats: {condition: service_healthy}
       minio: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/poddown-worker-ready"]
       interval: 5s
       timeout: 3s
       retries: 10
+    volumes: [render-data:/data/render]
 
 volumes:
+  render-data:
   postgres-data:
   minio-data:

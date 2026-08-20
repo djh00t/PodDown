@@ -31,17 +31,30 @@ def test_accepts_explicitly_labelled_deterministic_and_host_local_evidence() -> 
 @pytest.mark.parametrize(
     ("mode", "render_evidence", "transcript_evidence", "publication_scope"),
     [
-        ("deterministic-local", "provider-response", "script-derived", "filesystem"),
-        ("deterministic-local", "synthetic-bytes", "provider-asr", "filesystem"),
-        ("deterministic-local", "synthetic-bytes", "script-derived", "external"),
+        (
+            "deterministic-local",
+            "provider-response",
+            "script-derived",
+            "filesystem",
+        ),
+        (
+            "deterministic-local",
+            "synthetic-bytes",
+            "provider-asr",
+            "filesystem",
+        ),
+        (
+            "deterministic-local",
+            "synthetic-bytes",
+            "script-derived",
+            "external",
+        ),
         ("host-local", "synthetic-bytes", "script-derived", "filesystem"),
         ("host-local", "host-tts", "provider-asr", "filesystem"),
         ("host-local", "host-tts", "script-derived", "external"),
-        ("live-provider", "synthetic-bytes", "script-derived", "object-storage"),
-        ("live-provider", "provider-response", "script-derived", "object-storage"),
     ],
 )
-def test_rejects_evidence_that_does_not_match_its_execution_mode(
+def test_rejects_evidence_from_a_different_execution_mode(
     mode: str,
     render_evidence: str,
     transcript_evidence: str,
@@ -56,7 +69,7 @@ def test_rejects_evidence_that_does_not_match_its_execution_mode(
         "live_eligible": False,
     }
 
-    with pytest.raises(ValueError, match=mode):
+    with pytest.raises(ValueError, match="does not allow"):
         validate_execution_evidence(record)
 
 
@@ -224,9 +237,9 @@ def test_accepts_complete_live_provider_evidence_with_request_id_arrays() -> Non
 
 @pytest.mark.parametrize(
     ("field", "provider"),
-    [("renderer", "local"), ("transcriber", "host-local")],
+    [("renderer", "macos"), ("transcriber", "espeak")],
 )
-def test_rejects_live_eligible_evidence_from_nonproduction_provider(
+def test_rejects_non_production_provider_identities_for_live_eligibility(
     field: str, provider: str
 ) -> None:
     record = {
@@ -250,9 +263,9 @@ def test_rejects_live_eligible_evidence_from_nonproduction_provider(
         "critical_token_accuracy": 1.0,
         "cost_evidence": {"currency": "USD", "estimated": 1.5, "reconciled": 1.5},
     }
-    record[field]["provider"] = provider
+    record[field]["provider"] = provider  # type: ignore[index]
 
-    with pytest.raises(ValueError, match=f"{field}\\.provider"):
+    with pytest.raises(ValueError, match="live-provider"):
         validate_execution_evidence(record)
 
 

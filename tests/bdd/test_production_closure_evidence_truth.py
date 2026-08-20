@@ -77,6 +77,21 @@ def set_critical_token_accuracy(context: Any, accuracy: str) -> None:
     )
 
 
+@given(parsers.parse('C07 transcript evidence is "{transcript_evidence}"'))
+def set_transcript_evidence(context: Any, transcript_evidence: str) -> None:
+    context.values["record"]["transcript_evidence"] = transcript_evidence
+
+
+@given(parsers.parse('C07 publication scope is "{publication_scope}"'))
+def set_publication_scope(context: Any, publication_scope: str) -> None:
+    context.values["record"]["publication_scope"] = publication_scope
+
+
+@given(parsers.parse('the C07 "{role}" provider is "{provider}"'))
+def set_provider_identity(context: Any, role: str, provider: str) -> None:
+    context.values["record"][role]["provider"] = provider
+
+
 @when("C07 execution evidence is validated")
 def validate_record(context: Any) -> None:
     try:

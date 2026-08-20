@@ -65,3 +65,13 @@ artifact, QA, publication, approval, usage/cost and outbox state. UUIDv7 keys,
 optimistic versions, tenant predicates and row-level security enforce isolation.
 Provider request IDs are unique in usage/cost records so workflow replay cannot create
 duplicate provider requests or charges.
+
+The authoritative `episodes` snapshot persists and reconstructs `profile_name`,
+`source_sha256`, `source_bytes`, `request_fingerprint`, `state`, QA evidence,
+package checksum, and failure evidence, together with tenant, project, idempotency,
+version, and timestamp fields. Snapshot integrity requires SHA-256 values, positive
+source bytes, nonempty profile and idempotency values, and an allowed `EpisodeState`;
+QA and failure evidence use JSON objects. `qa_passed` requires QA evidence, `failed`
+requires failure evidence, and `packaged` or `published` requires a package checksum;
+`validated`, `scripted`, and `rendered` remain valid without outcome evidence. The
+source hash is bound to an existing source document in the same tenant.

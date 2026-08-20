@@ -20,6 +20,7 @@ from poddown.audio import (
     build_transcription_quality_evaluator,
     deterministic_quality_evaluator,
     diagnose_wav,
+    host_local_quality_evaluator,
 )
 from poddown.audio.render import RenderRejectedError
 from poddown.audio.selection import CandidateQuality
@@ -113,6 +114,26 @@ def request_for(*, attempt: int = 1, take: int = 0) -> RenderRequest:
         attempt=attempt,
         take_index=take,
     )
+
+
+def test_host_local_quality_is_explicitly_script_derived() -> None:
+    request = replace(
+        request_for(),
+        provider="host-local",
+        model="host-local-tts-v1",
+    )
+    audio = asyncio.run(DeterministicLocalRenderer().render(request_for())).audio_bytes
+    diagnostics = diagnose_wav(
+        audio, expected_sample_rate_hz=44_100, expected_channels=1
+    )
+
+    quality = host_local_quality_evaluator(request, audio, diagnostics, ("not",))
+
+    assert quality.transcription is not None
+    assert quality.transcription.provider == "host-local"
+    assert quality.transcription.model == "host-local-tts-v1"
+    assert quality.transcription.mode == "host-local"
+    assert quality.transcription.checksum == sha256(audio).hexdigest()
 
 
 def episode_for(*, consent: VoiceConsent | None = None) -> EpisodeWorkflowInput:

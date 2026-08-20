@@ -14,12 +14,17 @@ Feature: Offline production-readiness contracts
   Scenario: Validate the local Compose topology without Docker
     Given the versioned local Compose contract
     When the Compose YAML is parsed
-    Then it contains the six required runtime services and health-gated dependencies
+    Then it contains the six required runtime services, the MinIO bootstrap helper, and health-gated dependencies
 
   Scenario: Run the API readiness probe without a live Compose stack
     Given the versioned local Compose contract
     When the API readiness probe is prepared from the Python image contract
     Then the API readiness probe succeeds against a local ready endpoint
+
+  Scenario: Give the worker the same source-bound workflow fixture as the API
+    Given the versioned local Compose contract
+    When the worker workflow environment is inspected
+    Then the worker receives the host-local reference fixture and mode
 
   Scenario: Reject unsupported operational event values before serialization
     Given an unsupported mutable operational event attribute

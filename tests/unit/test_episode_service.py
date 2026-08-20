@@ -372,6 +372,55 @@ def test_packaging_rejects_bytes_that_do_not_match_the_declared_checksum():
         )
 
 
+def test_record_package_completion_projects_and_replays_verified_worker_package():
+    """A worker completion must persist package identity through the lifecycle."""
+    service = _service()
+    record = _created(service)
+
+    packaged = service.record_package_completion(
+        TENANT_ID,
+        record.episode_id,
+        qa_evidence={"status": "pass", "critical_token_accuracy": 1.0},
+        package_sha256=PACKAGE_CHECKSUM,
+        package_manifest_sha256=PACKAGE_MANIFEST_SHA256,
+    )
+    replayed = service.record_package_completion(
+        TENANT_ID,
+        record.episode_id,
+        qa_evidence={"status": "pass", "critical_token_accuracy": 1.0},
+        package_sha256=PACKAGE_CHECKSUM,
+        package_manifest_sha256=PACKAGE_MANIFEST_SHA256,
+    )
+
+    assert packaged.state is EpisodeState.PACKAGED
+    assert packaged.version == 5
+    assert packaged.package_sha256 == PACKAGE_CHECKSUM
+    assert packaged.package_manifest_sha256 == PACKAGE_MANIFEST_SHA256
+    assert replayed == packaged
+
+
+def test_record_package_completion_rejects_a_conflicting_replay():
+    """A package retry cannot silently replace durable immutable identity."""
+    service = _service()
+    record = _created(service)
+    service.record_package_completion(
+        TENANT_ID,
+        record.episode_id,
+        qa_evidence={"status": "pass"},
+        package_sha256=PACKAGE_CHECKSUM,
+        package_manifest_sha256=PACKAGE_MANIFEST_SHA256,
+    )
+
+    with pytest.raises(InvalidEpisodeTransition, match="conflicts"):
+        service.record_package_completion(
+            TENANT_ID,
+            record.episode_id,
+            qa_evidence={"status": "pass"},
+            package_sha256=sha256(b"a different package").hexdigest(),
+            package_manifest_sha256="c" * 64,
+        )
+
+
 def test_failed_transition_preserves_structured_redacted_failure_details():
     """Failure status must be actionable without retaining source text or secrets."""
     service = _service()
@@ -429,6 +478,9 @@ def test_publish_requires_explicit_authorization_and_preserves_package_identity(
         package_bytes=PACKAGE_BYTES,
         package_manifest_sha256=PACKAGE_MANIFEST_SHA256,
     )
+
+    assert packaged.package_sha256 == PACKAGE_CHECKSUM
+    assert packaged.package_manifest_sha256 == PACKAGE_MANIFEST_SHA256
 
     with pytest.raises(PublishAuthorizationError):
         service.publish(

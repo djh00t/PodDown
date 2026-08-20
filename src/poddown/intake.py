@@ -18,6 +18,11 @@ class _PodDownMetadata(BaseModel):
     profile: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9-]{0,62}$")
     format: Literal["narration", "dialogue"] | None = None
     target_minutes: int | None = Field(default=None, ge=1, le=180)
+    episode_id: str | None = Field(default=None, min_length=1)
+    duration_minutes: int | None = Field(default=None, ge=1, le=180)
+    source_blocks: int | None = Field(default=None, ge=1)
+    source_turns: int | None = Field(default=None, ge=1)
+    source_locale: str | None = Field(default=None, min_length=2)
     pronunciation_overrides: (
         dict[
             Annotated[str, StringConstraints(min_length=1)],

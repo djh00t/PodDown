@@ -13,6 +13,7 @@ from poddown.audio.mastering import (
     MasteringRequest,
     MasteringSegment,
     MasteringService,
+    _ffmpeg_timeout_for_wav,
 )
 
 scenarios("../features/mastering.feature")
@@ -86,13 +87,15 @@ def _wav_bytes(*, sample: int) -> bytes:
     return stream.getvalue()
 
 
-def _wav_bytes_for_frames(*, sample: int, frames: int) -> bytes:
+def _wav_bytes_for_frames(
+    *, sample: int, frames: int, sample_rate: int = 44100
+) -> bytes:
     """Build a PCM fixture with the requested deterministic frame count."""
     stream = BytesIO()
     with wave.open(stream, "wb") as output:
         output.setnchannels(1)
         output.setsampwidth(2)
-        output.setframerate(44100)
+        output.setframerate(sample_rate)
         output.writeframes(sample.to_bytes(2, "little", signed=True) * frames)
     return stream.getvalue()
 
@@ -196,6 +199,24 @@ def short_segment_and_longer_master_duration_requirement(context):
     )
 
 
+@given("short and long assembled WAV durations")
+def short_and_long_assembled_wav_durations(context):
+    context.values["short_wav"] = _wav_bytes_for_frames(sample=1, frames=1)
+    context.values["long_wav"] = _wav_bytes_for_frames(
+        sample=1,
+        frames=650,
+        sample_rate=1,
+    )
+
+
+@when("the FFmpeg timeouts are calculated")
+def ffmpeg_timeouts_are_calculated(context):
+    context.values["short_timeout"] = _ffmpeg_timeout_for_wav(
+        context.values["short_wav"]
+    )
+    context.values["long_timeout"] = _ffmpeg_timeout_for_wav(context.values["long_wav"])
+
+
 @when("the episode is mastered")
 def episode_is_mastered(context):
     service = MasteringService(runner=context.values["runner"])
@@ -274,3 +295,8 @@ def short_segment_is_dispatched_and_longer_master_is_returned(context):
     (dispatched_segments,) = context.values["runner"].calls
     assert dispatched_segments[0].segment_id == "segment-010"
     assert context.values["result"].diagnostics.duration_seconds == 0.1
+
+
+@then("the long episode timeout is greater than the short episode timeout")
+def long_episode_timeout_is_greater(context):
+    assert context.values["long_timeout"] > context.values["short_timeout"]

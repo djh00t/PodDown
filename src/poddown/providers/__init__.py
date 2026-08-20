@@ -6,10 +6,16 @@ from poddown.providers.contracts import (
     TranscriptResult,
     TranscriptWord,
 )
+from poddown.providers.http_transport import (
+    ProviderTransportError,
+    UrllibAsyncHttpTransport,
+)
 
 __all__ = [
     "ProviderCapabilities",
     "TranscriptResult",
     "TranscriptWord",
     "Transcriber",
+    "ProviderTransportError",
+    "UrllibAsyncHttpTransport",
 ]

@@ -54,10 +54,43 @@ it is not listenable local-speech or live-provider evidence. Live ElevenLabs
 rendering is separate and explicit: it requires `ELEVENLABS_API_KEY`, an approved
 provider voice mapping, rights/consent evidence, and spending authorization.
 
+The reference-demo composition also accepts an injected concrete
+`OpenAITranscriber` for final-master QA. That path records `provider-asr` only
+after OpenAI provider, model, and request-ID provenance are present; it never
+falls back to the deterministic fixture transcript. The CLI remains local-only,
+so provider credentials and transport construction stay outside the demo command.
+
 The wheel bundles the versioned reference fixtures, so the same command works
 from an installed package as well as this checkout. This local demo publishes
 the synthetic-presenter disclosure in `show-notes.md`; it does not claim spoken
 or external-platform disclosure.
 
-For the existing MCP stdio interface, run `uv run poddown-mcp` and invoke the
-`poddown_preview` tool before any render or publication decision.
+## MCP stdio interface
+
+Set `PODDOWN_MCP_MODE` explicitly before running `uv run poddown-mcp`. Local
+mode is deterministic and requires an authenticated tenant context:
+
+```bash
+export PODDOWN_MCP_MODE=local
+export PODDOWN_TENANT_ID=<tenant-context>
+uv run poddown-mcp
+```
+
+API mode uses the verified Episode API boundary and requires a bearer token
+provisioned by the runtime or its secret manager. Configure the endpoint,
+tenant, project, and token reference before starting; never place a literal
+token in documentation, tool arguments, or logs:
+
+```bash
+export PODDOWN_MCP_MODE=api
+export PODDOWN_API_ENDPOINT=<episode-api-endpoint>
+export PODDOWN_TENANT_ID=<tenant-context>
+export PODDOWN_PROJECT_ID=<project-context>
+export PODDOWN_API_TOKEN=<runtime-provisioned-oidc-access-token>
+uv run poddown-mcp
+```
+
+API mode fails closed when any required API context or bearer token is absent.
+It sends the configured token only as an `Authorization: Bearer` request header
+and surfaces no token value in MCP results or setup errors. Invoke
+`poddown_preview` before any render or publication decision.

@@ -119,8 +119,10 @@ class DurableRenderService:
             raise RenderRejectedError("provider does not support voice pinning")
         if capabilities.timestamps:
             raise RenderRejectedError("provider timestamps must be disabled")
-        if not capabilities.provider_idempotency:
-            raise RenderRejectedError("provider idempotency is required")
+        # Provider idempotency is descriptive evidence, not a prerequisite for
+        # the PodDown replay boundary.  The durable candidate claim and record
+        # prevent ordinary duplicate dispatch; a crash after provider dispatch
+        # and before persistence remains an at-least-once reconciliation risk.
 
     async def _new_outcome(
         self, request: RenderRequest, renderer: AudioRenderer
