@@ -18,6 +18,7 @@ from poddown.publishing import (
     PublicationAuthorization,
     PublicationConflictError,
     PublicationTarget,
+    PublicationUncertainOutcomeError,
     PublishingAuthorizationError,
     PublishingService,
     PublishingValidationError,
@@ -99,6 +100,55 @@ def test_service_replays_one_receipt_and_writes_checksum_bound_bytes(
     ).read_bytes() == b"episode.mp3"
 
 
+def test_service_replays_from_durable_receipt_store_before_adapter(
+    tmp_path: Path,
+) -> None:
+    class ReceiptStore:
+        receipt = None
+
+        def save(self, receipt):
+            self.receipt = receipt
+            return receipt
+
+        def get_by_idempotency(
+            self, *, tenant_id, project_id, target_id, idempotency_key
+        ):
+            receipt = self.receipt
+            if receipt is None:
+                return None
+            if (
+                receipt.tenant_id,
+                receipt.project_id,
+                receipt.target_id,
+                receipt.idempotency_key,
+            ) == (tenant_id, project_id, target_id, idempotency_key):
+                return receipt
+            return None
+
+    artifact_store = FilesystemArtifactStore(tmp_path / "artifacts")
+    package = make_package(artifact_store)
+    receipt_store = ReceiptStore()
+    first_service = PublishingService(
+        artifact_store=artifact_store,
+        adapters={"filesystem": FilesystemPublicationAdapter(tmp_path / "published")},
+        receipt_store=receipt_store,
+    )
+    first = first_service.publish(package, make_target(), auth(), "durable-key")
+
+    class FailingAdapter(FilesystemPublicationAdapter):
+        def publish(self, package, target, artifacts):
+            raise AssertionError("durable receipt should be replayed first")
+
+    second_service = PublishingService(
+        artifact_store=artifact_store,
+        adapters={"filesystem": FailingAdapter(tmp_path / "other-published")},
+        receipt_store=receipt_store,
+    )
+    assert (
+        second_service.publish(package, make_target(), auth(), "durable-key") == first
+    )
+
+
 def test_service_rejects_failed_qa_before_adapter(tmp_path: Path) -> None:
     store = FilesystemArtifactStore(tmp_path / "artifacts")
     package = make_package(store, qa="fail")
@@ -132,6 +182,32 @@ def test_failed_adapter_attempt_is_resumable_without_duplicate_receipt(
     assert attempt.state == "completed"
     assert attempt.retryable is False
     assert receipt.status == "resumed"
+
+
+def test_uncertain_publication_fails_closed_without_a_second_provider_call(
+    tmp_path: Path,
+) -> None:
+    class UncertainAdapter(FilesystemPublicationAdapter):
+        calls = 0
+
+        def publish(self, package, target, artifacts):
+            self.calls += 1
+            raise PublicationUncertainOutcomeError("provider response was not received")
+
+    store = FilesystemArtifactStore(tmp_path / "artifacts")
+    package = make_package(store)
+    adapter = UncertainAdapter(tmp_path / "published")
+    service = PublishingService(artifact_store=store, adapters={"filesystem": adapter})
+
+    with pytest.raises(PublicationUncertainOutcomeError):
+        service.publish(package, make_target(), auth(), "uncertain-key")
+    with pytest.raises(PublicationConflictError, match="outcome is unknown"):
+        service.publish(package, make_target(), auth(), "uncertain-key")
+
+    attempt = service.attempt("uncertain-key", TENANT, PROJECT)
+    assert attempt.state == "unknown"
+    assert attempt.retryable is False
+    assert adapter.calls == 1
 
 
 def test_receipt_provenance_contains_target_snapshot_without_secret_value(

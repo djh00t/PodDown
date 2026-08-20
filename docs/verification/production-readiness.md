@@ -7,6 +7,9 @@ NATS JetStream, MinIO, API, and worker; offline health endpoints; and immutable
 tenant-safe operational event/metric contracts. Kubernetes, live services, and
 credentials are outside the default test boundary.
 
+The O03–O05 SLO contract extends the metric boundary with bounded objective and
+measurement records; see [SLO verification](slo-contracts.md).
+
 ## Evidence
 
 Focused contract tests:
@@ -26,19 +29,22 @@ The dependency-advisor decision for the direct API server dependency was
 `uvicorn==0.51.0` under the Python conservative policy with a 720-hour minimum
 package age. `uv.lock` was regenerated and `uv pip check` passed.
 
-The packaged entrypoints are `poddown-api` and `poddown-worker`. The API uses
-the existing `create_app()` through uvicorn. The worker reads
+The packaged entrypoints are `poddown-api` and `poddown-worker`. The local API
+entrypoint now requires exactly one durable database selection,
+`PODDOWN_SQLITE_PATH` or `PODDOWN_POSTGRES_DSN`, plus the explicit Temporal
+address, namespace, and task queue. It composes restart-safe state, approval,
+and Temporal dispatch ports through `create_app()` and uvicorn. The worker reads
 `PODDOWN_TEMPORAL_ADDRESS`, `PODDOWN_TEMPORAL_NAMESPACE`, and
-`PODDOWN_TEMPORAL_TASK_QUEUE`, then registers the existing
-`EpisodeRenderWorkflow` and `render_segment_activity` contracts. Missing
-required worker configuration fails before a network connection.
+`PODDOWN_TEMPORAL_TASK_QUEUE`, then registers command, render, production, and
+publication activity contracts. Missing required worker configuration fails
+before a network connection.
 
 The worker marker is removed before connection, created only after the entered
 Temporal worker reports `is_running`, and removed in the shutdown path. Static
 Compose/Dockerfile assertions and the lifecycle test cover PATH, non-secret
 Temporal environment, marker healthcheck, and cleanup wiring.
 
-The final stacked changed-scope `rtk make check` completed with 861 passed,
+The historical stacked changed-scope `rtk make check` completed with 861 passed,
 one live-provider test deselected, and 86.43% coverage; its full output is
 local command evidence, not Compose E2E evidence.
 
@@ -51,19 +57,50 @@ With Docker available, `docker build --tag poddown-m7-verify:local .` completed
 successfully and installed `uvicorn==0.51.0`. No Compose services were started,
 so Compose E2E and service restart evidence remain unclaimed.
 
-The Compose YAML, Dockerfile, packaged scripts, and commands are statically
+The Compose YAML, Dockerfile, packaged scripts, and commands remain statically
 validated only. Docker/Compose E2E was not run locally, so no clean Compose E2E
-or live-service readiness claim is made.
+or live-service readiness claim is made. See
+[local runtime composition verification](runtime-composition.md) for the
+newer restart/idempotency evidence.
+
+The API Compose contract also requires operator-supplied HTTPS resource-link
+configuration (`PODDOWN_RESOURCE_LINK_BASE_URL` and
+`PODDOWN_RESOURCE_LINK_SECRET`, with a bounded TTL default) so signed resource
+links cannot silently fall back to an insecure or in-memory boundary.
 
 ## Explicit deferrals
 
 - Hosted PostgreSQL/Temporal/NATS/MinIO migrations and deployment configuration.
 - Real backup/restore and disaster-recovery drills.
 - Provider outage, budget exhaustion, and load/capacity testing.
-- Signing, SBOM, vulnerability scanning, and staged deployment.
+- Credential rotation and production secret scanning, signing, and staged
+  deployment. Local Gitleaks, SBOM, and Trivy evidence are recorded separately
+  and do not establish those production gates.
 - Deployment credentials and live provider credentials.
 - Kubernetes manifests or hosted migration adapters (Kubernetes is explicitly
   excluded from this local Compose contract).
 
 Docker/Compose execution was not run; service availability and the Docker
 daemon were not assumed.
+
+## Current reconciliation attempt
+
+On 2026-08-14, Docker Desktop was started locally and `docker compose config`
+passed with explicitly supplied local-only credentials. The API/worker image
+build then failed before compilation with Docker's `no space left on device`
+error; the host filesystem reported 116 MiB available. A later check found
+approximately 78 GiB free, but the Docker daemon was not responsive to a
+10-second `docker info` probe.
+
+On 2026-08-15, a fresh bounded check reported approximately 70 GiB free. Docker
+was installed, but the `desktop-linux` backend continued refusing connections
+to its VM endpoint; an 8-second `docker version` probe timed out. Restarting
+Docker was not performed because the daemon owns unrelated existing containers;
+no Compose service was started, and no hosted-readiness claim follows.
+
+On 2026-08-15, the current static `docker compose config --quiet` check passed
+with ephemeral local-only values for all five required password/user and
+resource-link variables. This validates interpolation only; the Docker daemon
+still timed out before any service could start. The repository YAML contract
+tests also cover the resource-link variables. No Compose service health,
+restart, migration, or recovery evidence is claimed.

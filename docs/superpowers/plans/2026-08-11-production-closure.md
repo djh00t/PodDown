@@ -1,6 +1,9 @@
 # PodDown Production-Closure Implementation Plan
 
-Status: approved execution plan; baseline `origin/main` at `f5be90a658594b9c32d30519982f7274f34b07f0`.
+Status: approved execution plan; the P0 contract-truth phase is now merged and
+the current `origin/main` baseline is `7ce7d6f877437dba7dbd0ec1bfbaa9201263c3`.
+The subsequent reconciliation work in this checkout remains uncommitted and
+unpublished.
 
 This plan closes the audited contract/demo-only boundaries and delivers a repeatable,
 honest PodDown production path. Work is executed as bounded 10–15 minute packages,

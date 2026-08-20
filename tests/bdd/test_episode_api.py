@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -210,6 +211,82 @@ def status_version(context) -> None:
     response = context.values["response"]
     assert response.status_code == 200
     assert response.json()["version"] == 1
+
+
+@given(
+    "an offline episode API client with a packaged episode and distinct package "
+    "and manifest digests"
+)
+def packaged_episode_with_distinct_digests(context) -> None:
+    repository = InMemoryEpisodeRepository()
+    service = EpisodeApplicationService(
+        repository=repository,
+        available_profiles={PROFILE},
+    )
+    record = service.create_episode(
+        EpisodeCreateCommand(
+            tenant_id=UUID(TENANT_ID),
+            project_id=UUID(PROJECT_ID),
+            idempotency_key="manifest-bdd-create-001",
+            source_bytes=SOURCE.encode("utf-8"),
+            profile_name=PROFILE,
+        )
+    )
+    scripted = service.transition(
+        UUID(TENANT_ID),
+        record.episode_id,
+        EpisodeState.SCRIPTED,
+        expected_version=record.version,
+    )
+    rendered = service.transition(
+        UUID(TENANT_ID),
+        record.episode_id,
+        EpisodeState.RENDERED,
+        expected_version=scripted.version,
+    )
+    qa_passed = service.transition(
+        UUID(TENANT_ID),
+        record.episode_id,
+        EpisodeState.QA_PASSED,
+        expected_version=rendered.version,
+        qa_evidence={"status": "pass"},
+    )
+    package_bytes = b"BDD package bytes"
+    package_sha256 = sha256(package_bytes).hexdigest()
+    manifest_sha256 = "b" * 64
+    packaged = service.transition(
+        UUID(TENANT_ID),
+        record.episode_id,
+        EpisodeState.PACKAGED,
+        expected_version=qa_passed.version,
+        package_sha256=package_sha256,
+        package_bytes=package_bytes,
+        package_manifest_sha256=manifest_sha256,
+    )
+    context.values["client"] = TestClient(create_app(service))
+    context.values["packaged_episode_id"] = str(packaged.episode_id)
+    context.values["package_sha256"] = package_sha256
+    context.values["manifest_sha256"] = manifest_sha256
+
+
+@when("I request the packaged episode status")
+def request_packaged_status(context) -> None:
+    context.values["response"] = _client(context).get(
+        f"/v1/episodes/{context.values['packaged_episode_id']}/status",
+        headers=_headers(key="manifest-bdd-status-001"),
+    )
+
+
+@then("status reports the manifest digest rather than the package bytes digest")
+def packaged_status_reports_manifest_digest(context) -> None:
+    response = context.values["response"]
+    assert response.status_code == 200
+    assert (
+        response.json()["package_manifest_sha256"] == context.values["manifest_sha256"]
+    )
+    assert (
+        response.json()["package_manifest_sha256"] != context.values["package_sha256"]
+    )
 
 
 @when("I request the failed episode status")

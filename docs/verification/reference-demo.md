@@ -67,6 +67,44 @@ Fresh local evidence on 2026-08-10:
 - `make build`, `make docs`, `uv lock --check`, `uv pip check`, compileall,
   `git diff --check`, and the changed-scope credential audit passed.
 
+Current reconciliation evidence on 2026-08-15:
+
+- An attempt using the exact clean `main` fixture and renderer artifacts
+  completed host-local speech rendering but reproduced the fixed 120-second
+  FFmpeg mastering timeout. Resuming that persisted output with the preserved
+  reconciliation timeout correction completed mastering, packaging, and
+  filesystem publication; no provider credential or network call was used.
+- The published MP3 is **650.031 seconds**, mono, 44.1 kHz, with **9** package
+  artifacts and **9** published files.
+- `result.json` records cost `0`, script-derived critical-token accuracy `1.0`,
+  no failed segments, and **306** replayed render takes on both the recovery
+  and immediate resume runs. The package manifest digest is
+  `9a4491559be76cb1144c1364c6d1c950a377d165bb73fa74e25c25cbbc190f0a`.
+- The duration-scaled FFmpeg timeout is present only in the uncommitted
+  reconciliation worktree; current `main` still needs that correction delivered.
+  This is host-local speech/package evidence only and does not establish
+  provider ASR fidelity, hosted runtime recovery, authenticated UAT, or release
+  readiness.
+
+Fresh host-local reconciliation run on 2026-08-15:
+
+- `.venv/bin/poddown-demo --audio-mode local-speech --output
+  /tmp/poddown-host-local-closure-20260815` completed with
+  `mode: local-system-tts-demo`, zero provider cost, and script-derived
+  critical-token accuracy `1.0`.
+- FFprobe measured a **650.031-second**, mono, 44.1 kHz MP3. Its SHA-256 is
+  `b21260de0fbe9e0d63ce8ad7b35d21dd0ab7983efdc3633459d907ee3a20dd15`.
+- The package contained the expected **9** artifacts. Its manifest digest is
+  `d6c1f8cd2aafa6a525ec503111df7b332ce55e29cb5ef64db03d2f0ac0f2ab21`.
+- QA passed with zero clipping. The workflow recorded **307** render requests,
+  one failed segment, and regeneration of that same segment; no provider
+  credential or network call was used.
+- This run exercised the duration-scaled FFmpeg timeout in the uncommitted
+  reconciliation worktree. It is stronger fresh host-local artifact evidence,
+  but it is not clean-`main` delivery evidence and does not establish provider
+  ASR fidelity, hosted runtime recovery, authenticated UAT, or release
+  readiness.
+
 Live ElevenLabs rendering is separate from both local modes. It requires an
 explicit `ELEVENLABS_API_KEY`, approved provider voice mapping, rights/consent
 evidence, and spending authorization. Successful local commands are not

@@ -15,6 +15,7 @@ from typing import cast
 from uuid import UUID
 
 from poddown.artifacts import (
+    ArtifactError,
     ArtifactRef,
     ArtifactStore,
     fsync_directory,
@@ -201,6 +202,52 @@ class EpisodePackage:
         return package
 
 
+def manifest_sha256_for(package: EpisodePackage) -> str:
+    """Return the digest of the canonical immutable package manifest bytes."""
+    if not isinstance(package, EpisodePackage):
+        raise PackageError("package manifest must be an EpisodePackage")
+    return sha256(_manifest_bytes(package)).hexdigest()
+
+
+def package_sha256_for(package: EpisodePackage, artifact_store: ArtifactStore) -> str:
+    """Return the canonical digest of every named package artifact's exact bytes.
+
+    This digest is intentionally distinct from ``final_sha256`` (the WAV digest)
+    and ``manifest_sha256_for`` (the manifest digest). The framing includes the
+    package member name and media type so the result is stable and unambiguous.
+    """
+    if not isinstance(package, EpisodePackage):
+        raise PackageError("package must be an EpisodePackage")
+    _validate_manifest_contract(package)
+    digest = sha256(b"poddown-package-bytes-v1\0")
+    for reference in package.files:
+        try:
+            data = artifact_store.read(reference)
+        except (ArtifactError, OSError) as error:
+            raise PackageIntegrityError("package artifact cannot be read") from error
+        if not isinstance(data, bytes):
+            raise PackageIntegrityError("package artifact bytes are malformed")
+        for value in (reference.name, reference.media_type):
+            encoded = value.encode("utf-8")
+            digest.update(len(encoded).to_bytes(4, "big"))
+            digest.update(encoded)
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
+    return digest.hexdigest()
+
+
+def _manifest_bytes(package: EpisodePackage) -> bytes:
+    try:
+        return json.dumps(
+            package.to_dict(),
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError, OverflowError) as error:
+        raise PackageError("package manifest contains non-JSON evidence") from error
+
+
 class EpisodePackageService:
     """Assemble and atomically commit immutable episode-package manifests."""
 
@@ -267,15 +314,7 @@ class EpisodePackageService:
 
     def _commit_manifest(self, package: EpisodePackage) -> EpisodePackage:
         path = self._package_root / f"{package.episode_version_id}.json"
-        try:
-            payload = json.dumps(
-                package.to_dict(),
-                allow_nan=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        except (TypeError, ValueError, OverflowError) as error:
-            raise PackageError("package manifest contains non-JSON evidence") from error
+        payload = _manifest_bytes(package)
         temporary_path: Path | None = None
         try:
             descriptor, temporary_name = tempfile.mkstemp(
@@ -415,6 +454,8 @@ def _validate_manifest_contract(package: EpisodePackage) -> None:
 __all__ = [
     "EpisodePackage",
     "EpisodePackageService",
+    "manifest_sha256_for",
+    "package_sha256_for",
     "PackageArtifact",
     "PackageConflictError",
     "PackageError",

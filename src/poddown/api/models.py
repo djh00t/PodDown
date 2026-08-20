@@ -50,6 +50,21 @@ class EpisodeCreateRequest(_FrozenModel):
         return value
 
 
+class PreviewRequest(_FrozenModel):
+    """JSON body for provider-free source preview."""
+
+    source: str = Field(min_length=1)
+    profile: str | None = Field(default=None, min_length=1)
+
+    @field_validator("source", "profile")
+    @classmethod
+    def reject_blank_values(cls, value: str | None) -> str | None:
+        """Reject whitespace-only preview inputs without changing source bytes."""
+        if value is not None and not value.strip():
+            raise ValueError("value must not be blank")
+        return value
+
+
 class RequestContext(_FrozenModel):
     """Validated tenant/project/idempotency context from demo headers."""
 
@@ -67,6 +82,13 @@ class RequestContext(_FrozenModel):
         )
 
 
+class ResourceLink(_FrozenModel):
+    """Authorized short-lived resource reference returned to API clients."""
+
+    uri: str = Field(min_length=1)
+    mime_type: str = Field(min_length=1)
+
+
 class EpisodeSummary(_FrozenModel):
     """Source-safe immutable episode summary."""
 
@@ -80,6 +102,7 @@ class EpisodeSummary(_FrozenModel):
     source_bytes: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    resources: list[ResourceLink] = Field(default_factory=list)
 
 
 class CommandReceipt(_FrozenModel):
@@ -91,6 +114,7 @@ class CommandReceipt(_FrozenModel):
     command: Literal["create", "render", "publish"]
     accepted: bool = True
     state: Literal["queued", "dispatched", "running", "completed", "failed"] = "queued"
+    workflow_id: str | None = None
     created_at: datetime | None = None
 
 
@@ -99,6 +123,17 @@ class EpisodeCreateResponse(_FrozenModel):
 
     episode: EpisodeSummary
     receipt: CommandReceipt
+
+
+class PreviewResponse(_FrozenModel):
+    """Stable source-bound result for a side-effect-free preview."""
+
+    source_sha256: str
+    profile_id: str
+    source_bytes: int
+    block_count: int
+    provider_calls: int
+    side_effect: Literal["none"] = "none"
 
 
 class RenderCommandRequest(_FrozenModel):

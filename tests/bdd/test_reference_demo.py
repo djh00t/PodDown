@@ -12,6 +12,7 @@ from pytest_bdd import given, scenarios, then, when
 
 from poddown.audio import DeterministicLocalRenderer
 from poddown.audio.contracts import RenderedAudio, RenderRequest
+from poddown.audio.mastering import FfmpegResult, MasteringProfile
 from poddown.domain import ProviderUsage
 from poddown.packages import REQUIRED_PACKAGE_ARTIFACTS
 
@@ -29,7 +30,7 @@ class FakeLocalSpeechRenderer:
     def __init__(
         self,
         *,
-        frames: int = 220_500,
+        frames: int = 8_820,
         sample: int = 500,
         provenance: dict[str, object] | None = None,
         audio_bytes: bytes | None = None,
@@ -38,6 +39,16 @@ class FakeLocalSpeechRenderer:
         self._frames = frames
         self._sample = sample
         self._provenance = provenance
+        if audio_bytes is None:
+            stream = BytesIO()
+            with wave.open(stream, "wb") as output:
+                output.setnchannels(1)
+                output.setsampwidth(2)
+                output.setframerate(44_100)
+                output.writeframes(
+                    self._sample.to_bytes(2, "little", signed=True) * self._frames
+                )
+            audio_bytes = stream.getvalue()
         self._audio_bytes = audio_bytes
 
     def provenance(self) -> dict[str, object]:
@@ -47,19 +58,9 @@ class FakeLocalSpeechRenderer:
         return {"engine": "fake-local-speech", "mode": self.mode}
 
     async def render(self, request: RenderRequest) -> RenderedAudio:
-        """Return a quiet five-second WAV with the requested provider identity."""
+        """Return a compact valid WAV with the requested local identity."""
         self.requests.append(request)
         audio_bytes = self._audio_bytes
-        if audio_bytes is None:
-            stream = BytesIO()
-            with wave.open(stream, "wb") as output:
-                output.setnchannels(1)
-                output.setsampwidth(2)
-                output.setframerate(request.sample_rate_hz)
-                output.writeframes(
-                    self._sample.to_bytes(2, "little", signed=True) * self._frames
-                )
-            audio_bytes = stream.getvalue()
         return RenderedAudio(
             audio_bytes,
             request.provider,
@@ -69,6 +70,41 @@ class FakeLocalSpeechRenderer:
             Decimal("0"),
             "wav",
             request.sample_rate_hz,
+        )
+
+
+class FakeFfmpegRunner:
+    """Return verified master-shaped bytes without invoking host FFmpeg."""
+
+    def run(
+        self,
+        *,
+        segments: tuple[object, ...],
+        profile: MasteringProfile,
+    ) -> FfmpegResult:
+        del segments
+        frame_count = int(profile.min_duration_seconds * profile.sample_rate_hz) + 1
+        stream = BytesIO()
+        with wave.open(stream, "wb") as output:
+            output.setnchannels(profile.channels)
+            output.setsampwidth(2)
+            output.setframerate(profile.sample_rate_hz)
+            output.writeframes((500).to_bytes(2, "little", signed=True) * frame_count)
+        duration = frame_count / profile.sample_rate_hz
+        return FfmpegResult(
+            wav_bytes=stream.getvalue(),
+            mp3_bytes=b"fake-mastered-mp3",
+            executable="fake-ffmpeg",
+            version="fake-1.0",
+            command=("fake-ffmpeg", "-i", "input.wav"),
+            filters=("aresample=44100",),
+            commands=(("fake-ffmpeg", "-i", "input.wav"),),
+            mp3_metadata={
+                "codec_name": "mp3",
+                "sample_rate": str(profile.sample_rate_hz),
+                "channels": str(profile.channels),
+                "duration": str(duration),
+            },
         )
 
 
@@ -95,7 +131,9 @@ def run_local_speech_demo(context):
 
     renderer = FakeLocalSpeechRenderer()
     context.values["result"] = run_reference_demo(
-        context.values["output_dir"], renderer=renderer
+        context.values["output_dir"],
+        renderer=renderer,
+        mastering_runner=FakeFfmpegRunner(),
     )
     context.values["renderer"] = renderer
 
@@ -137,7 +175,11 @@ def completed_local_speech_demo(context, tmp_path):
     from poddown.demo import run_reference_demo
 
     context.values["output_dir"] = tmp_path / "reference-demo-local-speech"
-    run_reference_demo(context.values["output_dir"], renderer=FakeLocalSpeechRenderer())
+    run_reference_demo(
+        context.values["output_dir"],
+        renderer=FakeLocalSpeechRenderer(),
+        mastering_runner=FakeFfmpegRunner(),
+    )
 
 
 @when("it is resumed with mismatched local renderer provenance")

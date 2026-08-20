@@ -53,3 +53,30 @@ Feature: Preserve production-closure evidence truth
     Given a complete C07 live-shaped evidence record
     When C07 execution evidence is validated
     Then the C07 record is accepted as live evidence
+
+  Scenario Outline: Local modes reject evidence from another execution mode
+    Given a C07 "<mode>" record with "<render_evidence>" render evidence
+    And C07 transcript evidence is "<transcript_evidence>"
+    And C07 publication scope is "<publication_scope>"
+    When C07 execution evidence is validated
+    Then the C07 record is rejected as false live evidence
+
+    Examples:
+      | mode                | render_evidence  | transcript_evidence | publication_scope |
+      | deterministic-local | provider-response | script-derived     | filesystem        |
+      | deterministic-local | synthetic-bytes   | provider-asr       | filesystem        |
+      | deterministic-local | synthetic-bytes   | script-derived     | external          |
+      | host-local          | synthetic-bytes   | script-derived     | filesystem        |
+      | host-local          | host-tts          | provider-asr       | filesystem        |
+      | host-local          | host-tts          | script-derived     | external          |
+
+  Scenario Outline: Live eligibility requires production provider identities
+    Given a complete C07 live-shaped evidence record
+    And the C07 "<role>" provider is "<provider>"
+    When C07 execution evidence is validated
+    Then the C07 record is rejected as false live evidence
+
+    Examples:
+      | role        | provider |
+      | renderer    | macos    |
+      | transcriber | espeak   |

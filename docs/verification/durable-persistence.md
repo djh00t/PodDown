@@ -12,7 +12,8 @@ bounded metadata, lifecycle state, optimistic versions, redacted failures,
 structured units, currency, and Decimal cost strings. Source bytes, audio,
 credentials, and provider secrets are never stored by these adapters.
 
-SQLite is a local deterministic demo adapter. PostgreSQL/Alembic migrations,
+SQLite remains a local deterministic adapter; the packaged local API entrypoint
+now selects it only through an explicit `PODDOWN_SQLITE_PATH`. PostgreSQL/Alembic migrations,
 database row-level authorization, NATS/outbox delivery, hosted operations, and
 provider-invoice reconciliation remain explicitly deferred.
 

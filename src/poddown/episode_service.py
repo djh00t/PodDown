@@ -256,6 +256,7 @@ class EpisodeRecord:
     profile_name: str
     source_sha256: str
     source_bytes: int
+    source_content: bytes
     request_fingerprint: str
     state: EpisodeState
     version: int
@@ -281,6 +282,13 @@ class EpisodeRecord:
         _require_sha256("request_fingerprint", self.request_fingerprint)
         if type(self.source_bytes) is not int or self.source_bytes < 1:
             raise ValueError("source_bytes must be a positive integer")
+        if (
+            type(self.source_content) is not bytes
+            or len(self.source_content) != self.source_bytes
+        ):
+            raise ValueError("source_content must preserve the source byte count")
+        if hashlib.sha256(self.source_content).hexdigest() != self.source_sha256:
+            raise ValueError("source_content does not match source_sha256")
         if type(self.version) is not int or self.version < 1:
             raise ValueError("version must be a positive integer")
         if self.state not in EpisodeState:
@@ -465,6 +473,7 @@ class EpisodeApplicationService:
                 profile_name=profile_name,
                 source_sha256=source_sha256,
                 source_bytes=len(command.source_bytes),
+                source_content=command.source_bytes,
                 request_fingerprint=fingerprint,
                 state=EpisodeState.VALIDATED,
                 version=1,

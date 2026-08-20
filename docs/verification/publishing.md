@@ -10,12 +10,19 @@ recorded-fixture Transistor contract adapter.
 
 The publisher rejects failed QA, binds tenant/project/package checksum,
 authorization, disclosure, and adapter provenance into the receipt, and replays
-one receipt for a tenant/project/idempotency key. Failed adapter attempts retain
-process-local retry state; retry resumes with one receipt and no duplicate feed
-  entry. Filesystem publication stages all bytes before commit and cleans failed
+one receipt for a tenant/project/idempotency key. An optional durable receipt
+store port now lets the service replay across process boundaries; the
+PostgreSQL implementation persists the complete immutable receipt under tenant
+RLS. Failed adapter attempts retain process-local retry state; retry resumes
+with one receipt and no duplicate feed entry. Filesystem publication stages all bytes before commit and cleans failed
   staging. ObjectStore publication promotes references only after every artifact
   succeeds. RSS retains multiple GUID-keyed items in stable order and rejects
   conflicting same-GUID content.
+
+The packaged worker supplies the PostgreSQL receipt store whenever
+`PODDOWN_POSTGRES_DSN` is configured. A configured production workflow fails
+closed without that durable store; an unconfigured offline worker retains the
+explicit local process adapter.
 
 The S3-compatible adapter preflights exact tenant/project content-addressed
 references, serializes attempts, and deletes only references created by a
@@ -57,20 +64,24 @@ Object-storage regressions cover scoped verified deletion, cross-scope rejection
 reused-object preservation, no partial object after injected failure, and exact
 retry promotion.
 
-The earlier publishing and combined-stack counts above are historical. Current
-validation also passed Ruff, strict mypy, build, docs, lock, pip, compileall,
-diff, and credential checks. The credential scan found no credential values;
-its only matches were code/documentation references to secret handling.
+The earlier publishing and combined-stack counts above are historical. The
+latest full non-live reconciliation run passed `1560` tests with one
+live-provider test deselected and six warnings at 80.22% branch coverage in
+27:14. A fresh build passed; lock and pip checks were not re-claimed because
+the execution environment rejected those commands before execution and the
+shared virtualenv has no `pip` module. No credential values
+were added; matches are code/documentation references to secret handling.
 
 ## Deferrals and residual risk
 
 - Real S3 SDK/network transport and real Transistor credentials remain
   deferred; no provider credits or live network are used here.
-- Content-addressed blobs written before an ObjectStore attempt fails are not
-  garbage-collected by this slice; durable orphan tracking and storage GC remain
-  deferred.
-- Publication receipts are process-local rather than durable across process
-  restart; a production ledger/outbox is required for crash recovery.
+- Content-addressed blobs written before an ObjectStore attempt fails are
+  covered by the local conservative collector, S3 inventory/list, and durable
+  first-seen observation contracts. A running MinIO inventory, scheduled
+  collection, and deletion/recovery drill remain deferred.
+- The PostgreSQL receipt adapter is contract-tested with DB-API fakes only; a
+  clean PostgreSQL deployment and crash-recovery drill remain pending.
 - Filesystem update/delete are observable and represented by immutable mutation
   receipts; S3/RSS mutations fail closed as unsupported offline, while
   Transistor mutations require matching recorded operation fixtures.

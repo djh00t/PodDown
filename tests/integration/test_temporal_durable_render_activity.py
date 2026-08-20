@@ -21,6 +21,7 @@ from poddown.audio.workflow import (
     EpisodeWorkflowInput,
     SegmentWorkflowInput,
 )
+from tests.temporal_support import retry_local_temporal_environment
 
 TASK_QUEUE = "poddown-temporal-durable-render-activity-tests"
 
@@ -76,7 +77,9 @@ async def _run_durable_render_activity(tmp_path) -> None:
         return result
 
     async with (
-        await WorkflowEnvironment.start_local() as environment,
+        retry_local_temporal_environment(
+            WorkflowEnvironment.start_local
+        ) as environment,
         Worker(
             environment.client,
             task_queue=TASK_QUEUE,

@@ -17,12 +17,30 @@ closed.
 The port also exposes scoped `delete(tenant_id, project_id, reference)`. It
 verifies exact metadata and bytes before removing the object and sidecar,
 rejects cross-scope references, and fails closed on unsafe paths. Publication
-compensation uses this boundary; durable orphan-blob tracking and garbage
-collection remain deferred.
+compensation uses this boundary. The reconciled PostgreSQL object-reference
+slice also includes a conservative orphan collector: it retains referenced or
+within-grace inventory entries and deletes only stale, unreferenced keys. S3
+inventory listing, paginated Boto3 transport support, first-seen PostgreSQL
+observation, and scoped cleanup composition are locally contract-tested. An
+explicit opt-in Temporal `maintain_objects` activity now carries the validated
+tenant/project/grace-period command to that cleanup port; it takes timestamps
+from the worker clock rather than the caller. A running MinIO deployment,
+scheduled invocation, and recovery drill remain deferred, so this is not live
+garbage-collection evidence.
 
-The adapter is a local demo target only. S3/MinIO clients, presigned URLs,
-retention, database references, outbox events, and restore drills remain
-deferred.
+The filesystem adapter remains a deterministic local demo target. The closure
+branch also provides an injected-transport `S3ObjectStore`, a concrete Boto3
+transport, and a `DurableS3ObjectStore` composition that requires a durable
+tenant-scoped PostgreSQL object reference on reads. No live MinIO call or
+presigned URL was performed; retention and restore drills remain deferred.
+
+The later D18 reconciliation slice adds first-seen inventory persistence,
+paginated S3/Boto listing, scoped inventory deletion, and reference-aware
+cleanup composition. Its focused BDD set passed **19 tests**. This remains
+injected/local evidence; no MinIO or PostgreSQL service was contacted. The
+worker-boundary BDD and runtime composition checks pass **19 tests**; the
+activity is registered only when `PODDOWN_OBJECT_MAINTENANCE_ENABLED=1` and
+`PODDOWN_PUBLICATION_MODE=s3`.
 
 ## TDD evidence
 

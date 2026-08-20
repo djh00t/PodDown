@@ -95,10 +95,24 @@ def parse_compose(context) -> None:
     context.values["parsed"] = context.values["compose"]
 
 
-@then("it contains the six required runtime services and health-gated dependencies")
+@then(
+    "it contains the six required runtime services, the MinIO bootstrap helper, "
+    "and health-gated dependencies"
+)
 def compose_services(context) -> None:
     services = context.values["parsed"]["services"]
-    assert set(services) == {"postgres", "temporal", "nats", "minio", "api", "worker"}
+    assert set(services) == {
+        "postgres",
+        "temporal",
+        "nats",
+        "minio",
+        "minio-init",
+        "api",
+        "worker",
+    }
+    assert services["minio-init"]["depends_on"]["minio"]["condition"] == (
+        "service_healthy"
+    )
     assert services["api"]["depends_on"]["postgres"]["condition"] == "service_healthy"
     assert (
         services["worker"]["depends_on"]["temporal"]["condition"] == "service_healthy"

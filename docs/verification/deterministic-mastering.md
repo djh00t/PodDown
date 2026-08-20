@@ -40,6 +40,18 @@ tests/bdd/test_mastering.py tests/unit/audio/test_mastering.py
 35 passed
 ```
 
+The current reconciliation also passes **39** mastering BDD/unit tests,
+including a regression proving that FFmpeg's bounded timeout scales with long
+episode duration instead of failing the 650-second reference master at the old
+fixed 120-second limit.
+
+The fresh long-episode check reproduced that boundary: clean `main` rendered
+the persisted host-local segments but failed at the old 120-second mastering
+timeout. Resuming the same output with the reconciliation correction completed
+the 650.031-second master, nine-file package, and filesystem publication, then
+replayed the same manifest on an immediate resume. This correction remains
+uncommitted and unpublished from the reconciliation worktree.
+
 Focused quality checks:
 
 ```text

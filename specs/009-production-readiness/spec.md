@@ -1,6 +1,7 @@
 # Specification: Production Readiness
 
-**Status:** Planned continuously; release gate after end-to-end slice
+**Status:** Local operational contracts verified; release gate remains open
+until hosted end-to-end evidence exists
 
 ## Goal
 

@@ -14,6 +14,8 @@ from poddown.packages import (
     PackageArtifact,
     PackageError,
     PackageProvenance,
+    manifest_sha256_for,
+    package_sha256_for,
 )
 
 REQUIRED_ARTIFACTS = (
@@ -88,6 +90,50 @@ def test_commit_serializes_exact_manifest_in_canonical_member_order(tmp_path):
             "details": {"lexicon_version": "v1", "provider": "fixture"},
         },
     }
+
+
+def test_manifest_sha256_is_the_canonical_manifest_digest_not_an_artifact_digest(
+    tmp_path,
+):
+    package = service(tmp_path).commit(str(uuid4()), package_artifacts(), provenance())
+
+    assert (
+        manifest_sha256_for(package)
+        == sha256(
+            json.dumps(
+                package.to_dict(), sort_keys=True, separators=(",", ":")
+            ).encode()
+        ).hexdigest()
+    )
+    assert manifest_sha256_for(package) != package.provenance.final_sha256
+
+
+def test_package_sha256_is_a_canonical_digest_of_all_package_bytes(tmp_path):
+    """Keep generic package bytes distinct from the WAV and manifest digests."""
+    store = FilesystemArtifactStore(tmp_path / "artifacts")
+    packages = EpisodePackageService(store, tmp_path / "packages")
+    package = packages.commit(str(uuid4()), package_artifacts(), provenance())
+
+    package_digest = package_sha256_for(package, store)
+
+    assert len(package_digest) == 64
+    assert package_digest != package.provenance.final_sha256
+    assert package_digest != manifest_sha256_for(package)
+
+    changed = tuple(
+        PackageArtifact(
+            artifact.name,
+            artifact.media_type,
+            b"changed notes" if artifact.name == "show-notes.md" else artifact.data,
+        )
+        for artifact in package_artifacts()
+    )
+    changed_package = packages.commit(
+        str(uuid4()),
+        changed,
+        provenance(final_sha256=sha256(b"verified wav bytes").hexdigest()),
+    )
+    assert package_sha256_for(changed_package, store) != package_digest
 
 
 @pytest.mark.parametrize(

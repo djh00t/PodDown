@@ -20,6 +20,7 @@ def test_publish_rejects_stale_or_cross_tenant_approval_without_side_effect():
     approval = {
         "episode_id": "episode-1",
         "approval_id": "missing",
+        "target_id": "target-1",
     }
     assert (
         server.call("poddown_publish", approval)["error"]["code"] == "approval_required"

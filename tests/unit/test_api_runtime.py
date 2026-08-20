@@ -78,3 +78,25 @@ def test_concurrent_submission_returns_one_stable_receipt() -> None:
         first, second = tuple(executor.map(lambda _: submit(), range(2)))
 
     assert first == second
+
+
+def test_command_payload_is_part_of_idempotent_identity() -> None:
+    dispatcher = InMemoryCommandDispatcher()
+    values = {
+        "tenant_id": TENANT_ID,
+        "project_id": PROJECT_ID,
+        "episode_id": FIRST_EPISODE_ID,
+        "command": "render",
+        "idempotency_key": "payload-key",
+    }
+
+    first = dispatcher.submit(**values, payload={"mode": "deterministic-local"})
+    assert (
+        dispatcher.submit(
+            **values,
+            payload={"mode": "deterministic-local"},
+        )
+        == first
+    )
+    with pytest.raises(IdempotencyConflict):
+        dispatcher.submit(**values, payload={"mode": "host-local"})

@@ -1,6 +1,7 @@
 # Security, retention, backup, and reproducibility contract
 
-This M7 slice defines the local operational contract; it does not claim hosted
+The local operational contract is covered by the [O06–O09 verification
+record](../verification/operational-lifecycle.md); it does not claim hosted
 deployment readiness.
 
 ## Security and telemetry
@@ -21,12 +22,21 @@ transcripts, provider payloads, logs, and consent/publication evidence. Tenant
 deletion must be audited and cannot remove immutable consent or publication
 evidence without an explicit legal/product retention decision.
 
+The implementation treats a legal hold as an unconditional deletion block and
+requires an authorization identity and reason before an expired immutable
+evidence item becomes eligible. It verifies the decision before a caller may
+perform a mutation.
+
 ## Backup and restore
 
 Production requires forward-tested database migrations, PostgreSQL backup and
 restore drills, object-storage checksum verification, and a recorded restore
 manifest. This local slice defines the evidence shape but does not execute a
 real backup, restore, hosted migration, or credentialed storage operation.
+
+The local backup/export manifest binds scoped artifact names, media types, byte
+counts, exact SHA-256 values, and a deterministic manifest SHA-256. Cross-tenant,
+changed, missing, and duplicate artifacts fail verification.
 
 ## Reproducible release evidence
 

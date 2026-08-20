@@ -47,6 +47,13 @@ class FilesystemArtifactStore:
         path = self._path_for(artifact)
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Content-addressed replay is already immutable: an existing path can
+        # be authenticated directly without creating and fsyncing another
+        # temporary copy before the link attempt.
+        if path.exists():
+            self._verify(path, artifact)
+            return artifact
+
         with NamedTemporaryFile(dir=path.parent, delete=False) as temporary:
             temporary.write(content)
             temporary.flush()

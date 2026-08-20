@@ -430,6 +430,9 @@ def test_publish_requires_explicit_authorization_and_preserves_package_identity(
         package_manifest_sha256=PACKAGE_MANIFEST_SHA256,
     )
 
+    assert packaged.package_sha256 == PACKAGE_CHECKSUM
+    assert packaged.package_manifest_sha256 == PACKAGE_MANIFEST_SHA256
+
     with pytest.raises(PublishAuthorizationError):
         service.publish(
             TENANT_ID,

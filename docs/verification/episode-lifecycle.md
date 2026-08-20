@@ -8,8 +8,10 @@ hash evidence, assigns UUIDv7 episode identities, enforces idempotency by
 tenant and request fingerprint, hides cross-tenant records as not-found, and
 applies optimistic, monotonic state transitions through an in-memory adapter.
 
-Packaging requires passing QA evidence and an immutable package SHA-256 bound
-to the exact package bytes supplied at the boundary.
+Packaging requires passing QA evidence, an immutable package SHA-256 bound to
+the exact package bytes supplied at the boundary, and a separately recorded
+manifest SHA-256 when the package manifest is available. Status never relabels
+the generic package-bytes digest as the manifest digest.
 Publishing requires an explicit authorization decision. Status failures are
 structured and redacted; source bytes and credentials are never retained in
 the episode record or failure payload.

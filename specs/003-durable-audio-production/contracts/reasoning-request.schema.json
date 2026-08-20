@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poddown.dev/schemas/reasoning-request-1.0.json",
+  "title": "PodDown reasoning request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_sha256",
+    "profile_id",
+    "treatment_id",
+    "operation",
+    "source_blocks",
+    "speaker_ids"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "source_sha256": {"$ref": "#/$defs/sha256"},
+    "profile_id": {"type": "string", "minLength": 1},
+    "treatment_id": {"type": "string", "minLength": 1},
+    "operation": {"enum": ["adapt", "repair"]},
+    "source_blocks": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/source_block"},
+      "minItems": 1
+    },
+    "speaker_ids": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "repair_turn_id": {"type": "string", "minLength": 1},
+    "failure_code": {"const": "dialogue_quality"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"operation": {"const": "adapt"}}},
+      "then": {"not": {"required": ["repair_turn_id", "failure_code"]}}
+    },
+    {
+      "if": {"properties": {"operation": {"const": "repair"}}},
+      "then": {"required": ["repair_turn_id", "failure_code"]}
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["block_id", "kind", "text", "start", "end"],
+      "properties": {
+        "block_id": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "text": {"type": "string", "minLength": 1},
+        "start": {"type": "integer", "minimum": 0},
+        "end": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

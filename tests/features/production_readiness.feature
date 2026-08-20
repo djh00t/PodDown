@@ -14,7 +14,7 @@ Feature: Offline production-readiness contracts
   Scenario: Validate the local Compose topology without Docker
     Given the versioned local Compose contract
     When the Compose YAML is parsed
-    Then it contains the six required runtime services and health-gated dependencies
+    Then it contains the six required runtime services, the MinIO bootstrap helper, and health-gated dependencies
 
   Scenario: Run the API readiness probe without a live Compose stack
     Given the versioned local Compose contract

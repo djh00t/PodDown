@@ -47,7 +47,11 @@ def approval_server(context):
     now = datetime(2026, 8, 10, tzinfo=UTC)
     registry = InMemoryApprovalRegistry(clock=lambda: now)
     registry.issue(
-        "tenant-a", "episode-1", "approval-1", expires_at=now + timedelta(minutes=5)
+        "tenant-a",
+        "episode-1",
+        "approval-1",
+        target_id="target-1",
+        expires_at=now + timedelta(minutes=5),
     )
     gateway = LocalGateway()
     context.values.update(
@@ -77,7 +81,12 @@ def call_with_tenant(context):
 @when("the agent calls poddown_publish without fresh approval")
 def call_publish(context):
     context.values["result"] = context.values["server"].call(
-        "poddown_publish", {"episode_id": "episode-1", "approval_id": "missing"}
+        "poddown_publish",
+        {
+            "episode_id": "episode-1",
+            "approval_id": "missing",
+            "target_id": "target-1",
+        },
     )
 
 
@@ -97,7 +106,11 @@ def call_episode(context):
 
 @when("the agent presents a valid approval and replays it")
 def replay_approval(context):
-    arguments = {"episode_id": "episode-1", "approval_id": "approval-1"}
+    arguments = {
+        "episode_id": "episode-1",
+        "approval_id": "approval-1",
+        "target_id": "target-1",
+    }
     context.values["first_publish"] = context.values["server"].call(
         "poddown_publish", arguments
     )
@@ -109,7 +122,12 @@ def replay_approval(context):
 @when("the agent presents a missing or stale approval")
 def stale_approval(context):
     context.values["result"] = context.values["server"].call(
-        "poddown_publish", {"episode_id": "episode-1", "approval_id": "missing"}
+        "poddown_publish",
+        {
+            "episode_id": "episode-1",
+            "approval_id": "missing",
+            "target_id": "target-1",
+        },
     )
 
 

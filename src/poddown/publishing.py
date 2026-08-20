@@ -4,18 +4,24 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 import re
 import shutil
 import tempfile
 import xml.etree.ElementTree as ET
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from threading import RLock
 from types import MappingProxyType
-from typing import Protocol
-from uuid import UUID, uuid4
+from typing import Protocol, cast
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.request import Request, urlopen
+from uuid import UUID
+
+from uuid6 import uuid7
 
 from poddown.artifacts import ArtifactStore
 from poddown.object_storage import (
@@ -25,7 +31,7 @@ from poddown.object_storage import (
     ObjectStore,
     storage_key_for,
 )
-from poddown.packages import EpisodePackage
+from poddown.packages import EpisodePackage, package_sha256_for
 
 
 class PublishingError(ValueError):
@@ -42,6 +48,14 @@ class PublishingAuthorizationError(PublishingError):
 
 class PublicationConflictError(PublishingError, RuntimeError):
     """An idempotency key or immutable publication conflicts with prior evidence."""
+
+
+class PublicationUncertainOutcomeError(PublishingError, RuntimeError):
+    """The provider may have accepted a mutation but did not return a response."""
+
+
+class PublicationTransportError(PublishingError, RuntimeError):
+    """A provider transport failure safe to classify without response-body leakage."""
 
 
 _SAFE_TARGET = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -111,6 +125,126 @@ class PublicationTarget:
             raise PublishingValidationError("publication target kind is unsupported")
         if _SAFE_TARGET.fullmatch(self.target_id) is None or not self.show_id:
             raise PublishingValidationError("publication target identity is required")
+
+
+@dataclass(frozen=True, slots=True)
+class PublicationActivityRequest:
+    """JSON-safe Temporal input for one explicit publication activity."""
+
+    tenant_id: UUID
+    project_id: UUID
+    episode_id: UUID
+    package: EpisodePackage
+    target: PublicationTarget
+    authorization: PublicationAuthorization
+    idempotency_key: str
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("tenant_id", self.tenant_id),
+            ("project_id", self.project_id),
+            ("episode_id", self.episode_id),
+        ):
+            if not isinstance(value, UUID) or value.version != 7:
+                raise PublishingValidationError(f"{name} must be UUIDv7")
+        if not isinstance(self.package, EpisodePackage):
+            raise PublishingValidationError("publication package is malformed")
+        if not isinstance(self.target, PublicationTarget):
+            raise PublishingValidationError("publication target is malformed")
+        if (
+            self.target.tenant_id != self.tenant_id
+            or self.target.project_id != self.project_id
+        ):
+            raise PublishingValidationError("publication target scope is inconsistent")
+        if not isinstance(self.authorization, PublicationAuthorization):
+            raise PublishingValidationError("publication authorization is malformed")
+        if (
+            not isinstance(self.idempotency_key, str)
+            or not self.idempotency_key.strip()
+        ):
+            raise PublishingValidationError(
+                "publication activity idempotency key is required"
+            )
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, object]) -> PublicationActivityRequest:
+        """Decode the complete, secret-reference-only activity payload."""
+        if not isinstance(payload, Mapping):
+            raise PublishingValidationError("publication activity payload is malformed")
+        raw_payload: Mapping[str, object] = payload
+        nested = payload.get("payload")
+        if isinstance(nested, Mapping):
+            raw_payload = nested
+
+        def uuid7_value(name: str, value: object) -> UUID:
+            try:
+                parsed = UUID(str(value))
+            except (AttributeError, TypeError, ValueError) as error:
+                raise PublishingValidationError(f"{name} is invalid") from error
+            if parsed.version != 7:
+                raise PublishingValidationError(f"{name} must be UUIDv7")
+            return parsed
+
+        package_value = raw_payload.get("package")
+        target_value = raw_payload.get("target")
+        authorization_value = raw_payload.get("authorization")
+        if not isinstance(package_value, Mapping):
+            raise PublishingValidationError("publication package is required")
+        if not isinstance(target_value, Mapping):
+            raise PublishingValidationError("publication target is required")
+        if not isinstance(authorization_value, Mapping):
+            raise PublishingValidationError("publication authorization is required")
+        idempotency_key = raw_payload.get("idempotency_key")
+        if not isinstance(idempotency_key, str) or not idempotency_key.strip():
+            raise PublishingValidationError(
+                "publication activity idempotency key is required"
+            )
+        disclosure_value = target_value.get("disclosure", {})
+        if not isinstance(disclosure_value, Mapping):
+            raise PublishingValidationError("publication disclosure is malformed")
+        try:
+            target = PublicationTarget(
+                tenant_id=uuid7_value("target tenant_id", target_value["tenant_id"]),
+                project_id=uuid7_value("target project_id", target_value["project_id"]),
+                target_id=target_value["target_id"],
+                kind=target_value["kind"],
+                secret_ref=target_value["secret_ref"],
+                show_id=target_value["show_id"],
+                feed_url=target_value["feed_url"],
+                disclosure=DisclosurePolicy(
+                    spoken=disclosure_value.get("spoken", False),
+                    show_notes=disclosure_value.get("show_notes", False),
+                    platform=disclosure_value.get("platform", False),
+                ),
+                visibility=target_value.get("visibility", "public"),
+                update_policy=target_value.get("update_policy", "immutable"),
+            )
+            authorization = PublicationAuthorization(
+                actor_id=authorization_value["actor_id"],
+                decision_id=authorization_value["decision_id"],
+                reason=authorization_value["reason"],
+                operation=authorization_value.get("operation", "publish"),
+            )
+            package = EpisodePackage.from_dict(package_value)
+            return cls(
+                tenant_id=uuid7_value("tenant_id", raw_payload["tenant_id"]),
+                project_id=uuid7_value("project_id", raw_payload["project_id"]),
+                episode_id=uuid7_value("episode_id", raw_payload["episode_id"]),
+                package=package,
+                target=target,
+                authorization=authorization,
+                idempotency_key=idempotency_key,
+            )
+        except KeyError as error:
+            raise PublishingValidationError(
+                "publication activity payload is incomplete"
+            ) from error
+        except (AttributeError, TypeError, ValueError) as error:
+            if isinstance(error, PublishingError):
+                raise
+            raise PublishingValidationError(
+                "publication activity payload is malformed"
+            ) from error
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +337,107 @@ class PublicationMutationReceipt:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class PublicationHttpRequest:
+    """Minimal sync HTTP request contract for external publication adapters."""
+
+    method: str
+    url: str
+    headers: Mapping[str, str] = field(default_factory=dict)
+    form: Mapping[str, str] = field(default_factory=dict)
+    body: bytes = b""
+    timeout_seconds: float = 30.0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.method, str) or not self.method.strip():
+            raise PublishingValidationError("publication HTTP method is required")
+        if not isinstance(self.url, str) or not self.url.strip():
+            raise PublishingValidationError("publication HTTP URL is required")
+        if not isinstance(self.headers, Mapping) or any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in self.headers.items()
+        ):
+            raise PublishingValidationError("publication HTTP headers are invalid")
+        if not isinstance(self.form, Mapping) or any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in self.form.items()
+        ):
+            raise PublishingValidationError("publication HTTP form is invalid")
+        if not isinstance(self.body, bytes):
+            raise PublishingValidationError("publication HTTP body is invalid")
+        if (
+            not isinstance(self.timeout_seconds, (int, float))
+            or isinstance(self.timeout_seconds, bool)
+            or not math.isfinite(self.timeout_seconds)
+            or self.timeout_seconds <= 0
+            or self.timeout_seconds > 300
+        ):
+            raise PublishingValidationError("publication HTTP timeout is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class PublicationHttpResponse:
+    """Minimal sync HTTP response contract for external publication adapters."""
+
+    status: int
+    headers: Mapping[str, str]
+    body: bytes
+
+    def __post_init__(self) -> None:
+        if type(self.status) is not int or not 100 <= self.status <= 599:
+            raise PublishingValidationError("publication HTTP status is invalid")
+        if not isinstance(self.headers, Mapping) or not isinstance(self.body, bytes):
+            raise PublishingValidationError("publication HTTP response is invalid")
+
+
+class PublicationHttpTransport(Protocol):
+    """Injected sync transport; tests never need network access."""
+
+    def request(self, request: PublicationHttpRequest) -> PublicationHttpResponse:
+        """Execute one request without retries or hidden mutation."""
+
+
+class UrllibPublicationTransport:
+    """Standard-library transport used only when an explicit live adapter is wired."""
+
+    def request(self, request: PublicationHttpRequest) -> PublicationHttpResponse:
+        """Execute one bounded request and classify network failures safely."""
+        if not isinstance(request, PublicationHttpRequest):
+            raise TypeError("request must be a PublicationHttpRequest")
+        body = request.body
+        headers = dict(request.headers)
+        if request.form:
+            if body:
+                raise PublishingValidationError(
+                    "publication HTTP form and body are mutually exclusive"
+                )
+            body = urlencode(request.form).encode("utf-8")
+            headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+        outgoing = Request(
+            request.url,
+            data=body or None,
+            headers=headers,
+            method=request.method.upper(),
+        )
+        try:
+            with urlopen(outgoing, timeout=request.timeout_seconds) as response:
+                return PublicationHttpResponse(
+                    int(response.status),
+                    {str(key): str(value) for key, value in response.headers.items()},
+                    response.read(),
+                )
+        except HTTPError as error:
+            return PublicationHttpResponse(
+                int(error.code),
+                {str(key): str(value) for key, value in error.headers.items()},
+                error.read(),
+            )
+        except (TimeoutError, URLError, OSError) as error:
+            raise PublicationTransportError(
+                "publication provider transport failed"
+            ) from error
+
+
 class PublicationAdapter(Protocol):
     """Provider-neutral adapter boundary."""
 
@@ -213,6 +448,12 @@ class PublicationAdapter(Protocol):
         artifacts: dict[str, bytes],
     ) -> str:
         """Publish exact package bytes and return an external identifier."""
+
+    def update(self, receipt: PublicationReceipt) -> str:
+        """Apply one separately authorized update and return its external ID."""
+
+    def delete(self, receipt: PublicationReceipt) -> str:
+        """Apply one separately authorized deletion or explicit unsupported error."""
 
 
 class Publisher(Protocol):
@@ -226,6 +467,23 @@ class Publisher(Protocol):
         idempotency_key: str,
     ) -> PublicationReceipt:
         """Publish or replay one immutable package."""
+
+
+class PublicationReceiptStore(Protocol):
+    """Durable port for immutable publication receipts."""
+
+    def save(self, receipt: PublicationReceipt) -> PublicationReceipt:
+        """Insert or replay one receipt, rejecting immutable conflicts."""
+
+    def get_by_idempotency(
+        self,
+        *,
+        tenant_id: UUID,
+        project_id: UUID,
+        target_id: str,
+        idempotency_key: str,
+    ) -> PublicationReceipt | None:
+        """Read a receipt in one tenant and project scope."""
 
 
 def _package_identity(package: EpisodePackage) -> str:
@@ -595,14 +853,298 @@ class RecordedTransistorAdapter:
             )
 
 
+SecretResolver = Callable[[str], str]
+
+
+class TransistorPublicationAdapter:
+    """Explicit Transistor API adapter with upload and draft-episode creation."""
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        secret_resolver: SecretResolver,
+        transport: PublicationHttpTransport | None = None,
+        timeout_seconds: float = 30.0,
+        target_resolver: Callable[[str], PublicationTarget] | None = None,
+        live_opt_in: bool = False,
+    ) -> None:
+        self.base_url = _publication_base_url(base_url)
+        if not callable(secret_resolver):
+            raise TypeError("secret_resolver must be callable")
+        if type(live_opt_in) is not bool:
+            raise TypeError("live_opt_in must be a boolean")
+        if transport is None and not live_opt_in:
+            raise PublishingAuthorizationError(
+                "live Transistor publication requires explicit opt-in"
+            )
+        self._secret_resolver = secret_resolver
+        self._transport = transport or UrllibPublicationTransport()
+        self._timeout_seconds = timeout_seconds
+        self._target_resolver = target_resolver
+        self._targets_by_external_id: dict[str, PublicationTarget] = {}
+        PublicationHttpRequest("GET", self.base_url, timeout_seconds=timeout_seconds)
+
+    def publish(
+        self,
+        package: EpisodePackage,
+        target: PublicationTarget,
+        artifacts: dict[str, bytes],
+    ) -> str:
+        """Authorize an upload, upload exact bytes, then create a draft episode."""
+        _require_transistor_target(target)
+        audio_name, audio, media_type = _publishable_audio(package, artifacts)
+        api_key = self._api_key(target)
+        try:
+            upload = self._request_json(
+                PublicationHttpRequest(
+                    "GET",
+                    f"{self.base_url}/episodes/authorize_upload?filename={quote(audio_name)}",
+                    headers={"x-api-key": api_key},
+                    timeout_seconds=self._timeout_seconds,
+                ),
+                expected="upload authorization",
+            )
+            upload_attributes = _data_attributes(upload, "upload authorization")
+            upload_url = _required_https_url(upload_attributes, "upload_url")
+            audio_url = _required_https_url(upload_attributes, "audio_url")
+            content_type = upload_attributes.get("content_type", media_type)
+            if not isinstance(content_type, str) or not content_type.strip():
+                raise PublishingValidationError("upload content type is missing")
+            self._request_success(
+                PublicationHttpRequest(
+                    "PUT",
+                    upload_url,
+                    headers={"Content-Type": content_type},
+                    body=audio,
+                    timeout_seconds=self._timeout_seconds,
+                ),
+                expected="audio upload",
+            )
+            created = self._request_json(
+                PublicationHttpRequest(
+                    "POST",
+                    f"{self.base_url}/episodes",
+                    headers={"x-api-key": api_key},
+                    form={
+                        "episode[show_id]": target.show_id,
+                        "episode[audio_url]": audio_url,
+                        "episode[title]": package.episode_version_id,
+                    },
+                    timeout_seconds=self._timeout_seconds,
+                ),
+                expected="episode creation",
+            )
+            external_id = _data_id(created, "episode creation")
+        except (PublicationTransportError, TimeoutError) as error:
+            raise PublicationUncertainOutcomeError(
+                "Transistor publication outcome is uncertain"
+            ) from error
+        self._targets_by_external_id[external_id] = target
+        return external_id
+
+    def update(self, receipt: PublicationReceipt) -> str:
+        """Update a known draft title through a separately authorized service call."""
+        target = self._target_for_receipt(receipt)
+        api_key = self._api_key(target)
+        try:
+            payload = self._request_json(
+                PublicationHttpRequest(
+                    "PATCH",
+                    f"{self.base_url}/episodes/{quote(receipt.external_id, safe='')}",
+                    headers={"x-api-key": api_key},
+                    form={"episode[title]": receipt.episode_version_id},
+                    timeout_seconds=self._timeout_seconds,
+                ),
+                expected="episode update",
+            )
+        except (PublicationTransportError, TimeoutError) as error:
+            raise PublicationUncertainOutcomeError(
+                "Transistor update outcome is uncertain"
+            ) from error
+        return _data_id(payload, "episode update")
+
+    def delete(self, receipt: PublicationReceipt) -> str:
+        """Reject deletion because the documented Transistor API has no endpoint."""
+        del receipt
+        raise PublishingValidationError(
+            "Transistor episode deletion is unsupported; unpublish explicitly instead"
+        )
+
+    def _api_key(self, target: PublicationTarget) -> str:
+        try:
+            value = self._secret_resolver(target.secret_ref)
+        except Exception as error:
+            raise PublishingAuthorizationError(
+                "Transistor publication credential could not be resolved"
+            ) from error
+        if not isinstance(value, str) or not value.strip():
+            raise PublishingAuthorizationError(
+                "Transistor publication credential is missing"
+            )
+        return value.strip()
+
+    def _target_for_receipt(self, receipt: PublicationReceipt) -> PublicationTarget:
+        if not isinstance(receipt, PublicationReceipt):
+            raise TypeError("receipt must be a PublicationReceipt")
+        try:
+            target = self._targets_by_external_id[receipt.external_id]
+        except KeyError:
+            if self._target_resolver is None:
+                raise PublishingValidationError(
+                    "Transistor publication target is unavailable for mutation"
+                ) from None
+            try:
+                target = self._target_resolver(receipt.target_id)
+            except Exception as error:
+                raise PublishingValidationError(
+                    "Transistor publication target is unavailable for mutation"
+                ) from error
+            if (
+                not isinstance(target, PublicationTarget)
+                or target.kind != "transistor"
+                or target.target_id != receipt.target_id
+                or target.tenant_id != receipt.tenant_id
+                or target.project_id != receipt.project_id
+            ):
+                raise PublishingValidationError(
+                    "Transistor publication target is inconsistent"
+                ) from None
+            self._targets_by_external_id[receipt.external_id] = target
+        return target
+
+    def _request_success(
+        self, request: PublicationHttpRequest, *, expected: str
+    ) -> PublicationHttpResponse:
+        response = self._transport.request(request)
+        if not isinstance(response, PublicationHttpResponse):
+            raise PublishingValidationError(
+                "publication transport returned invalid data"
+            )
+        if response.status in {408, 429, 500, 502, 503, 504}:
+            raise PublicationTransportError(f"Transistor {expected} was unavailable")
+        if not 200 <= response.status < 300:
+            raise PublishingValidationError(
+                f"Transistor {expected} failed with status {response.status}"
+            )
+        return response
+
+    def _request_json(
+        self, request: PublicationHttpRequest, *, expected: str
+    ) -> dict[str, object]:
+        response = self._request_success(request, expected=expected)
+        try:
+            value = json.loads(response.body)
+        except (TypeError, json.JSONDecodeError) as error:
+            raise PublishingValidationError(
+                f"Transistor {expected} response is malformed"
+            ) from error
+        if not isinstance(value, dict):
+            raise PublishingValidationError(
+                f"Transistor {expected} response is malformed"
+            )
+        return value
+
+
+def _publication_base_url(value: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise PublishingValidationError("publication API base URL is required")
+    normalized = value.strip().rstrip("/")
+    try:
+        parsed = urlsplit(normalized)
+    except ValueError as error:
+        raise PublishingValidationError(
+            "publication API base URL is invalid"
+        ) from error
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise PublishingValidationError("publication API base URL must be HTTPS")
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
+
+
+def _require_transistor_target(target: PublicationTarget) -> None:
+    if not isinstance(target, PublicationTarget) or target.kind != "transistor":
+        raise PublishingValidationError(
+            "Transistor adapter requires a transistor target"
+        )
+
+
+def _publishable_audio(
+    package: EpisodePackage, artifacts: dict[str, bytes]
+) -> tuple[str, bytes, str]:
+    if not isinstance(package, EpisodePackage) or not isinstance(artifacts, dict):
+        raise PublishingValidationError("Transistor package inputs are invalid")
+    for name in ("episode.mp3", "episode.wav"):
+        reference = next((item for item in package.files if item.name == name), None)
+        data = artifacts.get(name)
+        if (
+            reference is not None
+            and isinstance(data, bytes)
+            and len(data) == reference.byte_count
+            and sha256(data).hexdigest() == reference.sha256
+        ):
+            return name, data, reference.media_type
+    raise PublishingValidationError("Transistor package has no verified audio")
+
+
+def _data_attributes(
+    payload: Mapping[str, object], expected: str
+) -> Mapping[str, object]:
+    data = payload.get("data")
+    attributes = data.get("attributes") if isinstance(data, Mapping) else None
+    if not isinstance(attributes, Mapping):
+        raise PublishingValidationError(f"Transistor {expected} response is malformed")
+    return cast(Mapping[str, object], attributes)
+
+
+def _required_https_url(attributes: Mapping[str, object], name: str) -> str:
+    value = attributes.get(name)
+    if not isinstance(value, str) or not value.strip():
+        raise PublishingValidationError(f"Transistor {name} is missing")
+    normalized = value.strip()
+    try:
+        parsed = urlsplit(normalized)
+    except ValueError as error:
+        raise PublishingValidationError(f"Transistor {name} is invalid") from error
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise PublishingValidationError(f"Transistor {name} must be HTTPS")
+    return normalized
+
+
+def _data_id(payload: Mapping[str, object], expected: str) -> str:
+    data = payload.get("data")
+    if not isinstance(data, Mapping):
+        raise PublishingValidationError(f"Transistor {expected} response is malformed")
+    value = data.get("id")
+    if not isinstance(value, str) or not value.strip():
+        raise PublishingValidationError(f"Transistor {expected} ID is missing")
+    return value.strip()
+
+
 class PublishingService:
     """Validate packages, execute one adapter, and retain replay-safe receipts."""
 
     def __init__(
-        self, *, artifact_store: ArtifactStore, adapters: dict[str, PublicationAdapter]
+        self,
+        *,
+        artifact_store: ArtifactStore,
+        adapters: dict[str, PublicationAdapter],
+        receipt_store: PublicationReceiptStore | None = None,
     ) -> None:
         self.artifact_store = artifact_store
         self.adapters = dict(adapters)
+        self.receipt_store = receipt_store
         self._receipts: dict[tuple[UUID, UUID, str], PublicationReceipt] = {}
         self._attempts: dict[tuple[UUID, UUID, str], PublicationAttempt] = {}
         self._targets: dict[str, PublicationTarget] = {}
@@ -644,12 +1186,23 @@ class PublishingService:
                 ),
             )
             existing = self._receipts.get(key)
+            if existing is None and self.receipt_store is not None:
+                existing = self.receipt_store.get_by_idempotency(
+                    tenant_id=target.tenant_id,
+                    project_id=target.project_id,
+                    target_id=target.target_id,
+                    idempotency_key=idempotency_key,
+                )
+                if existing is not None:
+                    self._receipts[key] = existing
+            artifacts = _read_artifacts(self.artifact_store, package)
             package_identity = _package_identity(package)
+            package_sha256 = package_sha256_for(package, self.artifact_store)
             expected_target = _target_snapshot(target)
             if existing is not None:
                 if (
                     existing.episode_version_id != package.episode_version_id
-                    or existing.package_sha256 != package.provenance.final_sha256
+                    or existing.package_sha256 != package_sha256
                     or existing.provenance.get("package_identity") != package_identity
                     or existing.provenance.get("target") != expected_target
                 ):
@@ -657,25 +1210,33 @@ class PublishingService:
                         "idempotency key is bound to another publication"
                     )
                 return existing
-            artifacts = _read_artifacts(self.artifact_store, package)
+            if attempt.state == "unknown":
+                raise PublicationConflictError(
+                    "publication outcome is unknown; recovery is required"
+                )
             adapter = self.adapters.get(target.kind)
             if adapter is None:
                 raise PublishingValidationError("publication adapter is unavailable")
             try:
                 external_id = adapter.publish(package, target, artifacts)
+            except PublicationUncertainOutcomeError as error:
+                attempt.state = "unknown"
+                attempt.retryable = False
+                attempt.failure = str(error)
+                raise
             except Exception as error:
                 attempt.state = "failed"
                 attempt.retryable = True
                 attempt.failure = str(error)
                 raise
             receipt = PublicationReceipt(
-                publication_id=str(uuid4()),
+                publication_id=str(uuid7()),
                 tenant_id=target.tenant_id,
                 project_id=target.project_id,
                 episode_version_id=package.episode_version_id,
                 target_id=target.target_id,
                 idempotency_key=idempotency_key,
-                package_sha256=package.provenance.final_sha256,
+                package_sha256=package_sha256,
                 external_id=external_id,
                 status="resumed" if attempt.state == "failed" else "published",
                 authorization=authorization,
@@ -688,6 +1249,8 @@ class PublishingService:
                     "target": expected_target,
                 },
             )
+            if self.receipt_store is not None:
+                receipt = self.receipt_store.save(receipt)
             self._receipts[key] = receipt
             attempt.state = "completed"
             attempt.retryable = False
@@ -784,10 +1347,18 @@ __all__ = [
     "FilesystemPublicationAdapter",
     "PublicationAuthorization",
     "PublicationConflictError",
+    "PublicationActivityRequest",
+    "PublicationAdapter",
+    "PublicationHttpRequest",
+    "PublicationHttpResponse",
+    "PublicationHttpTransport",
     "PublicationReceipt",
+    "PublicationReceiptStore",
     "PublicationMutationReceipt",
     "PublicationAttempt",
     "PublicationTarget",
+    "PublicationTransportError",
+    "PublicationUncertainOutcomeError",
     "Publisher",
     "PublishingAuthorizationError",
     "PublishingError",
@@ -796,4 +1367,6 @@ __all__ = [
     "RecordedTransistorAdapter",
     "RssPublicationAdapter",
     "S3CompatiblePublicationAdapter",
+    "TransistorPublicationAdapter",
+    "UrllibPublicationTransport",
 ]

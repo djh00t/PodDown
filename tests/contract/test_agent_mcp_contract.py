@@ -15,7 +15,11 @@ def test_schema_shaped_calls_cover_every_tool():
     calls = {
         "poddown_preview": {"source": "# hi"},
         "poddown_render": {"episode_id": "episode-1"},
-        "poddown_publish": {"episode_id": "episode-1", "approval_id": "a1"},
+        "poddown_publish": {
+            "episode_id": "episode-1",
+            "approval_id": "a1",
+            "target_id": "target-1",
+        },
         "poddown_get_status": {"episode_id": "episode-1"},
         "poddown_get_episode": {"episode_id": "episode-1"},
     }

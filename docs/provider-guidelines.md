@@ -18,6 +18,12 @@ Each call records the PodDown idempotency key, attempt, provider request ID,
 provider/model/voice references, latency, retry classification, response checksum,
 input/output units, estimated and reconciled cost, and applied data policy.
 
+Before dispatch, the provider preflight must resolve a registered route, match the
+requested operation to its provider/model/capabilities/voice binding, require
+current voice consent for rendering, and keep both request and episode costs
+within the route ceilings. It returns stable denial reasons and never invokes an
+adapter while evaluating policy.
+
 Retries apply only to classified transient failures. Authentication, permission,
 rights, invalid input, unsupported capability, and exhausted budget are terminal
 until configuration changes. Temporal owns retry scheduling; SDK retries are
@@ -56,6 +62,13 @@ keys or provider spend and fails closed when its local tools are unavailable.
 - Model capabilities determine response shape: `whisper-1` may request
   `verbose_json` word timestamps; GPT transcription models use `json` and expose
   no word timestamps unless their documented contract adds them.
+- Runtime settings require an explicit live opt-in and HTTPS endpoint. Live route
+  policy binds ElevenLabs to rendering and OpenAI `whisper-1` to timestamped
+  transcription; the provider registry resolves only registered capabilities and
+  approved voice assets, without copying secret references into resolved metadata.
+- The current normalized usage contract accepts whole-number billable units.
+  Fractional provider duration values fail closed rather than being silently
+  rounded or truncated.
 - Retain raw responses only under project policy; persist normalized output and a
   response checksum for auditability.
 - Do not trust renderer/transcriber agreement as fidelity proof. Deterministic

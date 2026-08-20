@@ -57,8 +57,10 @@ Render requests accept an optional provider route, execution mode and Decimal-st
 cost ceiling; bodyless requests retain the configured default route. Publish requests
 require a target ID and scoped UUIDv7 approval ID. Command receipts use the states
 `queued`, `dispatched`, `running`, `completed` and `failed`, and status responses
-include immutable episode version, workflow ID, package manifest checksum, publication
-ID and safe structured failure where available.
+include immutable episode version, workflow ID, the separately recorded package
+manifest checksum, publication ID and safe structured failure where available.
+The package manifest checksum is not the generic digest of package bytes supplied
+to the lifecycle transition.
 
 PostgreSQL is authoritative for tenant/project/episode/version, command, workflow,
 artifact, QA, publication, approval, usage/cost and outbox state. UUIDv7 keys,

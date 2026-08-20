@@ -35,6 +35,7 @@ from poddown.audio.storage import (
 from poddown.audio.workflow import RENDER_SEGMENT_ACTIVITY_NAME
 from poddown.domain import ProviderUsage
 from poddown.providers.contracts import TranscriptResult
+from tests.temporal_support import retry_local_temporal_environment
 
 scenarios("../features/provider_temporal_render.feature")
 
@@ -314,7 +315,9 @@ def run_invalid_consent_episode(context):
 
     async def run_workflow():
         async with (
-            await WorkflowEnvironment.start_local() as environment,
+            retry_local_temporal_environment(
+                WorkflowEnvironment.start_local
+            ) as environment,
             Worker(
                 environment.client,
                 task_queue="poddown-bdd-provider-temporal-render",
@@ -370,7 +373,9 @@ def run_unknown_terminal_activity_episode(context):
 
     async def run_workflow():
         async with (
-            await WorkflowEnvironment.start_local() as environment,
+            retry_local_temporal_environment(
+                WorkflowEnvironment.start_local
+            ) as environment,
             Worker(
                 environment.client,
                 task_queue="poddown-bdd-unknown-terminal-failure",
@@ -423,7 +428,9 @@ def run_episode_with_one_repair_attempt(context):
 
     async def run_workflow():
         async with (
-            await WorkflowEnvironment.start_local() as environment,
+            retry_local_temporal_environment(
+                WorkflowEnvironment.start_local
+            ) as environment,
             Worker(
                 environment.client,
                 task_queue="poddown-bdd-partial-take-retry",
@@ -600,7 +607,9 @@ def run_retryable_transcription_workflow(context):
 
     async def run_workflow():
         async with (
-            await WorkflowEnvironment.start_local() as environment,
+            retry_local_temporal_environment(
+                WorkflowEnvironment.start_local
+            ) as environment,
             Worker(
                 environment.client,
                 task_queue="poddown-bdd-transcription-retry",

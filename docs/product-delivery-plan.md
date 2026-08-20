@@ -17,12 +17,12 @@ Publishing, MCP and Signal & Supply then extend that proven pipeline.
 |---|---|---|
 | M0 Foundation | Merged PR #1 contracts and adapters | 68 tests, provider contracts, branch coverage gate |
 | M1 Content intelligence | Treatment, canonical script, lexicons, token extraction, segmentation | Complete locally: source-bound adversarial evals and `002` BDD pass; no provider or live-mode claim |
-| M2 Audio engine | Temporal render/takes/QA/repair/master/package | [Bounded local foundation evidence](verification/durable-audio-foundation.md), [transcription/fidelity evidence](verification/transcription-fidelity-qa.md), and [deterministic mastering evidence](verification/deterministic-mastering.md); final package and real 10–15 minute robotics episode still must clear objective and listening gates |
-| M3 Episode service | PostgreSQL/S3 model, FastAPI async jobs, metering, Compose | API end-to-end, restart/idempotency and tenant-isolation tests |
-| M4 Developer experience | CLI and GitHub Action | Markdown commit can validate/render; package verifies locally |
-| M5 Distribution | Publishing adapters, MCP and PodDown skill | Protected publish and agent eval suites pass |
+| M2 Audio engine | Temporal render/takes/QA/repair/master/package | [Bounded local foundation evidence](verification/durable-audio-foundation.md), [transcription/fidelity evidence](verification/transcription-fidelity-qa.md), [deterministic mastering evidence](verification/deterministic-mastering.md), and the verified host-local reference package; provider-ASR fidelity and real listening calibration remain open |
+| M3 Episode service | PostgreSQL/S3 model, FastAPI async jobs, metering, Compose | Local API/Temporal, repository, tenancy, metering, object, and outbox boundaries are verified; real PostgreSQL/S3/NATS/Compose restart and isolation evidence remains open |
+| M4 Developer experience | CLI and GitHub Action | Local CLI/preview/render/status/publish contracts and protected workflow definitions are verified; hosted GitHub/API UAT remains open |
+| M5 Distribution | Publishing adapters, MCP and PodDown skill | Local publishing receipts, MCP gateway/resource-link, approval, and skill/eval boundaries are verified; deployed transport, MinIO retrieval, and authorized external publication remain open |
 | M6 Customer one | Signal & Supply profile/lexicons/workflow | Finance token fidelity plus non-finance regression pass |
-| M7 Launch gate | Security, observability, recovery, capacity and releases | Production-readiness checklist and restore drill pass |
+| M7 Launch gate | Security, observability, recovery, capacity and releases | Local readiness contracts, static Compose, SBOM, Trivy, Gitleaks, and release-gate evidence are verified; live probes, restore drill, measured capacity, signing, staged deployment, and authenticated UAT remain open |
 
 ## Implementation plans
 
@@ -67,9 +67,10 @@ focused verification, full-suite verification and a bounded Conventional Commit.
 
 ### M2 — Durable audio production
 
-Status: active. Audio rendering, Temporal orchestration, provider-backed QA, and
-deterministic mastering now have bounded local evidence; final-master and
-package evidence are still pending.
+Status: local reconciliation complete for deterministic/host-local rendering,
+Temporal orchestration, provider-bound QA contracts, mastering, final QA, and
+immutable package generation; provider-ASR fidelity and listening calibration
+remain open.
 
 1. Define BDD for retries, fan-out, takes, partial repair, mastering and replay.
 2. Add Temporal workflow/activity contracts and local test environment.
@@ -86,8 +87,9 @@ package evidence are still pending.
 
 ### M3 — Episode service
 
-Status: pending. API, persistence, tenancy, metering, and service deployment
-remain outside M1.
+Status: local reconciliation complete for API, persistence, tenancy, metering,
+object, outbox, and runtime composition boundaries; real service deployment,
+restart, isolation, and restore evidence remain open.
 
 1. Define BDD for episode lifecycle, isolation, idempotency, status and metering.
 2. Implement SQLAlchemy 2 models and Alembic migrations for all required entities.
@@ -101,7 +103,8 @@ remain outside M1.
 
 ### M4 — Developer experience
 
-Status: pending. CLI and GitHub Action delivery remain outside M1.
+Status: local reconciliation complete for CLI and GitHub Action contracts;
+hosted API/GitHub UAT remains open.
 
 1. Implement CLI BDD, config precedence and stable JSON/error contract.
 2. Add preview/render/status/publish commands as API clients.
@@ -112,8 +115,9 @@ Status: pending. CLI and GitHub Action delivery remain outside M1.
 
 ### M5 — Distribution
 
-Status: pending. Publishing adapters, MCP, and the PodDown skill remain outside
-M1.
+Status: local reconciliation complete for publishing adapters, MCP, resource
+links, approvals, and the PodDown skill; deployed transport, MinIO retrieval,
+and authorized external publication remain open.
 
 1. Implement publisher port and protected publication state machine.
 2. Deliver filesystem and S3 adapters first; verify exact checksums.
@@ -139,8 +143,10 @@ pending.
 
 ### M7 — Production readiness
 
-Status: pending. Production readiness, launch operations, and live provider
-evidence remain outside M1.
+Status: local reconciliation complete for readiness contracts, static Compose,
+operational lifecycle, security scans, and release evidence; live services,
+recovery, capacity, signing, staged deployment, authenticated UAT, and provider
+evidence remain open.
 
 1. Add OpenTelemetry traces, structured logs, metrics, dashboards and alerts.
 2. Threat-model tenant, voice, provider, artifact, MCP and publishing boundaries.

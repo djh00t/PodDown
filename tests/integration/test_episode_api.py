@@ -7,15 +7,21 @@ provider/network clients.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from pathlib import Path
 from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from uuid6 import uuid7
 
 from poddown.api import create_app
+from poddown.api.temporal_dispatcher import TemporalCommandRequest
+from poddown.approvals import PublicationApproval, SQLiteApprovalRepository
 from poddown.episode_service import (
     EpisodeApplicationService,
     EpisodeCreateCommand,
@@ -74,6 +80,210 @@ def _create_episode(client: TestClient) -> dict:
     )
     assert response.status_code == 202
     return response.json()
+
+
+def test_create_can_use_explicit_temporal_dispatcher_transport() -> None:
+    """Production composition must expose workflow dispatch only when injected."""
+
+    class Transport:
+        def __init__(self) -> None:
+            self.requests: list[TemporalCommandRequest] = []
+
+        def start_workflow(self, request: TemporalCommandRequest) -> None:
+            self.requests.append(request)
+
+    transport = Transport()
+    with TestClient(
+        create_app(
+            temporal_transport=transport,
+            temporal_task_queue="poddown-default",
+        )
+    ) as client:
+        response = client.post(
+            "/v1/episodes",
+            headers=_headers(key="temporal-create-001"),
+            json={"source": SOURCE, "profile": PROFILE},
+        )
+
+    assert response.status_code == 202
+    assert response.json()["receipt"]["state"] == "dispatched"
+    assert (
+        response.json()["receipt"]["workflow_id"] == transport.requests[0].workflow_id
+    )
+
+
+def test_render_wire_controls_are_preserved_in_temporal_command_payload() -> None:
+    class Transport:
+        def __init__(self) -> None:
+            self.requests: list[TemporalCommandRequest] = []
+
+        def start_workflow(self, request: TemporalCommandRequest) -> None:
+            self.requests.append(request)
+
+    transport = Transport()
+    with TestClient(
+        create_app(
+            temporal_transport=transport,
+            temporal_task_queue="poddown-default",
+        )
+    ) as client:
+        episode = _create_episode(client)
+        response = client.post(
+            f"/v1/episodes/{episode['episode']['id']}/render",
+            headers=_headers(key="render-wire-001"),
+            json={
+                "provider_route_id": "route-local-v1",
+                "mode": "deterministic-local",
+                "max_cost": "1.00",
+            },
+        )
+
+    assert response.status_code == 202
+    assert json.loads(transport.requests[-1].payload)["payload"] == {
+        "max_cost": "1.00",
+        "mode": "deterministic-local",
+        "provider_route_id": "route-local-v1",
+    }
+
+
+def test_publish_wire_payload_carries_only_compact_worker_references(
+    tmp_path: Path,
+) -> None:
+    """API publication dispatch must not serialize package bytes or target secrets."""
+
+    class Transport:
+        def __init__(self) -> None:
+            self.requests: list[TemporalCommandRequest] = []
+
+        def start_workflow(self, request: TemporalCommandRequest) -> None:
+            self.requests.append(request)
+
+    repository = InMemoryEpisodeRepository()
+    service = EpisodeApplicationService(
+        repository=repository,
+        available_profiles={PROFILE},
+    )
+    created = service.create_episode(
+        EpisodeCreateCommand(
+            tenant_id=UUID(TENANT_ID),
+            project_id=UUID(PROJECT_ID),
+            idempotency_key="publish-wire-create-001",
+            source_bytes=SOURCE.encode("utf-8"),
+            profile_name=PROFILE,
+        )
+    )
+    scripted = service.transition(
+        UUID(TENANT_ID),
+        created.episode_id,
+        EpisodeState.SCRIPTED,
+        expected_version=created.version,
+    )
+    rendered = service.transition(
+        UUID(TENANT_ID),
+        created.episode_id,
+        EpisodeState.RENDERED,
+        expected_version=scripted.version,
+    )
+    qa_passed = service.transition(
+        UUID(TENANT_ID),
+        created.episode_id,
+        EpisodeState.QA_PASSED,
+        expected_version=rendered.version,
+        qa_evidence={"status": "pass"},
+    )
+    package_bytes = b"immutable package bytes"
+    package_sha256 = sha256(package_bytes).hexdigest()
+    manifest_sha256 = "c" * 64
+    packaged = service.transition(
+        UUID(TENANT_ID),
+        created.episode_id,
+        EpisodeState.PACKAGED,
+        expected_version=qa_passed.version,
+        package_sha256=package_sha256,
+        package_bytes=package_bytes,
+        package_manifest_sha256=manifest_sha256,
+    )
+    approval_repository = SQLiteApprovalRepository(tmp_path / "approvals.sqlite3")
+    approval_id = uuid7()
+    approval_repository.issue(
+        PublicationApproval(
+            tenant_id=UUID(TENANT_ID),
+            project_id=UUID(PROJECT_ID),
+            approval_id=approval_id,
+            episode_id=packaged.episode_id,
+            target_id="filesystem-target",
+            operation="publish",
+            package_sha256=package_sha256,
+            actor_id="local-header",
+            nonce_sha256="d" * 64,
+            issued_at=datetime.now(UTC),
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        )
+    )
+    transport = Transport()
+    with TestClient(
+        create_app(
+            service,
+            temporal_transport=transport,
+            temporal_task_queue="poddown-default",
+            approval_repository=approval_repository,
+        )
+    ) as client:
+        response = client.post(
+            f"/v1/episodes/{packaged.episode_id}/publish",
+            headers=_headers(key="fixture-publish"),
+            json={"target_id": "filesystem-target", "approval_id": str(approval_id)},
+        )
+
+    assert response.status_code == 202
+    payload = json.loads(transport.requests[-1].payload)["payload"]
+    assert payload["target_id"] == "filesystem-target"
+    assert payload["approval_id"] == str(approval_id)
+    assert payload["package_reference"] == {
+        "episode_version_id": str(packaged.episode_id),
+        "package_sha256": package_sha256,
+        "package_manifest_sha256": manifest_sha256,
+    }
+    assert payload["authorization"] == {
+        "actor_id": "local-header",
+        "decision_id": str(approval_id),
+        "reason": "scoped publication approval",
+        "operation": "publish",
+    }
+    assert "package" not in payload
+    assert "target" not in payload
+
+
+def test_status_projects_temporal_workflow_identity_from_create_receipt() -> None:
+    """Status must expose the durable workflow identity when Temporal is configured."""
+
+    class Transport:
+        def __init__(self) -> None:
+            self.requests: list[TemporalCommandRequest] = []
+
+        def start_workflow(self, request: TemporalCommandRequest) -> None:
+            self.requests.append(request)
+
+    transport = Transport()
+    with TestClient(
+        create_app(
+            temporal_transport=transport,
+            temporal_task_queue="poddown-default",
+        )
+    ) as client:
+        created = client.post(
+            "/v1/episodes",
+            headers=_headers(key="temporal-status-001"),
+            json={"source": SOURCE, "profile": PROFILE},
+        ).json()
+        episode_id = created["episode"]["id"]
+        status = client.get(
+            f"/v1/episodes/{episode_id}/status",
+            headers=_headers(key="temporal-status-read-001"),
+        )
+
+    assert status.status_code == 200
+    assert status.json()["workflow_id"] == transport.requests[0].workflow_id
 
 
 def test_post_episodes_returns_uuidv7_summary_and_create_receipt(
@@ -284,7 +494,9 @@ def test_failed_status_projects_only_safe_failure_fields() -> None:
     assert "parser trace" not in str(response.json())
 
 
-def test_status_reports_manifest_digest_separately_from_package_bytes_digest() -> None:
+def test_status_returns_the_manifest_digest_separately_from_package_bytes_digest() -> (
+    None
+):
     repository = InMemoryEpisodeRepository()
     service = EpisodeApplicationService(
         repository=repository,
@@ -398,7 +610,7 @@ def test_render_replays_accepted_receipt_after_episode_is_published() -> None:
         )
     )
     with TestClient(create_app(service)) as test_client:
-        headers = _headers(key="published-render-001")
+        headers = _headers(key="fixture-render")
         first = test_client.post(
             f"/v1/episodes/{record.episode_id}/render", headers=headers
         )

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poddown.dev/schemas/adaptation-envelope-1.0.json",
+  "title": "PodDown adaptation envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_sha256",
+    "treatment_id",
+    "model",
+    "request_id",
+    "turns",
+    "usage",
+    "estimated_cost"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "treatment_id": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "minLength": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "turns": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/turn"},
+      "minItems": 1
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    },
+    "estimated_cost": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+    }
+  },
+  "$defs": {
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["block_id", "start", "end"],
+      "properties": {
+        "block_id": {"type": "string", "minLength": 1},
+        "start": {"type": "integer", "minimum": 0},
+        "end": {"type": "integer", "minimum": 0}
+      }
+    },
+    "turn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "turn_id",
+        "speaker_id",
+        "kind",
+        "text",
+        "source_anchors",
+        "claim_anchors"
+      ],
+      "properties": {
+        "turn_id": {"type": "string", "minLength": 1},
+        "speaker_id": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["factual", "editorial"]},
+        "text": {"type": "string", "minLength": 1},
+        "source_anchors": {"type": "array", "items": {"$ref": "#/$defs/anchor"}},
+        "claim_anchors": {"type": "array", "items": {"$ref": "#/$defs/anchor"}}
+      }
+    }
+  }
+}

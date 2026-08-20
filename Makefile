@@ -1,6 +1,7 @@
-.PHONY: clean install build test lint docs check check-full quality-gates publish demo
+.PHONY: clean install build sbom test lint docs check check-full quality-gates publish demo
 
 DEMO_OUTPUT ?= /tmp/poddown-reference-demo
+SBOM_OUTPUT ?= dist/poddown-sbom.cdx.json
 
 clean:
 	rm -rf build dist htmlcov docs/api .coverage .pytest_cache
@@ -12,6 +13,9 @@ install:
 build:
 	rm -rf dist
 	uv build
+
+sbom:
+	python scripts/generate_sbom.py --output "$(SBOM_OUTPUT)"
 
 test:
 	# Keep ambient distributions from changing the repository's pytest plugin set.

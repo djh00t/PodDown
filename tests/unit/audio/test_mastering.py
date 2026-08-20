@@ -18,6 +18,7 @@ from poddown.audio.mastering import (
     MasteringService,
     SubprocessFfmpegRunner,
     SubprocessMp3Inspector,
+    _ffmpeg_timeout_for_wav,
 )
 
 
@@ -387,6 +388,14 @@ def test_subprocess_runner_surfaces_injected_mp3_inspection_failure():
         MasteringService(SubprocessFfmpegRunner(inspector=FailingInspector())).master(
             request(segment())
         )
+
+
+def test_ffmpeg_timeout_scales_with_long_episode_duration() -> None:
+    short = wav_bytes(samples=(1,))
+    long = wav_bytes(samples=(1,) * 650, sample_rate=1)
+
+    assert _ffmpeg_timeout_for_wav(short) == 120.0
+    assert _ffmpeg_timeout_for_wav(long) == 1_330.0
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is not installed")

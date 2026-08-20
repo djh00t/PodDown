@@ -22,6 +22,7 @@ from poddown.audio.workflow import (
     SegmentWorkflowInput,
     render_segment_activity,
 )
+from tests.temporal_support import retry_local_temporal_environment
 
 TASK_QUEUE = "poddown-temporal-failure-semantics-tests"
 
@@ -65,7 +66,9 @@ async def _run_invalid_consent_workflow(tmp_path) -> None:
     )
 
     async with (
-        await WorkflowEnvironment.start_local() as environment,
+        retry_local_temporal_environment(
+            WorkflowEnvironment.start_local
+        ) as environment,
         Worker(
             environment.client,
             task_queue=TASK_QUEUE,
@@ -121,7 +124,9 @@ async def _run_unconfigured_activity_workflow(tmp_path) -> None:
     )
     task_queue = "poddown-temporal-unconfigured-activity-tests"
     async with (
-        await WorkflowEnvironment.start_local() as environment,
+        retry_local_temporal_environment(
+            WorkflowEnvironment.start_local
+        ) as environment,
         Worker(
             environment.client,
             task_queue=task_queue,
@@ -183,7 +188,9 @@ async def _run_unknown_terminal_activity_workflow(tmp_path) -> None:
 
     task_queue = "poddown-temporal-unknown-terminal-activity-tests"
     async with (
-        await WorkflowEnvironment.start_local() as environment,
+        retry_local_temporal_environment(
+            WorkflowEnvironment.start_local
+        ) as environment,
         Worker(
             environment.client,
             task_queue=task_queue,

@@ -16,13 +16,27 @@ REQUIRED = {"postgres", "temporal", "nats", "minio", "api", "worker"}
 def test_compose_contract_has_required_services_and_no_kubernetes() -> None:
     document = yaml.safe_load(COMPOSE.read_text())
     assert document["x-poddown"]["contract_version"] == "m7.v1"
-    assert set(document["services"]) == REQUIRED
+    assert set(document["services"]) == REQUIRED | {"minio-init"}
     assert all(
         ":" in service["image"]
         for service in document["services"].values()
         if "image" in service
     )
     assert not list(COMPOSE.parent.glob("*.kube.yaml"))
+
+
+def test_compose_bootstraps_the_explicit_minio_publication_bucket() -> None:
+    """Application services must wait for the local MinIO bucket bootstrap."""
+    services = yaml.safe_load(COMPOSE.read_text())["services"]
+    bootstrap = services["minio-init"]
+    assert bootstrap["image"] == "minio/mc:RELEASE.2024-06-13T22-53-53Z"
+    assert bootstrap["entrypoint"] == ["/bin/sh", "-c"]
+    assert "mc mb --ignore-existing local/poddown" in bootstrap["command"][0]
+    assert bootstrap["depends_on"]["minio"]["condition"] == "service_healthy"
+    for service in (services["api"], services["worker"]):
+        assert service["depends_on"]["minio-init"]["condition"] == (
+            "service_completed_successfully"
+        )
 
 
 def test_compose_contract_has_healthchecks_and_dependency_gates() -> None:
@@ -46,6 +60,26 @@ def test_compose_contract_declares_runtime_build_context_and_entrypoints() -> No
     assert services["worker"]["command"] == ["poddown-worker"]
 
 
+def test_compose_runtime_selects_postgres_and_shared_render_storage() -> None:
+    """The local stack must not advertise Postgres while booting SQLite."""
+    services = yaml.safe_load(COMPOSE.read_text())["services"]
+    api_environment = services["api"]["environment"]
+    worker_environment = services["worker"]["environment"]
+
+    assert api_environment["PODDOWN_POSTGRES_DSN"] == (
+        "postgresql://poddown@postgres/poddown"
+    )
+    assert "PODDOWN_SQLITE_PATH" not in api_environment
+    assert api_environment["PODDOWN_PUBLICATION_MODE"] == "s3"
+    assert worker_environment["PODDOWN_POSTGRES_DSN"] == (
+        "postgresql://poddown@postgres/poddown"
+    )
+    assert worker_environment["PODDOWN_PUBLICATION_MODE"] == "s3"
+    assert worker_environment["PODDOWN_OUTBOX_RELAY_ENABLED"] == "1"
+    assert worker_environment["PODDOWN_RENDER_DATA_DIR"] == "/data/render"
+    assert services["worker"]["volumes"] == ["render-data:/data/render"]
+
+
 def test_api_ready_healthcheck_executes_with_the_built_image_python() -> None:
     """The image-provided Python can run the Compose readiness probe without curl."""
 
@@ -60,9 +94,33 @@ def test_api_ready_healthcheck_executes_with_the_built_image_python() -> None:
     services = yaml.safe_load(COMPOSE.read_text())["services"]
     assert services["api"]["environment"] == {
         "PODDOWN_POSTGRES_HOST": "postgres",
+        "PODDOWN_POSTGRES_DSN": "postgresql://poddown@postgres/poddown",
+        "PGPASSWORD": "${PODDOWN_POSTGRES_PASSWORD:?set a local-only password}",
         "PODDOWN_TEMPORAL_ADDRESS": "temporal:7233",
+        "PODDOWN_TEMPORAL_NAMESPACE": "default",
+        "PODDOWN_TEMPORAL_TASK_QUEUE": "poddown-default",
+        "PODDOWN_AUTH_MODE": "local",
+        "PODDOWN_WORKFLOW_FIXTURE_ROOT": "/app/integrations/reference-demo/v1",
+        "PODDOWN_WORKFLOW_MODE": "host-local",
+        "PODDOWN_PUBLICATION_MODE": "s3",
         "PODDOWN_NATS_HOST": "nats",
-        "PODDOWN_MINIO_ENDPOINT": "minio:9000",
+        "PODDOWN_MINIO_ENDPOINT": "http://minio:9000",
+        "PODDOWN_MINIO_BUCKET": "poddown",
+        "PODDOWN_MINIO_SECRET_REF": "secret://minio/poddown",
+        "PODDOWN_MINIO_ACCESS_KEY": "${PODDOWN_MINIO_ROOT_USER:?set a local-only user}",
+        "PODDOWN_MINIO_SECRET_KEY": (
+            "${PODDOWN_MINIO_ROOT_PASSWORD:?set a local-only password}"
+        ),
+        "PODDOWN_MINIO_ALLOW_INSECURE_LOCAL": "1",
+        "PODDOWN_RESOURCE_LINK_BASE_URL": (
+            "${PODDOWN_RESOURCE_LINK_BASE_URL:?set an HTTPS resource URL}"
+        ),
+        "PODDOWN_RESOURCE_LINK_SECRET": (
+            "${PODDOWN_RESOURCE_LINK_SECRET:?set a resource-link secret}"
+        ),
+        "PODDOWN_RESOURCE_LINK_TTL_SECONDS": (
+            "${PODDOWN_RESOURCE_LINK_TTL_SECONDS:-300}"
+        ),
     }
     assert DOCKERFILE.read_text().startswith("FROM python:3.13-slim")
     healthcheck = services["api"]["healthcheck"]["test"]

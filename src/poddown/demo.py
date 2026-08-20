@@ -32,7 +32,7 @@ from poddown.audio import (
     VoiceConsent as AudioVoiceConsent,
 )
 from poddown.audio.contracts import RenderedAudio, RenderOutcome
-from poddown.audio.diagnostics import diagnose_wav
+from poddown.audio.diagnostics import AudioDiagnostics, diagnose_wav
 from poddown.audio.mastering import (
     FfmpegRunner,
     MasteringProfile,
@@ -71,6 +71,7 @@ from poddown.package_generation import (
 from poddown.packages import (
     REQUIRED_PACKAGE_ARTIFACTS,
     EpisodePackageService,
+    package_sha256_for,
 )
 from poddown.persistence import SQLiteUsageLedger, UsageEvent
 from poddown.providers.contracts import TranscriptResult, TranscriptWord
@@ -673,7 +674,8 @@ def _validate_resume_evidence(
     if not isinstance(publication, Mapping) or (
         publication.get("external_id") != value.get("publication_path")
         or publication.get("episode_version_id") != str(_EPISODE_VERSION_ID)
-        or publication.get("package_sha256") != package.provenance.final_sha256
+        or publication.get("package_sha256")
+        != package_sha256_for(package, artifact_store)
         or publication.get("status") not in {"published", "resumed"}
         or not published_root.is_dir()
     ):
@@ -781,6 +783,7 @@ async def _render_segments(
     replayed = 0
     successful_requests = 0
     render_cost = Decimal("0")
+    diagnostics_by_artifact: dict[str, AudioDiagnostics] = {}
     for segment in prepared.segments:
         speaker = next(
             item
@@ -822,22 +825,29 @@ async def _render_segments(
         if outcome_cost != 0:
             raise ValueError("offline local render candidates must be zero-cost")
         render_cost += outcome_cost
-        qualities = tuple(
-            CandidateQuality(
-                outcome.candidate.candidate_id,
-                evaluate_critical_tokens(
-                    tuple(
-                        token.expected_spoken_form for token in segment.critical_tokens
-                    ),
-                    segment_transcript,
-                ),
-                diagnose_wav(artifacts.read(outcome.candidate.artifact)),
-                True,
-                Decimal("1"),
-            )
-            for outcome in outcomes
+        critical_tokens = tuple(
+            token.expected_spoken_form for token in segment.critical_tokens
         )
-        choice = select_candidate(qualities)
+        qualities = []
+        for outcome in outcomes:
+            artifact = outcome.candidate.artifact
+            diagnostics = diagnostics_by_artifact.get(artifact.sha256)
+            if diagnostics is None:
+                diagnostics = diagnose_wav(artifacts.read(artifact))
+                diagnostics_by_artifact[artifact.sha256] = diagnostics
+            qualities.append(
+                CandidateQuality(
+                    outcome.candidate.candidate_id,
+                    evaluate_critical_tokens(
+                        critical_tokens,
+                        segment_transcript,
+                    ),
+                    diagnostics,
+                    True,
+                    Decimal("1"),
+                )
+            )
+        choice = select_candidate(tuple(qualities))
         if choice is None:
             raise ValueError("deterministic local candidates failed hard gates")
         selected.append(
@@ -998,9 +1008,8 @@ def run_reference_demo(
         {"fixture": "reference-demo/v1", "renderer": renderer_identity},
     )
     artifacts = generate_package_artifacts(package_input)
-    package = EpisodePackageService(
-        PackageArtifactStore(root / "package-artifacts"), root / "packages"
-    ).commit(
+    package_artifacts = PackageArtifactStore(root / "package-artifacts")
+    package = EpisodePackageService(package_artifacts, root / "packages").commit(
         _EPISODE_VERSION_ID,
         artifacts,
         __import__(
@@ -1041,7 +1050,7 @@ def run_reference_demo(
         ),
     )
     receipt = PublishingService(
-        artifact_store=PackageArtifactStore(root / "package-artifacts"),
+        artifact_store=package_artifacts,
         adapters={"filesystem": FilesystemPublicationAdapter(root / "published")},
     ).publish(
         package,
